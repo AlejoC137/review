@@ -1,0 +1,333 @@
+import React, { useEffect, useState } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import {
+  LayoutDashboard, BookOpen, Settings, Hexagon,
+  Layers, Info, X, FileText, Activity,
+  HelpCircle, Book, ChevronLeft, ChevronRight, ChevronDown, Lock as LockIcon,
+  User, LogOut, ClipboardList, Folder, Calendar, Users, Target, Package
+} from 'lucide-react';
+import { useSelector } from 'react-redux';
+import { useTranslation } from 'react-i18next';
+import SiteLogo from '../ui/SiteLogo';
+import LanguageSwitcher from '../ui/LanguageSwitcher';
+import AdminModal from '../admin/AdminModal';
+import { useAuth } from '../../context/AuthContext';
+import { startTutorial } from '../../config/tutorialConfig';
+
+export default function Sidebar({ isOpen, onClose, className = "" }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { isAdmin, user, signOut, isBimManager, setBimManager } = useAuth();
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const currentPlan = useSelector(state => state.bim.currentPlan);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    return localStorage.getItem('sidebarCollapsed') === 'true';
+  });
+
+  // Accordion state
+  const [expandedSections, setExpandedSections] = useState({
+    proyectos: true,
+    proyecto1: true,
+    bep: true,
+    cursos: true,
+    recursos: true,
+    admin: false
+  });
+
+  const [projectsList, setProjectsList] = useState([]);
+
+  useEffect(() => {
+    const fetchSidebarProjects = async () => {
+      try {
+        // We do a dynamic import here to avoid circular dependency issues if any
+        const { lifecycleService } = await import('../../services/lifecycleService');
+        const data = await lifecycleService.getProjects();
+        if (data && data.length > 0) {
+          setProjectsList(data);
+
+          // Expand the first project by default
+          setExpandedSections(prev => ({
+            ...prev,
+            [`proj-${data[0].id}`]: true,
+            [`bep-${data[0].id}`]: true
+          }));
+        }
+      } catch (err) {
+        console.error("Failed to fetch sidebar projects", err);
+      }
+    };
+    fetchSidebarProjects();
+  }, []);
+
+  const { t } = useTranslation();
+
+  const toggleSection = (section) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  useEffect(() => {
+    localStorage.setItem('sidebarCollapsed', isCollapsed);
+  }, [isCollapsed]);
+
+  useEffect(() => {
+    if (location.hash) {
+      setTimeout(() => {
+        const element = document.getElementById(location.hash.substring(1));
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    }
+  }, [location.hash, location.pathname]);
+
+  const handleNavClick = (e, item) => {
+    if (onClose) onClose(); // Close sidebar on mobile after clicking a link
+    if (item.hash) {
+      e.preventDefault();
+      if (location.pathname !== '/') {
+        navigate(`/${item.hash}`);
+      } else {
+        navigate(item.hash, { replace: true });
+        const element = document.getElementById(item.hash.substring(1));
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    }
+  };
+
+  const NavItem = ({ item, depth = 0 }) => {
+    let isActive = false;
+    if (item.path === '/resources') isActive = location.pathname === '/resources';
+    else if (item.path === '/materials') isActive = location.pathname === '/materials';
+    else if (item.path === '/dictionary') isActive = location.pathname === '/dictionary';
+    else if (item.path === '/') isActive = location.pathname === '/' && (location.hash === item.hash || (item.hash === '#phase-1' && location.hash === ''));
+    else if (item.path && (item.path.startsWith('/esquemas') || item.path.startsWith('/planner') || item.path.startsWith('/esquemaAdmin'))) {
+      const [base, query] = item.path.split('?');
+      if (query) {
+        isActive = location.pathname.startsWith(base) && location.search.includes(query);
+      } else {
+        isActive = location.pathname.startsWith(base);
+      }
+    }
+    else if (item.path && item.path.includes('?tab=')) {
+      const [base, query] = item.path.split('?');
+      isActive = location.pathname === base && location.search.includes(query);
+    }
+
+    const isDisabled = item.requiresBimManager && !isBimManager;
+
+    return (
+      <NavLink
+        id={item.id}
+        to={isDisabled ? '#' : (item.hash ? { pathname: item.path, hash: item.hash } : (item.path || '#'))}
+        onClick={(e) => {
+          if (isDisabled) {
+            e.preventDefault();
+            return;
+          }
+          handleNavClick(e, item);
+        }}
+        style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
+        className={`
+          flex items-center w-full p-2 group/item relative overflow-hidden transition-all duration-200 border-2 font-mono
+          ${isCollapsed ? 'justify-center h-10 px-0' : 'justify-start h-9'}
+          ${isDisabled ? 'opacity-40 cursor-not-allowed grayscale' : (isActive ? 'bg-[#0f4369] text-white border-[#1c1c19] shadow-[2px_2px_0_0_rgba(28,28,25,0.15)]' : 'text-[#72777f] hover:text-[#1c1c19] hover:bg-[#e5e2dd] border-transparent hover:border-[#1c1c19]')}
+        `}
+        title={isCollapsed ? item.label : (isDisabled ? 'REQUIERE_BIM_MANAGER_KEY' : '')}
+      >
+        <div className={`transition-transform duration-200 ${isActive ? 'scale-110' : 'group-hover/item:scale-105'}`}>
+          {isDisabled ? <LockIcon size={14} className="shrink-0" /> : <item.icon size={16} className="shrink-0" />}
+        </div>
+        {!isCollapsed && (
+          <span className="ml-3 text-[10px] font-bold tracking-wider whitespace-nowrap opacity-100 uppercase flex-1 truncate">
+            {item.label}
+          </span>
+        )}
+      </NavLink>
+    );
+  };
+
+  const NavGroup = ({ id, label, icon: Icon, children, depth = 0 }) => {
+    const isExpanded = expandedSections[id];
+    return (
+      <div className="flex flex-col w-full">
+        <button
+          onClick={() => toggleSection(id)}
+          style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
+          className={`
+            flex items-center w-full p-2 group/item relative transition-all duration-200 font-mono text-[#1c1c19] hover:bg-[#e5e2dd]
+            ${isCollapsed ? 'justify-center h-10 px-0' : 'justify-between h-9'}
+          `}
+          title={isCollapsed ? label : ''}
+        >
+          <div className="flex items-center gap-3 overflow-hidden">
+            <Icon size={16} className="shrink-0 text-[#0f4369]" />
+            {!isCollapsed && (
+              <span className="text-[10px] font-bold tracking-wider whitespace-nowrap uppercase truncate">
+                {label}
+              </span>
+            )}
+          </div>
+          {!isCollapsed && (
+            <ChevronDown size={14} className={`shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+          )}
+        </button>
+        {(!isCollapsed && isExpanded) && (
+          <div className="flex flex-col w-full">
+            {children}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <>
+      {/* Mobile Backdrop */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-[#1c1c19]/40 backdrop-blur-sm z-40 md:hidden transition-opacity duration-300"
+          onClick={onClose}
+        />
+      )}
+
+      <aside className={`
+        fixed md:relative inset-y-0 left-0 transition-all duration-300 ease-in-out border-r-2 border-[#1c1c19] bg-[#fcf9f4] flex flex-col items-center py-6 shrink-0 z-50 shadow-[8px_8px_0_0_rgba(28,28,25,0.2)] print:hidden
+        ${isCollapsed ? 'w-20' : 'w-64'}
+        ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        ${className}
+      `}>
+        {/* Mobile Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 p-2 text-[#1c1c19] md:hidden hover:bg-[#e5e2dd] transition-colors"
+        >
+          <X size={20} />
+        </button>
+
+        {/* Collapse Toggle Button (Desktop) - Non-intrusive handle */}
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="hidden md:flex absolute -right-[12px] bottom-40 bg-[#1c1c19] text-white p-1 z-[100] hover:bg-[#0f4369] opacity-40 hover:opacity-100 transition-all flex-col items-center justify-center border border-white/20 shadow-[2px_2px_0_0_rgba(0,0,0,0.2)]"
+          title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+        >
+          {isCollapsed ? <ChevronRight size={12} strokeWidth={3} /> : <ChevronLeft size={12} strokeWidth={3} />}
+        </button>
+
+        {/* Top Section: Logo & User Controls */}
+        <div className={`w-full px-2 mb-2 flex flex-col gap-1 transition-all duration-300 ${isCollapsed ? 'items-center' : ''}`}>
+          {/* Logo */}
+          <div id="sidebar-logo" className={`transition-all duration-300 bg-white border-2 border-[#1c1c19] shadow-[3px_3px_0_0_rgba(28,28,25,1)] flex flex-col items-center p-1 overflow-hidden ${isCollapsed ? 'w-10 h-10 justify-center' : 'w-full'}`}>
+            <SiteLogo className={`${isCollapsed ? 'w-5 h-5' : 'w-8 h-8'} transition-all duration-300`} color="#0f4369" />
+            {!isCollapsed && <span className="text-[9px] font-black tracking-[0.2em] text-[#1c1c19] uppercase font-mono mt-0.5 border-t border-[#1c1c19]/10 w-full text-center pt-0.5">REVIEW</span>}
+          </div>
+
+        </div>
+
+        {/* Scrollable Navigation Section */}
+        <nav className="flex-1 w-full flex flex-col px-2 gap-1 mt-1 overflow-y-auto custom-scrollbar scrollbar-thin scrollbar-thumb-[#0f4369] scrollbar-track-transparent">
+
+          <NavGroup id="proyectos" label="Proyectos" icon={Folder} depth={0}>
+            {projectsList.length > 0 ? (
+              projectsList.map(proj => (
+                <NavGroup key={proj.id} id={`proj-${proj.id}`} label={proj.name} icon={Activity} depth={1}>
+                  <NavGroup id={`bep-${proj.id}`} label="BEP" icon={FileText} depth={2}>
+                    <NavItem item={{ id: `nav-esquemas-${proj.id}`, label: 'Esquema', path: `/esquemas?projectId=${proj.id}`, icon: Hexagon }} depth={3} />
+                    <NavItem item={{ id: `nav-planner-${proj.id}`, label: 'Organizador / Deployer', path: `/planner?projectId=${proj.id}`, icon: ClipboardList }} depth={3} />
+                    <NavItem item={{ id: `nav-protocolos-${proj.id}`, label: 'Protocolos', path: `/project/${proj.id}?tab=protocolos`, icon: FileText }} depth={3} />
+                  </NavGroup>
+                  <NavItem item={{ id: `nav-proyecto-${proj.id}`, label: 'Sub Proyecto / Unidades', path: `/project/${proj.id}?tab=proyecto`, icon: Layers }} depth={2} />
+                  <NavItem item={{ id: `nav-materiales-${proj.id}`, label: 'Materiales', path: `/materials?projectId=${proj.id}`, icon: Package }} depth={2} />
+                  <NavItem item={{ id: `nav-documentos-${proj.id}`, label: 'Documentos', path: `/documents?projectId=${proj.id}`, icon: FileText }} depth={2} />
+                  <NavItem item={{ id: `nav-calendario-${proj.id}`, label: 'Calendario Sem/Mes', path: `/project/${proj.id}?tab=mes`, icon: Calendar }} depth={2} />
+                  <NavItem item={{ id: `nav-requisitos-${proj.id}`, label: 'Requisitos de informacion', path: `/project/${proj.id}?tab=requisitos`, icon: Layers }} depth={2} />
+                  <NavItem item={{ id: `nav-equipo-${proj.id}`, label: 'Equipo', path: `/project/${proj.id}?tab=equipo`, icon: Users }} depth={2} />
+                  <NavItem item={{ id: `nav-directorio-${proj.id}`, label: 'Directorio', path: `/project/${proj.id}?tab=directorio`, icon: Target }} depth={2} />
+                </NavGroup>
+              ))
+            ) : (
+              <NavGroup id="proyecto1" label="Proyecto 1" icon={Activity} depth={1}>
+                <NavItem item={{ id: 'nav-kengo-proyecto', label: 'Sub Proyecto / Unidades', path: '/project/kengo-kuma?tab=proyecto', icon: Layers }} depth={2} />
+                <NavItem item={{ id: 'nav-kengo-materiales', label: 'Materiales', path: '/materials?projectId=kengo-kuma', icon: Package }} depth={2} />
+                <NavGroup id="bep" label="BEP" icon={FileText} depth={2}>
+                  <NavItem item={{ id: 'nav-esquemas', label: 'Esquema', path: currentPlan ? `/esquemas/${currentPlan.id}` : '/esquemas', icon: Hexagon }} depth={3} />
+                  <NavItem item={{ id: 'nav-planner', label: 'Organizador', path: currentPlan ? `/planner/${currentPlan.id}` : '/planner', icon: ClipboardList }} depth={3} />
+                  <NavItem item={{ id: 'nav-protocolos', label: 'Protocolos', path: '/project/kengo-kuma?tab=protocolos', icon: FileText }} depth={3} />
+                </NavGroup>
+                <NavItem item={{ id: 'nav-documentos', label: 'Documentos', path: '/documents', icon: FileText }} depth={2} />
+                <NavItem item={{ id: 'nav-calendario', label: 'Calendario Sem/Mes', path: '/project/kengo-kuma?tab=mes', icon: Calendar }} depth={2} />
+                <NavItem item={{ id: 'nav-requisitos', label: 'Requisitos de informacion', path: '/project/kengo-kuma?tab=requisitos', icon: Layers }} depth={2} />
+                <NavItem item={{ id: 'nav-equipo', label: 'Equipo', path: '/project/kengo-kuma?tab=equipo', icon: Users }} depth={2} />
+                <NavItem item={{ id: 'nav-directorio', label: 'Directorio', path: '/project/kengo-kuma?tab=directorio', icon: Target }} depth={2} />
+              </NavGroup>
+            )}
+          </NavGroup>
+
+          <NavGroup id="cursos" label="Cursos / Capacitación" icon={BookOpen} depth={0}>
+            <NavItem item={{ id: 'nav-fase-1', label: 'Fase 1', path: '/', hash: '#phase-1', icon: LayoutDashboard }} depth={1} />
+            <NavItem item={{ id: 'nav-fase-2', label: 'Fase 2', path: '/', hash: '#phase-2', icon: Layers }} depth={1} />
+            <NavGroup id="recursos" label="Recursos" icon={BookOpen} depth={1}>
+              <NavItem item={{ id: 'nav-dictionary', label: 'Diccionario', path: '/dictionary', icon: Book }} depth={2} />
+              <NavItem item={{ id: 'nav-plantillas', label: 'Plantillas', path: '#', icon: FileText }} depth={2} />
+              <NavItem item={{ id: 'nav-articulos', label: 'Artículos', path: '/resources', icon: FileText }} depth={2} />
+            </NavGroup>
+          </NavGroup>
+
+          {isAdmin && (
+            <NavGroup id="admin" label="Admin" icon={Settings} depth={0}>
+              <NavItem item={{ id: 'nav-esquema-admin', label: 'Esquema Admin', path: '/esquemaEdit', icon: Hexagon }} depth={1} />
+              <NavItem item={{ id: 'nav-articulos-admin', label: 'Artículos Admin', path: '/admin/resources', icon: FileText }} depth={1} />
+              <NavItem item={{ id: 'nav-materiales-admin', label: 'Materiales Global', path: '/materials', icon: Package }} depth={1} />
+            </NavGroup>
+          )}
+
+          <NavItem item={{ id: 'nav-about', label: t('nav.about'), path: '/about', icon: Info }} depth={0} />
+
+        </nav>
+
+        <div className="mt-auto px-2 pb-2 w-full flex flex-col items-center gap-1">
+          <button
+            id="tutorial-btn"
+            onClick={() => startTutorial(location.pathname)}
+            className={`flex items-center w-full p-2 text-[#0f4369] bg-white hover:bg-[#e5e2dd] border-2 border-dashed border-[#0f4369] font-mono transition-all duration-200 ${isCollapsed ? 'justify-center h-10' : 'justify-start h-9'}`}
+            title={isCollapsed ? t('nav.help_tutorial') : ''}
+          >
+            <HelpCircle size={18} className="shrink-0" />
+            {!isCollapsed && (
+              <span className="ml-3 text-[10px] font-bold tracking-widest uppercase truncate">
+                {t('nav.help_tutorial')}
+              </span>
+            )}
+          </button>
+
+          <div className="w-full flex flex-col bg-[#f6f3ee] border-2 border-[#1c1c19]">
+            <div className={`flex items-center p-1.5 gap-2 ${isCollapsed ? 'flex-col justify-center' : 'justify-between'}`}>
+              <div className="flex items-center gap-1.5">
+                <div className={`w-1.5 h-1.5 rounded-full ${isAdmin ? 'bg-[#0f4369]' : 'bg-[#493f36]'}`}></div>
+                {!isCollapsed && (
+                  <span className="text-[9px] font-black tracking-widest text-[#1c1c19] uppercase font-mono">
+                    {isAdmin ? 'ADMIN' : 'ONLINE'}
+                  </span>
+                )}
+              </div>
+
+              <button
+                onClick={() => setIsAdminModalOpen(true)}
+                className={`transition-all p-1 border border-transparent hover:border-[#1c1c19] hover:bg-white ${isAdmin ? 'text-[#0f4369]' : 'text-[#72777f] hover:text-[#1c1c19]'}`}
+                title={t('nav.system_config')}
+              >
+                <Settings size={14} strokeWidth={2.5} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <AdminModal isOpen={isAdminModalOpen} onClose={() => setIsAdminModalOpen(false)} />
+      </aside>
+    </>
+  );
+}

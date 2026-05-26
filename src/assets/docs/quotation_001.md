@@ -1,0 +1,273 @@
+# Cotización para la implementación de metodologías BIM para un proyecto arquitectónico ( Laura Kate Correa + Click Clack + Kengo Kuma)
+
+Cotización#: 1
+Fecha: 10 / 03 / 2026
+
+### Cotización por
+
+```
+Alejandro Patiño
+Arquitecto Diseñador Unal Med
+Arquitecto Diseñador Urbano Unal Med
+BIM Manager
+Arquitecto con 5 años de experiencia en desarrollo de
+proyecto arquitectónicos de múltiples usos y escalas.
+Dirección: Transversal 39 # 66 A 23 , Med.
+```
+
+### Cotización para
+
+```
+Laura Kate Correa
+Dirección: ,Barcelona
+```
+
+## Acta de requerimientos, resumen;
+
+### 1. El Proyecto Principal
+
+```
+Transición de CAD a Revit Proyecto Kengo Kuma): Como arquitectos locales, necesitan modelar y desarrollar un edificio
+completo en Revit a partir de los planos en CAD entregados por el despacho de Kengo Kuma.
+```
+
+```
+Implementación BIM para la empresa: Requieren adaptar Revit al departamento de arquitectura de ClickClack Human
+Build).
+```
+
+### 2. Requerimientos Técnicos y Entregables (Asesoría "Mano a Mano")
+
+```
+Creación de Estándares BIM Management): Configuración de plantillas de trabajo para la empresa, incluyendo la
+creación de plumillas (grosores de línea), layouts (rótulos/planos) y configuración gráfica general.
+Soporte Técnico de Modelado: Asesoría en cómo manejar la estructura dentro del modelo arquitectónico (haciendo
+referencia a tu experiencia previa en el proyecto "Wellness", donde adaptaste el modelo del ingeniero para que fuera útil
+en arquitectura).
+```
+
+### 3. Capacitación del Equipo (Perfiles)
+
+```
+Equipo Junior 2 Arquitectos): Ya saben modelar en Revit, pero necesitan dar el salto a desarrollar un edificio completo y
+coordinado.
+Director de Interiorismo: Tiene conocimientos avanzados de Revit, pero aplicado a interiores; necesita entender la escala
+de un edificio completo.
+La Clienta Project Manager / Coordinadora): Nivel cero en Revit. Necesita capacitación enfocada específicamente en la
+navegación, visualización y revisión de planos para poder coordinar el proyecto
+```
+
+## Recomendaciones
+
+```
+( inferido) Dado que el proyecto no inicio con una metodología BIM, si no que se busca la implementación de esta en el
+proyecto, se recomienda:
+desarrollar el proyecto completo en AutoCAD / sketch up, luego que una vez se llegue a fase/etapa de anteproyecto ,
+empezar a la transición a Revit, esto porque la implementación inmediata de Revit en el proyecto puede afectar la libertar
+creativa de los diseñadores , también puede generar retrasos en la entregas
+Mientras se desarrolla el proyecto , se capacitan a los arquitectos desarrolladores en Revit, para que la implementación
+sea mas efectiva en las etapas donde los elementos arquitectónicos , estructurales y técnicos ya están definidos, y lo que
+quede en adelante sea la modelación, cantidades y la detección de colisiones entre sistemas
+de la misma manera , en simultaneo que se hace el desarrollo y la capacitaciones , se construirán las plantillas y bases
+para la implementación para todas las etapas, esto para dejar las bases para futuros proyectos , pero se construirán e
+implementaran las bases de la etapa de anteproyecto de manera prioritaria en el caso que se ejecutarse como se
+especifico anteriormente
+```
+
+## Cotización de consultoría.
+
+Para lograr los objetivos, se proponen tres partes: capacitación, consultoría y protocolos. La capacitación proporcionará
+nociones avanzadas al equipo de modelado. Posteriormente, en la tutoría se acompañará el desarrollo particular del edificio y
+Para finalizar, se entregan las herramientas para continuar con la metodología en futuros proyectos.
+
+## Capacitación:
+
+se realizará en sesiones de 2 horas, dos veces por semana. Cada sesión contendrá 75 % de información demostrativa y 25 %
+de practica y resolución de dudas, inquietudes o problemas particulares del proceso de implementación.
+
+los primeros 4 numerales se harán 2 veces por semana luego al alcanzar el numeral 5 se hará 1 vez por semana y en la misma
+se dará la tutoría correspondiente donde se iniciará la transición a Revit. Esto permitirá aplicar los conocimientos adquiridos y
+encontrar los retos particulares del proyecto, estando a tiempo para atenderlos.
+
+```
+Tutorías para la implementación Cantidad Un Tiempo Horas
+1. Recorrido general de Revit. contexto general.
+```
+- Jerarquía de documentos ( Normas - Protocolos - Plan de Ejecución - Manuales - Plantillas)
+- Jerarquía de Roles ( BIM Manager , BIM Coordinator, BIM Modelers )
+- ISO 19650
+- Pertinencia Revit ( Revit es para construir )
+
+```
+1 2 Semana 1
+```
+
+```
+2. Salud del modelo y sistema de información.
+```
+- Protocolos
+- Estrategias de Modelo
+- Manuales
+
+```
+1 2 Semana 1
+```
+
+```
+3. Ejemplos y casos de implementación.
+```
+- Hotel Heiss
+- Humax
+- KK Human Build
+- Casa MM
+
+```
+1 2 Semana 2
+```
+
+```
+4. Parámetros y Nomenclatura.
+```
+- Parámetros de Familias
+- Parámetros de Proyecto
+- Parámetros Compartidos
+- Manual de Nomenclatura
+
+```
+1 2 Semana 2
+```
+
+```
+5. Modelado 1 Familias y Sistemas.
+```
+- HostLess
+- Dimanicos
+- Nested
+
+```
+1 2 Semana 3
+```
+
+```
+6. Modelado 2 LOD Información.
+- Manual de Modelado
+1 2 Semana 4
+```
+
+```
+Tutorías para la implementación Cantidad Un Tiempo Horas
+7. Modelado 3 Colaborativo
+```
+- WorkSets
+- Modelos Locales y Globales.
+
+```
+Semana 5
+```
+
+```
+8. Anotación y Layout
+```
+- Manual de Anotaciones
+- Manual de Layout
+
+```
+1 2 Semana 6
+```
+
+```
+10. Redes, Colisiones y Requisitos.
+```
+- Revisión Técnica
+- Importación
+- NavisWorks
+
+```
+1 2 Semana 7
+```
+
+```
+9. Tablas y cantidades. 1 2 Semana 8
+11. Exportación a otros sistemas.
+- Manual y Plantilla de exportación
+1 2 Semana 9
+```
+
+```
+12 22
+```
+
+## Tutoría:
+
+Luego de las bases , se propone hacer sesiones de 3 hora pero 1 por semana esto para trabajar y acompañar el proceso de
+implementación particular y final del proyecto, los arquitectos son los encargados de desarrollar y ejecutar la implementación
+pero mi rol será de acompañamiento, esto dependerá de los alcances establecidos en el acta de requerimientos, también
+depende de los tiempos y la velocidad de desarrollo.
+
+```
+Tutorías para la implementación Cantidad Tiempo Horas
+1. Definición de sistemas, Carpetas y Archivos. 1 3 Semana 3
+2. Diseño de estrategias de modelado. 1 3 Semana 4
+3. Modelado de contexto y primeras intervenciones 1 3 Semana 5
+4. Modelado Arquitectónico 1 3 Semana 6
+5. Retorno de información, Modelado Arquitectónico y Estructural 1 3 Semana 7
+6. Modelado Estructural 1 3 Semana 8
+7. Retorno de información, Modelado Arquitectónico y Estructural 1 3 Semana 9
+8. Integración de modelos externos 1 3 Semana 10
+9. Retorno de información, Integración de modelos externos. 1 3 Semana 11
+27
+```
+
+## Productos Entregables
+
+Al final el proceso de capacitación y tutoría se entregará los siguientes elementos para darle al cliente la autonomía de continuar y replicar los procesos de implementación BIM bajo protocolo en futuros proyectos.
+
+```
+Descripción Qty
+1. Árbol de Carpetas: 1 Semana 15
+```
+
+```
+Descripción Qty
+2. Documentos norma ISO 19650 1 Semana 15
+3. Banco de Familias Arquitectura 1 Semana 15
+4. Banco de Familias Estructural 1 Semana 15
+5. Protocolo de Modelado de Familias
+- Con sus respectivos Manuales 1 Semana 15
+6. Protocolo de modelado de Arquitectura
+- Con sus respectivos Manuales 1 Semana 15
+7. Plantilla de Modelado Arquitectónico
+- Layout para los tamaños mas usados de impresión
+- Grosores Calibrados
+- Configuración gráfica base
+1 Semana 15
+8. Protocolo de modelado Estructura
+- Con sus respectivos Manuales 1 Semana 15
+9. Plantilla de Modelado Estructural:
+- Layout para los tamaños mas usados de impresión
+- Grosores Calibrados
+- Configuración gráfica base
+1 Semana 15
+10. Plantilla de plan de implementación
+- con su respectivo manual. 1 Semana 15
+```
+
+### Notas Adicionales:
+
+```
+Para iniciar el proceso de modelado se debe pagar el 30 %
+del valor pactado.
+```
+
+Contacto
+diegoa.patinoa@gmail.com
++57 324 634 1679
+
+### Resumen
+
+```
+Sub Total:
+11. 000. 000 Cop
+Tiempo:
+4 Meses
+```

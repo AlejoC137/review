@@ -1,0 +1,116 @@
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { supabase } from '../services/supabaseClient';
+
+const AuthContext = createContext();
+
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(window.location.hostname === 'localhost');
+  const [isBimManager, setIsBimManager] = useState(false);
+
+  const setBimManager = (finished) => {
+    setIsBimManager(finished);
+  };
+
+  useEffect(() => {
+    // If on localhost, we automatically assume admin role for development convenience
+    if (window.location.hostname === 'localhost') {
+      setIsAdmin(true);
+    }
+    // Check local storage for persistent custom session from user_profiles
+    const storedUserId = localStorage.getItem('custom_user_id');
+    if (storedUserId) {
+      checkUserSession(storedUserId);
+    } else {
+      setLoading(false);
+    }
+  }, []);
+
+  const checkUserSession = async (userId) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (!error && data) {
+        // Evaluate finished identically to how signIn evaluates it
+        if (data.finished === false) {
+          localStorage.removeItem('custom_user_id');
+          setUser(null);
+          setIsAdmin(false);
+        } else {
+          setUser(data);
+          const adminValue = data.admin;
+          setIsAdmin(adminValue === true || adminValue === 'true' || adminValue === 1 || adminValue === 'TRUE');
+        }
+      } else {
+        // Invalid session or user deleted
+        console.error("Session fetch failed or user not found:", error);
+        localStorage.removeItem('custom_user_id');
+        setUser(null);
+        setIsAdmin(false);
+      }
+    } catch (err) {
+      console.error("Session check error:", err);
+      localStorage.removeItem('custom_user_id');
+      setUser(null);
+      setIsAdmin(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const value = {
+    user,
+    isAdmin,
+    isBimManager,
+    setBimManager,
+    signIn: async (email, password) => {
+      try {
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('mail', email)
+          .eq('password', password)
+          .single();
+
+        if (error || !data) {
+          return { error: new Error("Credenciales inválidas, verifica tu correo o contraseña.") };
+        }
+
+        if (data.finished === false) {
+          return { error: new Error("Esta cuenta ha sido desactivada por un administrador.") };
+        }
+
+        // Custom Login Success
+        localStorage.setItem('custom_user_id', data.id);
+        setUser(data);
+        const adminValue = data.admin;
+        setIsAdmin(adminValue === true || adminValue === 'true' || adminValue === 1 || adminValue === 'TRUE');
+
+        return { error: null };
+      } catch (err) {
+        return { error: new Error("Error interno de conexión.") };
+      }
+    },
+    signOut: async () => {
+      localStorage.removeItem('custom_user_id');
+      setUser(null);
+      setIsAdmin(false);
+      return { error: null };
+    },
+  };
+
+  return (
+    <AuthContext.Provider value={value}>
+      {!loading && children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = () => {
+  return useContext(AuthContext);
+};

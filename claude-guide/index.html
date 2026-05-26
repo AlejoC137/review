@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code Master Guide</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <aside>
+            <div class="logo">⚡ CLAUDE CODE</div>
+            <nav>
+                <ul>
+                    <li><a href="#getting-started" class="active">Getting Started</a></li>
+                    <li><a href="#commands">Commands</a></li>
+                    <li><a href="#permissions">Permissions</a></li>
+                    <li><a href="#hooks">Hooks</a></li>
+                    <li><a href="#claude-md">CLAUDE.md</a></li>
+                    <li><a href="#skills">Skills</a></li>
+                    <li><a href="#workflows">Workflows</a></li>
+                    <li><a href="#prompts">Power Prompts</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main>
+            <header>
+                <h1>Claude Code Guide</h1>
+                <p class="subtitle">A practical, copy-paste reference for developers who ship.</p>
+            </header>
+
+            <input type="text" class="search-box" placeholder="Search commands, configs, or hooks (Press / to focus)..." id="search">
+
+            <!-- Getting Started -->
+            <section id="getting-started">
+                <h2>Getting Started</h2>
+                <div class="card">
+                    <p>Claude Code is an agentic coding tool that lives in your terminal. Install it and launch with a single command.</p>
+                    <div class="code-wrapper">
+                        <button class="copy-btn">Copy</button>
+                        <pre><code>npx -y @anthropic-ai/claude-code</code></pre>
+                    </div>
+                    <div style="margin-top: 1rem;">
+                        <span class="badge tag">Tip</span>
+                        <small style="color: var(--text-secondary)">Use <code>--dangerously-skip-permissions</code> to skip prompts, or cycle to <strong>Auto mode</strong> with <kbd>Shift + Tab</kbd>.</small>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Commands -->
+            <section id="commands">
+                <h2>Essential Commands</h2>
+                <div class="grid" id="commands-list">
+                    <div class="card searchable">
+                        <span class="badge cmd">/init</span>
+                        <h3>Project Setup</h3>
+                        <p>Initialize project with a CLAUDE.md guide. Best for first-time setup.</p>
+                    </div>
+                    <div class="card searchable">
+                        <span class="badge cmd">/compact</span>
+                        <h3>Context Management</h3>
+                        <p>Wipes conversation history but keeps important focus instructions. Use when context > 80%.</p>
+                    </div>
+                    <div class="card searchable">
+                        <span class="badge cmd">/diff</span>
+                        <h3>Interactive Diff</h3>
+                        <p>Viewer for uncommitted changes. Use before committing.</p>
+                    </div>
+                    <div class="card searchable">
+                        <span class="badge cmd">/plan</span>
+                        <h3>Plan Mode</h3>
+                        <p>Claude plans before coding. Perfect for complex architectural tasks.</p>
+                    </div>
+                    <div class="card searchable">
+                        <span class="badge cmd">/rewind</span>
+                        <h3>Undo Changes</h3>
+                        <p>Rewind conversation and/or code to a previous point.</p>
+                    </div>
+                    <div class="card searchable">
+                        <span class="badge cmd">/btw</span>
+                        <h3>Quick Question</h3>
+                        <p>Side question without polluting main context.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Permissions -->
+            <section id="permissions">
+                <h2>Permissions & Config</h2>
+                <div class="card">
+                    <h3>Example: Solo Developer (Trust Mode)</h3>
+                    <p>High trust settings for personal projects. Place in <code>~/.claude/settings.json</code>.</p>
+                    <div class="code-wrapper">
+                        <button class="copy-btn">Copy</button>
+                        <pre><code>{
+  "permissions": {
+    "allow": [
+      "Bash(npm *)",
+      "Bash(git *)",
+      "Read",
+      "Edit",
+      "Grep",
+      "Glob",
+      "WebFetch",
+      "WebSearch",
+      "mcp__*"
+    ]
+  }
+}</code></pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Hooks -->
+            <section id="hooks">
+                <h2>Lifecycle Hooks</h2>
+                <div class="grid">
+                    <div class="card">
+                        <h3>Auto-Format (Prettier)</h3>
+                        <p>Formats JS/TS files after every edit.</p>
+                        <div class="code-wrapper">
+                            <button class="copy-btn">Copy</button>
+<pre><code>{
+  "hooks": {
+    "PostToolUse": [{
+      "matcher": "Write|Edit",
+      "hooks": [{
+        "type": "command",
+        "command": "jq -r '.tool_input.file_path' | xargs npx prettier --write 2>/dev/null; exit 0"
+      }]
+    }]
+  }
+}</code></pre>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>Block Danger</h3>
+                        <p>Prevents <code>rm -rf</code> or forced pushes.</p>
+                        <div class="code-wrapper">
+                            <button class="copy-btn">Copy</button>
+<pre><code>{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "Bash",
+      "hooks": [{
+        "type": "command",
+        "command": "jq -r '.tool_input.command' | grep -qE 'rm -rf|git push.*--force' && exit 2 || exit 0"
+      }]
+    }]
+  }
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CLAUDE.md -->
+            <section id="claude-md">
+                <h2>CLAUDE.md Template</h2>
+                <div class="card">
+                    <h3>Project Rules & Context</h3>
+                    <div class="code-wrapper">
+                        <button class="copy-btn">Copy</button>
+<pre><code># Project: [Name]
+
+## Tech Stack
+- [Framework], [Language]
+
+## Commands
+- Dev: npm run dev
+- Test: npm test
+
+## Rules
+- ALWAYS run tests after changes
+- Keep files under 300 lines
+- ALWAYS use TypeScript strict mode</code></pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Power Prompts -->
+            <section id="prompts">
+                <h2>Power Prompts</h2>
+                <div class="grid">
+                    <div class="card">
+                        <h3>The Elegant Redo</h3>
+                        <p>"Knowing everything you know now, scrap this and implement the elegant solution."</p>
+                        <button class="copy-btn" style="margin-top: 1rem; width: 100%;">Copy Prompt</button>
+                    </div>
+                    <div class="card">
+                        <h3>Force Proper Planning</h3>
+                        <p>"Before writing any code, analyze the codebase and create a detailed plan. Wait for approval."</p>
+                        <button class="copy-btn" style="margin-top: 1rem; width: 100%;">Copy Prompt</button>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

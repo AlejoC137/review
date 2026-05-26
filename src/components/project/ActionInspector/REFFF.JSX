@@ -1,0 +1,2421 @@
+import React, { useRef, useEffect, useState, Fragment } from 'react';
+import { createPortal } from 'react-dom';
+import { handleNativePrint } from '../../utils/printUtils';
+import { useDispatch, useSelector } from 'react-redux';
+import { clearSelection, setSelectedAction, setSelectedTask, fetchPendingCallsCount, toggleInspectorCollapse, incrementRefreshCounter } from '../../store/actions/appActions';
+import { updateAction, createAction, getTaskActions, updateActionsOrder, deleteAction } from '../../services/actionsService';
+import { getSpaceComponents, updateComponent } from '../../services/componentsService';
+import { getSpaces, getSpaceDetails, updateSpace, getStaffers } from '../../services/spacesService';
+import { createTask, updateTask, getProjects, deleteTask, getTasksByDate, getStages, getTaskById } from '../../services/tasksService';
+import { createCall, createMultipleCalls } from '../../services/callsService';
+import TaskDependencySelector from './TaskDependencySelector'; // Import Selector
+import { X, Save, CheckCircle, User, MapPin, Layers, Box, Edit3, Briefcase, Trash2, ArrowUp, ArrowDown, GripVertical, Calendar, Plus, AlertCircle, PlayCircle, PauseCircle, Book, Check, Phone, Users, Image as ImageIcon, Loader2, Lock, Unlock } from 'lucide-react';
+import { format, differenceInDays, parseISO } from 'date-fns';
+import PrintButton from '../common/PrintButton';
+import EvidenceUploader from '../common/EvidenceUploader';
+import SearchableSpaceSelector from '../common/SearchableSpaceSelector';
+import SearchableStaffSelector from '../common/SearchableStaffSelector';
+
+const ActionInspectorPanel = ({ onActionUpdated, onCollapseChange }) => {
+    const dispatch = useDispatch();
+    const { selectedAction, selectedTask, selectedDate, panelMode, isInspectorCollapsed: isCollapsed, refreshCounter } = useSelector(state => state.app);
+
+    // Local state for Action form
+    const [actionForm, setActionForm] = useState({});
+
+    // Local state for Task form
+    const [taskForm, setTaskForm] = useState({});
+
+    // Local state for Task Components (Actions)
+    const [parallelActions, setParallelActions] = useState([]);
+    const [concatenatedActions, setConcatenatedActions] = useState([]);
+    const [isDraggingUI, setIsDraggingUI] = useState(null);
+    const [draggedIndex, setDraggedIndex] = useState(null);
+    const [draggedType, setDraggedType] = useState(null); // 'parallel' or 'concatenated'
+    const draggingIndexRef = useRef(null);
+    const actionsRef = useRef([]); // To keep a fresh copy for calculations if needed
+
+    // Local state for Day Tasks
+    const [dayTasks, setDayTasks] = useState([]);
+
+    // Dropdown options
+    const [spaces, setSpaces] = useState([]);
+    const [projects, setProjects] = useState([]);
+    const [staffers, setStaffers] = useState([]);
+    const [stages, setStages] = useState([]);
+    const [callerId, setCallerId] = useState('');
+    const [calledStaffId, setCalledStaffId] = useState('');
+    const [callComment, setCallComment] = useState('');
+
+    const [loading, setLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [showCallDropdown, setShowCallDropdown] = useState(false);
+
+    // DnD State
+
+
+    const printRef = useRef(null);
+    const handlePrint = () => {
+        handleNativePrint('action-inspector-print-view', `Detalle_${panelMode}_${selectedTask?.task_description || selectedAction?.description || selectedDate}`);
+    };
+
+    // Load dropdown data on mount
+    useEffect(() => {
+        getSpaces().then(setSpaces).catch(console.error);
+        getProjects().then(setProjects).catch(console.error);
+        getStaffers().then(setStaffers).catch(console.error);
+        getStages().then(setStages).catch(console.error);
+    }, []);
+
+    // Load Action Data
+    useEffect(() => {
+        if (panelMode === 'action' && selectedAction) {
+            setActionForm({
+                ...selectedAction,
+                fecha_fin: selectedAction.fecha_fin || selectedAction.fecha_ejecucion,
+                executor_id: selectedAction.executor_id || '',
+                evidence_url: selectedAction.evidence_url || ''
+            });
+        } else if (panelMode === 'create') {
+            const today = format(new Date(), 'yyyy-MM-dd');
+            setActionForm({
+                description: '',
+                fecha_ejecucion: today,
+                fecha_fin: today,
+                executor_id: '',
+                terminado: false, // Initial state
+                requiere_aprobacion_ronald: false,
+                estado_aprobacion_ronald: false,
+                requiere_aprobacion_wiet: false,
+                estado_aprobacion_wiet: false,
+                requiere_aprobacion_alejo: false,
+                estado_aprobacion_alejo: false,
+                evidence_url: ''
+            });
+        }
+    }, [selectedAction, panelMode]);
+
+    // Load Task Form Data
+    useEffect(() => {
+        if (panelMode === 'createTask' && selectedTask) {
+            setTaskForm({
+                ...selectedTask,
+                task_description: selectedTask.task_description || '',
+                fecha_inicio: selectedTask.fecha_inicio || format(new Date(), 'yyyy-MM-dd'),
+                fecha_fin_estimada: selectedTask.fecha_fin_estimada || format(new Date(), 'yyyy-MM-dd'),
+                espacio_uuid: selectedTask.espacio_uuid || null,
+                proyecto_id: selectedTask.proyecto_id || null,
+                terminado: selectedTask.terminado || false,
+                staff_id: selectedTask.staff_id || selectedTask.staff?.id || '',
+                Priority: selectedTask.Priority || '1',
+                stage_id: selectedTask.stage?.id || selectedTask.stage_id || '',
+                status: selectedTask.status || 'Activa',
+                notes: selectedTask.notes || '',
+                RonaldPass: selectedTask.RonaldPass || false,
+                WietPass: selectedTask.WietPass || false,
+                AlejoPass: selectedTask.AlejoPass || false,
+                evidence_url: selectedTask.evidence_url || ''
+            });
+            // Load draft fullActions if present (for JSON Importer)
+            if (selectedTask.fullActions) {
+                const actions = selectedTask.fullActions.map((a, i) => ({ ...a, order: i, _isNew: true }));
+                setParallelActions(actions.filter(a => a.es_paralela));
+                setConcatenatedActions(actions.filter(a => !a.es_paralela));
+            } else {
+                setParallelActions([]);
+                setConcatenatedActions([]);
+            }
+        } else if (panelMode === 'task' && selectedTask) {
+            // Load existing task data into taskForm for editing
+
+            // NOTE: condiciona_a is a REAL column in the database (Image Confirmed).
+            // We map it directly, but we also kept the "condiciona_a_task" join for the Label in the selector.
+
+            setTaskForm({
+                ...selectedTask,
+                task_description: selectedTask.task_description || '',
+                fecha_inicio: selectedTask.fecha_inicio || (selectedTask.created_at ? selectedTask.created_at.split('T')[0] : format(new Date(), 'yyyy-MM-dd')),
+                fecha_fin_estimada: selectedTask.fecha_fin_estimada || format(new Date(), 'yyyy-MM-dd'),
+                espacio_uuid: selectedTask.espacio ? (selectedTask.espacio._id || selectedTask.espacio.id) : (selectedTask.espacio_uuid || null),
+                proyecto_id: selectedTask.proyecto ? selectedTask.proyecto.id : (selectedTask.proyecto_id || null),
+                terminado: selectedTask.terminado || false,
+                staff_id: selectedTask.staff_id || selectedTask.staff?.id || '',
+                Priority: selectedTask.Priority || '1',
+                stage_id: selectedTask.stage?.id || selectedTask.stage_id || '',
+                status: selectedTask.status || 'Activa',
+                notes: selectedTask.notes || '',
+                WietPass: selectedTask.WietPass || false,
+                AlejoPass: selectedTask.AlejoPass || false,
+                RonaldPass: selectedTask.RonaldPass || false,
+                condicionada_por: selectedTask.condicionada_por || null, // Direct Column
+                condiciona_a: selectedTask.condiciona_a || null, // Direct Column mapping
+                condicionada_por_task: selectedTask.condicionada_por_task || null,
+                condiciona_a_task: selectedTask.condiciona_a_task || null,
+                links_de_interes: selectedTask.links_de_interes || '',
+                fullActions: [],
+                evidence_url: selectedTask.evidence_url || ''
+            });
+        }
+    }, [selectedTask?.id, panelMode, refreshCounter]); // Refetch if refreshCounter increments
+
+    // Load Task Data (Actions)
+    useEffect(() => {
+        if (panelMode === 'task' && selectedTask?.id) {
+            setParallelActions([]);
+            setConcatenatedActions([]);
+            setLoading(true);
+            getTaskActions(selectedTask.id)
+                .then(data => {
+                    const actions = data || [];
+                    setParallelActions(actions.filter(a => a.es_paralela));
+                    setConcatenatedActions(actions.filter(a => !a.es_paralela));
+                })
+                .catch(err => console.error(err))
+                .finally(() => setLoading(false));
+
+        } else if (panelMode === 'day' && selectedDate) {
+            setLoading(true);
+            setDayTasks([]); // Clear previous day tasks
+            getTasksByDate(selectedDate)
+                .then(setDayTasks)
+                .catch(console.error)
+                .finally(() => setLoading(false));
+
+        } else if (panelMode !== 'createTask') {
+            // Only clear if NOT in create/preview mode
+            setParallelActions([]);
+            setConcatenatedActions([]);
+            setDayTasks([]);
+        }
+    }, [selectedTask?.id, selectedDate, panelMode, refreshCounter]); // Refetch if refreshCounter increments
+
+    const handleActionChange = (field, value) => {
+        setActionForm(prev => {
+            const updates = { ...prev, [field]: value };
+            if (field === 'fecha_ejecucion' && updates.fecha_fin < value) {
+                updates.fecha_fin = value;
+            }
+            if (field === 'fecha_fin' && updates.fecha_ejecucion > value) {
+                updates.fecha_ejecucion = value;
+            }
+            return updates;
+        });
+    };
+
+    const handleNavToTask = async (targetTaskId) => {
+        if (!targetTaskId) return;
+        try {
+            const targetTask = await getTaskById(targetTaskId);
+            if (targetTask) {
+                // If we are in a 'dirty' state, we might want to warn? 
+                // For now, simpler is just jump.
+                dispatch(setSelectedTask(targetTask));
+                // Ensure panel is open and in task mode (should be already if we are here)
+                if (!showPanel) dispatch(toggleInspector(true));
+            }
+        } catch (err) {
+            console.error("Error navigating to task:", err);
+            alert("Error al abrir la tarea vinculada.");
+        }
+    };
+
+    const handleTaskChange = (field, value) => {
+        setTaskForm(prev => {
+            const updates = { ...prev, [field]: value };
+            if (field === 'fecha_inicio' && updates.fecha_fin_estimada < value) {
+                updates.fecha_fin_estimada = value;
+            }
+            if (field === 'fecha_fin_estimada' && updates.fecha_inicio > value) {
+                updates.fecha_inicio = value;
+            }
+            return updates;
+        });
+    };
+
+    // AUTO-SAVE for Task Completion
+    const handleTaskCompletionToggle = async (e) => {
+        const checked = e.target.checked;
+        // Optimistic update
+        setTaskForm(prev => ({ ...prev, terminado: checked }));
+
+        if (panelMode === 'task' && selectedTask?.id) {
+            try {
+                await updateTask(selectedTask.id, { terminado: checked });
+                // Update Redux to reflect change in UI
+                dispatch(setSelectedTask({ ...selectedTask, terminado: checked }));
+                if (onActionUpdated) onActionUpdated(); // Refresh calendar
+            } catch (error) {
+                console.error("Error auto-saving task completion:", error);
+                // Revert on error
+                setTaskForm(prev => ({ ...prev, terminado: !checked }));
+                alert("Error al actualizar estado: " + error.message);
+            }
+        }
+    };
+
+    const handlePassToggle = async (field, checked) => {
+        // Optimistic update
+        setTaskForm(prev => ({ ...prev, [field]: checked }));
+
+        if (panelMode === 'task' && selectedTask?.id) {
+            try {
+                const updatedTask = await updateTask(selectedTask.id, { [field]: checked });
+                // Update Redux to reflect change in UI using the FRESH data from server
+                if (updatedTask) {
+                    dispatch(setSelectedTask(updatedTask));
+                }
+                if (onActionUpdated) onActionUpdated(); // Refresh calendar
+                dispatch(incrementRefreshCounter()); // Global refresh
+            } catch (error) {
+                console.error(`Error auto-saving ${field}:`, error);
+                // Revert on error
+                setTaskForm(prev => ({ ...prev, [field]: !checked }));
+                alert("Error al actualizar: " + error.message);
+            }
+        }
+    };
+
+    // AUTO-SAVE for Main Action Completion
+    const handleActionCompletionToggle = async (e) => {
+        const checked = e.target.checked;
+        // Optimistic update
+        setActionForm(prev => ({ ...prev, completed: checked }));
+
+        if (panelMode === 'action' && selectedAction?.id) {
+            try {
+                await updateAction(selectedAction.id, { completed: checked });
+                // Update Redux
+                dispatch(setSelectedAction({ ...selectedAction, completed: checked })); // Use completed consistently for actions
+                if (onActionUpdated) onActionUpdated({ ...selectedAction, completed: checked });
+            } catch (error) {
+                console.error("Error auto-saving action completion:", error);
+                setActionForm(prev => ({ ...prev, completed: !checked }));
+                alert("Error al actualizar estado: " + error.message);
+            }
+        }
+    };
+
+    // AUTO-SAVE for Sub-Action in List
+    const handleSubActionChange = async (index, field, value, type = 'concatenated') => {
+        const setActions = type === 'parallel' ? setParallelActions : setConcatenatedActions;
+        const actions = type === 'parallel' ? parallelActions : concatenatedActions;
+
+        // Special handling for completion
+        if (field === 'completed') {
+            const action = actions[index];
+            const newStatus = value; // Checkbox value
+
+            // Optimistic Update
+            setActions(prev => prev.map((a, i) => i === index ? { ...a, completed: newStatus } : a));
+
+            if (!action._isNew && action.id) {
+                try {
+                    await updateAction(action.id, { completed: newStatus });
+                    if (onActionUpdated) onActionUpdated();
+                } catch (error) {
+                    console.error("Error auto-saving sub-action:", error);
+                    // Revert
+                    setActions(prev => prev.map((a, i) => i === index ? { ...a, completed: !newStatus } : a));
+                }
+            }
+        } else {
+            // Normal field update (wait for save)
+            setActions(prev => prev.map((a, i) =>
+                i === index ? { ...a, [field]: value } : a
+            ));
+        }
+    };
+
+    // Resizing logic for concatenated actions
+    const timelineContainerRef = useRef(null);
+
+    const handleResizeMove = (e) => {
+        const index = draggingIndexRef.current;
+        if (index === null || !timelineContainerRef.current) return;
+
+        const containerRect = timelineContainerRef.current.getBoundingClientRect();
+        const containerWidth = containerRect.width;
+        const mouseX = e.clientX - containerRect.left;
+
+        setConcatenatedActions(prev => {
+            const newTasks = [...prev];
+            if (!newTasks[index] || !newTasks[index + 1]) return prev;
+
+            const n = prev.length;
+            const getPerc = (idx) => newTasks[idx].porcentaje_duracion || (100 / n);
+
+            // Calculate cumulative percentage of PREVIOUS tasks
+            let prevTasksWidth = 0;
+            for (let i = 0; i < index; i++) {
+                prevTasksWidth += getPerc(i);
+            }
+
+            let newCurrentPercentage = (mouseX / containerWidth) * 100 - prevTasksWidth;
+
+            // Constraints (Min 5%)
+            if (newCurrentPercentage < 5) newCurrentPercentage = 5;
+
+            const totalPairPercentage = getPerc(index) + getPerc(index + 1);
+            let newNextPercentage = totalPairPercentage - newCurrentPercentage;
+
+            if (newNextPercentage < 5) {
+                newNextPercentage = 5;
+                newCurrentPercentage = totalPairPercentage - 5;
+            }
+
+            newTasks[index].porcentaje_duracion = newCurrentPercentage;
+            newTasks[index + 1].porcentaje_duracion = newNextPercentage;
+            return newTasks;
+        });
+    };
+
+    const handleResizeUp = () => {
+        draggingIndexRef.current = null;
+        setIsDraggingUI(null);
+        document.body.style.cursor = 'default';
+        document.removeEventListener('mousemove', handleResizeMove);
+        document.removeEventListener('mouseup', handleResizeUp);
+    };
+
+    const handleResizeStart = (index, e) => {
+        e.preventDefault();
+        draggingIndexRef.current = index;
+        setIsDraggingUI(index);
+        document.body.style.cursor = 'col-resize';
+        document.addEventListener('mousemove', handleResizeMove);
+        document.addEventListener('mouseup', handleResizeUp);
+    };
+
+
+    // Drag and Drop Handlers
+    const handleDragStart = (e, index, type = 'parallel') => {
+        setDraggedIndex(index);
+        setDraggedType(type);
+        e.dataTransfer.effectAllowed = "move";
+    };
+
+    const handleDragOver = (e, index) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+    };
+
+    const handleDrop = async (e, targetIndex, type = 'parallel') => {
+        e.preventDefault();
+        if (draggedIndex === null || draggedIndex === targetIndex || draggedType !== type) return;
+
+        const isParallel = type === 'parallel';
+        const list = isParallel ? parallelActions : concatenatedActions;
+        const setter = isParallel ? setParallelActions : setConcatenatedActions;
+
+        const newItems = [...list];
+        const draggedItem = newItems[draggedIndex];
+
+        newItems.splice(draggedIndex, 1);
+        newItems.splice(targetIndex, 0, draggedItem);
+
+        setter(newItems);
+        setDraggedIndex(null);
+        setDraggedType(null);
+
+        try {
+            const updates = newItems.map((action, idx) => ({
+                id: action.id,
+                order: idx
+            })).filter(a => a.id);
+
+            if (updates.length > 0) {
+                await updateActionsOrder(updates);
+            }
+        } catch (error) {
+            console.error('Error reordering:', error);
+        }
+    };
+
+
+    const handleSaveAction = async (e) => {
+        if (e) e.preventDefault();
+        if (saving) return; // RE-ENTRATION GUARD
+        setSaving(true);
+
+        try {
+            if (panelMode === 'action' && selectedAction?.id) {
+                console.log("Mode: ACTION UPDATE");
+                const { tarea, ...updates } = actionForm;
+
+                // Sanitize dates
+                if (updates.fecha_ejecucion === "") updates.fecha_ejecucion = null;
+                if (updates.fecha_fin === "") updates.fecha_fin = null;
+
+                await updateAction(selectedAction.id, updates);
+                dispatch(setSelectedAction({ ...selectedAction, ...updates }));
+                if (onActionUpdated) onActionUpdated({ ...selectedAction, ...updates });
+
+            } else if (panelMode === 'task' && selectedTask?.id) {
+                // console.log("Mode: TASK & ACTIONS UPDATE");
+
+                // 1. UPDATE TASK
+                const updates = {};
+                if (taskForm.task_description !== selectedTask.task_description) updates.task_description = taskForm.task_description;
+                if (taskForm.fecha_inicio !== selectedTask.fecha_inicio) updates.fecha_inicio = taskForm.fecha_inicio;
+                if (taskForm.fecha_fin_estimada !== selectedTask.fecha_fin_estimada) updates.fecha_fin_estimada = taskForm.fecha_fin_estimada;
+                if (taskForm.terminado !== selectedTask.terminado) updates.terminado = taskForm.terminado;
+                if (taskForm.staff_id !== selectedTask.staff_id) updates.staff_id = taskForm.staff_id || null;
+
+                // Loose equality for IDs (string vs number)
+                if (taskForm.proyecto_id && taskForm.proyecto_id != (selectedTask.proyecto?.id || selectedTask.project_id)) updates.project_id = taskForm.proyecto_id;
+                if (taskForm.espacio_uuid && taskForm.espacio_uuid != (selectedTask.espacio?._id || selectedTask.espacio_uuid)) updates.espacio_uuid = taskForm.espacio_uuid;
+
+                console.log("Task Updates:", updates);
+
+                if (taskForm.terminado !== selectedTask.terminado) updates.terminado = taskForm.terminado;
+                if (taskForm.staff_id !== (selectedTask.staff_id || selectedTask.asignado_a)) updates.staff_id = taskForm.staff_id || null;
+
+                // New Fields Updates
+                if (taskForm.Priority !== selectedTask.Priority) updates.Priority = taskForm.Priority;
+                if (taskForm.stage_id !== selectedTask.stage_id) updates.stage_id = taskForm.stage_id || null;
+                if (taskForm.status !== selectedTask.status) updates.status = taskForm.status;
+                if (taskForm.notes !== selectedTask.notes) updates.notes = taskForm.notes;
+                if (taskForm.RonaldPass !== selectedTask.RonaldPass) updates.RonaldPass = taskForm.RonaldPass;
+                if (taskForm.WietPass !== selectedTask.WietPass) updates.WietPass = taskForm.WietPass;
+                if (taskForm.AlejoPass !== selectedTask.AlejoPass) updates.AlejoPass = taskForm.AlejoPass;
+                if (taskForm.condicionada_por !== selectedTask.condicionada_por) updates.condicionada_por = taskForm.condicionada_por || null;
+                if (taskForm.condiciona_a !== selectedTask.condiciona_a) updates.condiciona_a = taskForm.condiciona_a || null; // SAVE DIRECTLY
+                if (taskForm.links_de_interes !== selectedTask.links_de_interes) updates.links_de_interes = taskForm.links_de_interes;
+                if (taskForm.evidence_url !== selectedTask.evidence_url) updates.evidence_url = taskForm.evidence_url;
+
+                let updatedTaskData = selectedTask;
+                if (Object.keys(updates).length > 0) {
+                    updatedTaskData = await updateTask(selectedTask.id, updates);
+
+                    // NEW: Automatic call if status is "Pausada"
+                    if (updates.status === 'Pausada') {
+                        // We use a small timeout to ensure state/db is updated or just call the logic
+                        console.log("Automatic call triggered for Paused status");
+                        // We need to ensure we have the IDs for seguimiento or just call handleCallSeguimiento
+                        // handleCallSeguimiento depends on taskForm and selectedTask being correct
+                        setTimeout(() => handleCallSeguimiento(false), 500);
+                    }
+                }
+
+                // 1.5 UPDATE DEPENDENTS (Side Effects for Double-Linking)
+
+                // SIDE EFFECT 1: If "Condiciona A" changed, update the Target's "Condicionada Por"
+                if (taskForm.condiciona_a !== selectedTask.condiciona_a) {
+                    console.log(`DEBUG: Cambio detectado en Condiciona A.\nAnterior: ${selectedTask.condiciona_a}\nNuevo: ${taskForm.condiciona_a}`);
+                    try {
+                        // New Target
+                        if (taskForm.condiciona_a) {
+                            console.log(`Syncing: Task ${taskForm.condiciona_a} is now conditioned by ${selectedTask.id}`);
+                            await updateTask(taskForm.condiciona_a, { condicionada_por: selectedTask.id });
+                        }
+                        // Old Target (Clear it)
+                        if (selectedTask.condiciona_a && selectedTask.condiciona_a !== taskForm.condiciona_a) {
+                            console.log(`Syncing: Task ${selectedTask.condiciona_a} is no longer conditioned by ${selectedTask.id}`);
+                            await updateTask(selectedTask.condiciona_a, { condicionada_por: null });
+                        }
+                    } catch (err) {
+                        console.error("Error syncing Condiciona A:", err);
+                    }
+                } else {
+                    console.log(`DEBUG: NO se detectó cambio en Condiciona A.\nForm: ${taskForm.condiciona_a}\nOrig: ${selectedTask.condiciona_a}`);
+                }
+
+                // SIDE EFFECT 2: If "Condicionada Por" changed, update the Target's "Condiciona A"
+                if (taskForm.condicionada_por !== selectedTask.condicionada_por) {
+                    console.log(`DEBUG: Cambio detectado en Condicionada Por.\nAnterior: ${selectedTask.condicionada_por}\nNuevo: ${taskForm.condicionada_por}`);
+                    try {
+                        // New Parent
+                        if (taskForm.condicionada_por) {
+                            console.log(`Syncing: Task ${taskForm.condicionada_por} conditions ${selectedTask.id}`);
+                            await updateTask(taskForm.condicionada_por, { condiciona_a: selectedTask.id });
+                        }
+                        // Old Parent (Clear it)
+                        if (selectedTask.condicionada_por && selectedTask.condicionada_por !== taskForm.condicionada_por) {
+                            console.log(`Syncing: Task ${selectedTask.condicionada_por} no longer conditions ${selectedTask.id}`);
+                            await updateTask(selectedTask.condicionada_por, { condiciona_a: null });
+                        }
+                    } catch (err) {
+                        console.error("Error syncing Condicionada Por:", err);
+                    }
+                } else {
+                    console.log(`DEBUG: NO se detectó cambio en Condicionada Por.\nForm: ${taskForm.condicionada_por}\nOrig: ${selectedTask.condicionada_por}`);
+                }
+
+                // 2. UPDATE/CREATE ACTIONS
+                const allActions = [...parallelActions, ...concatenatedActions];
+                const actionPromises = allActions.map(async (action, index) => {
+                    const actionPayload = {
+                        description: action.description,
+                        executor_id: action.executor_id,
+                        ejecutor_texto: action.ejecutor_texto,
+                        fecha_ejecucion: action.fecha_ejecucion || null,
+                        fecha_fin: action.fecha_fin || null,
+                        requiere_aprobacion_ronald: action.requiere_aprobacion_ronald,
+                        requiere_aprobacion_wiet: action.requiere_aprobacion_wiet,
+                        requiere_aprobacion_alejo: action.requiere_aprobacion_alejo,
+                        es_paralela: action.es_paralela || false,
+                        porcentaje_duracion: action.porcentaje_duracion || 0,
+                        color_ui: action.color_ui || '#3b82f6',
+                        order: index
+                    };
+
+                    if (action._isNew) {
+                        return createAction({
+                            ...actionPayload,
+                            tarea_id: selectedTask.id,
+                            completed: action.completed || false
+                        });
+                    } else {
+                        return updateAction(action.id, actionPayload);
+                    }
+                });
+
+                await Promise.all(actionPromises);
+
+                // RE-FETCH FRESH DATA (Critical for relationships like 'condiciona_a' which are external)
+                try {
+                    const freshTask = await getTaskById(selectedTask.id);
+                    dispatch(setSelectedTask(freshTask));
+                } catch (fetchErr) {
+                    console.error("Error reloading task:", fetchErr);
+                    // Fallback to local update if fetch fails
+                    dispatch(setSelectedTask(updatedTaskData));
+                }
+
+                if (onActionUpdated) onActionUpdated(); // Refresh calendar/list
+                dispatch(incrementRefreshCounter()); // Global refresh
+                alert("Guardado correctamente");
+
+            } else if (panelMode === 'create') {
+                const { id, ...createData } = actionForm;
+
+                // Sanitize dates
+                if (createData.fecha_ejecucion === "") createData.fecha_ejecucion = null;
+                if (createData.fecha_fin === "") createData.fecha_fin = null;
+
+                const res = await createAction(createData);
+                const newAction = res && res[0] ? res[0] : res;
+                if (onActionUpdated) onActionUpdated(newAction);
+                dispatch(setSelectedAction(newAction));
+                dispatch(incrementRefreshCounter()); // Global refresh
+
+            } else if (panelMode === 'createTask') {
+                const { id, proyecto, espacio, quickActions, fullActions, proyecto_id, ...createData } = taskForm;
+                const taskPayload = {
+                    ...createData,
+                    project_id: proyecto_id || null,
+                    espacio_uuid: taskForm.espacio_uuid || null,
+                    terminado: taskForm.terminado || false,
+                    staff_id: taskForm.staff_id || null,
+                    Priority: taskForm.Priority || '1',
+                    stage_id: taskForm.stage_id || null,
+                    status: taskForm.status || 'Activa',
+                    notes: taskForm.notes || '',
+                    links_de_interes: taskForm.links_de_interes || '',
+                    evidence_url: taskForm.evidence_url || ''
+                };
+                const newTask = await createTask(taskPayload);
+
+                // Create full actions from parallelActions and concatenatedActions
+                const allActions = [...parallelActions, ...concatenatedActions];
+                if (allActions.length > 0) {
+                    const actionPromises = allActions.map((fa, index) =>
+                        createAction({
+                            tarea_id: newTask.id,
+                            description: fa.description,
+                            fecha_ejecucion: fa.fecha_ejecucion || null,
+                            fecha_fin: fa.fecha_fin || null,
+                            executor_id: fa.executor_id || '',
+                            ejecutor_texto: fa.ejecutor_texto || '',
+                            completed: fa.completed || false,
+                            requiere_aprobacion_ronald: fa.requiere_aprobacion_ronald || false,
+                            requiere_aprobacion_wiet: fa.requiere_aprobacion_wiet || false,
+                            requiere_aprobacion_alejo: fa.requiere_aprobacion_alejo || false,
+                            es_paralela: fa.es_paralela || false,
+                            porcentaje_duracion: fa.porcentaje_duracion || 0,
+                            color_ui: fa.color_ui || '#3b82f6',
+                            order: index
+                        })
+                    );
+                    await Promise.all(actionPromises);
+                }
+
+                dispatch(setSelectedTask(newTask));
+                if (onActionUpdated) onActionUpdated(); // Trigger calendar refresh
+                dispatch(incrementRefreshCounter()); // Global refresh
+                dispatch(clearSelection()); // Close panel after creation
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Error al guardar: " + error.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDeleteTask = async () => {
+        if (!selectedTask?.id) return;
+        if (!confirm('¿Eliminar esta tarea y todas sus acciones asociadas?')) return;
+
+        setSaving(true);
+        try {
+            await deleteTask(selectedTask.id);
+            dispatch(clearSelection());
+            if (onActionUpdated) onActionUpdated(); // Refresh calendar
+            dispatch(incrementRefreshCounter()); // Global refresh
+        } catch (error) {
+            alert('Error al eliminar tarea: ' + error.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleClose = () => {
+        dispatch(clearSelection());
+        // Clean local state explicitly
+        setTaskForm({});
+        setParallelActions([]);
+        setConcatenatedActions([]);
+        setDayTasks([]);
+        setIsCollapsed(false);
+    };
+
+    const handleCreateTaskForDay = () => {
+        if (!selectedDate) return;
+        // setTaskForm will happen in useEffect when the panel mode changes to createTask
+        dispatch(setSelectedTask({
+            task_description: '',
+            fecha_inicio: selectedDate,
+            fecha_fin_estimada: selectedDate,
+            espacio_uuid: null,
+            proyecto_id: null,
+        }));
+        // dispatch(initCreateTask(...)) - check if this action exists or just use panelMode?
+        // Note: dispatching setSelectedTask with a draft should trigger the panel if panelMode is correct.
+    };
+
+    const handleSelectTask = (task) => {
+        dispatch(setSelectedTask(task));
+    };
+
+    // Duplicate handler removed
+
+    const handleCallResponsible = async () => {
+        const caller = staffers.find(s => s.id === callerId);
+        const called = staffers.find(s => s.id === calledStaffId);
+
+        if (!selectedTask?.id) {
+            alert("No hay una tarea seleccionada.");
+            return;
+        }
+
+        if (!callerId || !calledStaffId) {
+            alert("Por favor selecciona quién llama y a quién se llama.");
+            return;
+        }
+
+        try {
+            setSaving(true);
+            await createCall({
+                tarea_id: selectedTask.id,
+                llamado_id: calledStaffId,
+                llamador_name: caller?.name || 'Usuario',
+                proyecto_id: taskForm.proyecto_id || (selectedTask.proyecto?.id),
+                Comments: callComment
+            });
+            alert(`Llamado a ${called?.name} registrado.`);
+            setCallComment('');
+            dispatch(fetchPendingCallsCount());
+        } catch (error) {
+            alert("Error al registrar llamado: " + error.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleCallSeguimiento = async (forceAll = false) => {
+        // This function might be deprecated or updated to use the new logic
+        // For now, let's keep it but it will use the comment field if available
+        if (!selectedTask?.id) return;
+
+        const targets = [];
+        if (taskForm.AlejoPass) targets.push('112973d6-7f9e-4b48-b484-73eca526b905');
+        if (taskForm.RonaldPass) targets.push('8971b42e-2856-4a92-9fdf-25e50b82ce43');
+        if (taskForm.WietPass) targets.push('421e8b2b-881b-4664-9c27-8ea0e5b40284');
+
+        if (targets.length === 0) {
+            if (!forceAll) alert("No hay encargados de seguimiento seleccionados (Alejo, Ronald, Wiet).");
+            return;
+        }
+
+        try {
+            setSaving(true);
+            const caller = staffers.find(s => s.id === callerId);
+            const calls = targets.map(id => ({
+                tarea_id: selectedTask.id,
+                llamado_id: id,
+                llamador_name: caller?.name || 'Sistema',
+                proyecto_id: taskForm.proyecto_id || (selectedTask.proyecto?.id),
+                Comments: callComment
+            }));
+            await createMultipleCalls(calls);
+            alert(`Llamado a seguimiento registrado (${targets.length} personas).`);
+            setCallComment('');
+            dispatch(fetchPendingCallsCount());
+        } catch (error) {
+            alert("Error al registrar llamados: " + error.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const showPanel = ['action', 'task', 'create', 'createTask', 'day'].includes(panelMode);
+
+    // Determine visibility and height classes
+    // If not showing panel (no selection): translate-y-full (hidden)
+    // If showing but collapsed: h-10 (header only)
+    // If showing and open: h-[300px] 
+    const isHidden = !showPanel;
+
+    const containerClasses = `
+        fixed bottom-0 left-0 right-0 
+        bg-white dark:bg-zinc-900 border-t border-gray-200 dark:border-zinc-800 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] 
+        z-50 flex flex-col transition-all duration-300 ease-in-out
+        ${isHidden ? 'translate-y-full' : 'translate-y-0'}
+        ${isCollapsed ? 'h-12' : 'h-[300px]'}
+    `;
+
+    return (
+        <div className={containerClasses}>
+            {/* Header - GRID ALIGNED WITH CONTENT */}
+            <div className="grid grid-cols-12 items-center border-b border-gray-100 dark:border-zinc-800 bg-gray-50/50 no-print">
+                {/* LEFT HEADER: Matches Task Form Column */}
+                <div className="col-span-4 px-4 py-1.5 flex items-center gap-2 border-r border-gray-100 overflow-hidden min-h-[36px]">
+                    <div className="flex items-center gap-2">
+                        <div className="flex flex-col justify-center">
+                            {panelMode === 'createTask' ? (
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Nueva Tarea</span>
+                            ) : panelMode === 'task' ? (
+                                <>
+                                    <span className="text-[8px] font-bold uppercase text-gray-400 leading-none">Editar Tarea:</span>
+                                    <div className="flex items-center gap-1.5 text-[14px] font-bold text-gray-800 uppercase leading-tight max-w-3xl overflow-hidden">
+                                        {(() => {
+                                            const proj = projects.find(p => p.id === taskForm.proyecto_id) || taskForm.proyecto;
+                                            const spc = spaces.find(s => s._id === taskForm.espacio_uuid || s.id === taskForm.espacio_uuid) || taskForm.espacio;
+
+                                            return (
+                                                <>
+                                                    {proj?.name && (
+                                                        <span className="text-blue-600 shrink-0">{proj.name}</span>
+                                                    )}
+                                                    {spc?.nombre && (
+                                                        <span className="text-gray-400 font-medium shrink-0">/</span>
+                                                    )}
+                                                    {spc?.nombre && (
+                                                        <span className="text-orange-600 shrink-0">
+                                                            {spc.nombre}{spc.apellido ? ` ${spc.apellido}` : ''}{spc.piso ? ` P${spc.piso}` : ''}
+                                                        </span>
+                                                    )}
+                                                    {(proj?.name || spc?.nombre) && (
+                                                        <span className="text-gray-300 mx-1 shrink-0">|</span>
+                                                    )}
+                                                    <span className="truncate" title={taskForm?.task_description}>
+                                                        {taskForm?.task_description || '...'}
+                                                    </span>
+                                                </>
+                                            );
+                                        })()}
+                                    </div>
+                                </>
+                            ) : panelMode === 'day' ? (
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Tareas del Día: {selectedDate}</span>
+                            ) : (
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Detalles</span>
+                            )}
+                        </div>
+                        {(loading || saving) && <span className="text-[9px] text-blue-500 animate-pulse shrink-0">{saving ? 'Guardando...' : 'Cargando...'}</span>}
+                    </div>
+                </div>
+
+                {/* RIGHT HEADER: Toolbar and Controls */}
+                <div className="col-span-8 flex items-center justify-between px-4 py-1.5 gap-4">
+                    <div className="flex items-center gap-3 overflow-x-auto no-scrollbar">
+                        {(panelMode === 'task' || panelMode === 'createTask') && (
+                            <>
+                                <BitacoraManager
+                                    notesStr={taskForm.notes}
+                                    onChange={(newVal) => handleTaskChange('notes', newVal)}
+                                    staffers={staffers}
+                                />
+
+                                <LinksManager
+                                    linksStr={taskForm.links_de_interes}
+                                    onChange={(newVal) => handleTaskChange('links_de_interes', newVal)}
+                                />
+
+                                {/* Calling Dropdown Section */}
+                                <div className="relative border-l border-gray-200 pl-3">
+                                    <button
+                                        onClick={() => setShowCallDropdown(!showCallDropdown)}
+                                        className={`flex items-center gap-1.5 px-3 py-1 rounded transition-all text-[10px] font-bold ${showCallDropdown ? 'bg-blue-100 text-blue-700 shadow-inner' : 'bg-white border border-gray-200 text-gray-600 hover:border-blue-400'}`}
+                                    >
+                                        <Phone size={12} />
+                                        <span>LLAMADA</span>
+                                        {calledStaffId && callerId && (
+                                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse ml-1" />
+                                        )}
+                                    </button>
+
+                                    {showCallDropdown && createPortal(
+                                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setShowCallDropdown(false)}>
+                                            <div
+                                                className="bg-white border border-gray-200 shadow-2xl rounded-2xl w-full max-w-sm flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+                                                            <Phone size={18} />
+                                                        </div>
+                                                        <h4 className="text-sm font-bold text-gray-800 uppercase tracking-widest">
+                                                            Registro de Llamada
+                                                        </h4>
+                                                    </div>
+                                                    <button onClick={() => setShowCallDropdown(false)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                                                        <X size={18} />
+                                                    </button>
+                                                </div>
+
+                                                <div className="p-6 space-y-4">
+                                                    <SearchableStaffSelector
+                                                        label="Yo soy:"
+                                                        staffers={staffers}
+                                                        value={callerId}
+                                                        onChange={setCallerId}
+                                                        placeholder="Mi nombre..."
+                                                    />
+                                                    <SearchableStaffSelector
+                                                        label="Llamar a:"
+                                                        staffers={staffers}
+                                                        value={calledStaffId}
+                                                        onChange={setCalledStaffId}
+                                                        placeholder="Seleccionar..."
+                                                    />
+                                                    <div className="flex flex-col gap-1">
+                                                        <label className="text-[9px] font-bold text-gray-400 uppercase">Comentario / Motivo:</label>
+                                                        <textarea
+                                                            value={callComment}
+                                                            onChange={(e) => setCallComment(e.target.value)}
+                                                            placeholder="Escribe el motivo del llamado..."
+                                                            className="w-full text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 min-h-[80px] resize-none transition-all"
+                                                        />
+                                                    </div>
+
+                                                    <button
+                                                        onClick={() => {
+                                                            handleCallResponsible();
+                                                            setShowCallDropdown(false);
+                                                        }}
+                                                        disabled={!callerId || !calledStaffId}
+                                                        className={`w-full flex items-center justify-center gap-2 py-3 text-white rounded-xl font-bold text-xs transition-all shadow-lg active:scale-[0.95] ${!callerId || !calledStaffId ? 'bg-gray-300 cursor-not-allowed opacity-50' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}`}
+                                                    >
+                                                        <Phone size={16} fill="currentColor" />
+                                                        REALIZAR LLAMADA
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>,
+                                        document.body
+                                    )}
+                                </div>
+
+                                {/* Dependencies - Now compact in toolbar 
+                                <div className="flex items-center gap-2 border-l border-gray-200 pl-3">
+                                    <div className="w-48">
+                                        <TaskDependencySelector
+                                            label="Condicionada Por"
+                                            value={taskForm.condicionada_por}
+                                            initialItem={taskForm.condicionada_por_task}
+                                            onChange={(val) => handleTaskChange('condicionada_por', val)}
+                                            onEdit={(item) => handleNavToTask(item.id)}
+                                            placeholder="Buscar..."
+                                        />
+                                    </div>
+                                    <div className="w-48">
+                                        <TaskDependencySelector
+                                            label="Condiciona A"
+                                            value={taskForm.condiciona_a}
+                                            initialItem={taskForm.condiciona_a_task}
+                                            onChange={(val) => handleTaskChange('condiciona_a', val)}
+                                            onEdit={(item) => handleNavToTask(item.id)}
+                                            placeholder="Buscar..."
+                                        />
+                                    </div>
+                                </div>
+                                */}
+                            </>
+                        )}
+                    </div>
+
+                    {/* Window Controls */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                        {showPanel && (panelMode === 'task' || panelMode === 'action' || panelMode === 'day') && (
+                            <PrintButton
+                                onClick={handlePrint}
+                            />
+                        )}
+                        <button
+                            onClick={() => {
+                                const newState = !isCollapsed;
+                                dispatch(toggleInspectorCollapse(newState));
+                                if (onCollapseChange) onCollapseChange(newState);
+                            }}
+                            className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-500 rounded transition-colors mr-1"
+                            title={isCollapsed ? "Expandir" : "Contraer"}
+                        >
+                            {isCollapsed ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+                        </button>
+
+                        {(panelMode === 'task' || panelMode === 'createTask') && (
+                            <button
+                                onClick={handleDeleteTask}
+                                disabled={saving || !selectedTask?.id} // Disable delete if new task (draft) doesn't have ID
+                                className="p-1 rounded text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
+                                title="Eliminar Tarea"
+                            >
+                                <Trash2 size={14} />
+                            </button>
+                        )}
+
+                        {showPanel && (
+                            <button
+                                onClick={handleSaveAction}
+                                disabled={saving}
+                                className="flex items-center gap-1.5 px-3 py-1 bg-green-50 border border-green-200 text-green-700 hover:bg-green-100 rounded text-[10px] font-bold transition-colors disabled:opacity-50"
+                                title="Guardar"
+                            >
+                                <Save size={12} />
+                                Guardar
+                            </button>
+                        )}
+                        <button onClick={handleClose} className="p-1 hover:bg-gray-100 text-gray-400 hover:text-gray-600 rounded transition-colors">
+                            <X size={14} />
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Content - COMPACTO */}
+            <div className="flex-1 overflow-hidden">
+                {!showPanel ? (
+                    <div className="flex items-center justify-center h-full text-gray-400 text-xs">
+                        Selecciona una acción o tarea
+                    </div>
+                ) : (
+                    <div id="action-inspector-print-view" ref={printRef} className="h-full print-container">
+                        {/* MODE: CREATE TASK & EDIT TASK (Unified) */}
+                        {(panelMode === 'task' || panelMode === 'createTask') && (
+                            <div className="grid grid-cols-12 h-full text-xs">
+                                {/* LEFT: Task Form - NOW EDITABLE */}
+                                <div className="col-span-4 border-r border-gray-100 flex overflow-hidden">
+                                    {/* Side header for Task Data */}
+                                    <div className="w-6 flex flex-col items-center py-3 bg-gray-50/50 border-r border-gray-100 gap-4 shrink-0">
+                                        <button
+                                            onClick={() => handleTaskChange('status', taskForm.status === 'Pausada' ? 'Activa' : 'Pausada')}
+                                            className={`w-4 h-4 flex items-center justify-center rounded-full transition-colors ${taskForm.status === 'Pausada' ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-green-100 text-green-600 hover:bg-green-200'
+                                                }`}
+                                            title={taskForm.status === 'Pausada' ? 'Reanudar Tarea' : 'Pausar Tarea'}
+                                        >
+                                            {taskForm.status === 'Pausada' ? <PlayCircle size={10} strokeWidth={3} /> : <PauseCircle size={10} strokeWidth={3} />}
+                                        </button>
+
+                                        <div className="flex flex-col items-center gap-1 group">
+                                            <button
+                                                onClick={handleTaskCompletionToggle}
+                                                className={`w-4 h-4 flex items-center justify-center rounded border transition-colors ${taskForm.terminado ? 'bg-green-500 border-green-600 text-white' : 'bg-white border-gray-300 text-gray-300 hover:border-green-400'
+                                                    }`}
+                                                title={taskForm.terminado ? "Marcar como Pendiente" : "Marcar como Terminado"}
+                                            >
+                                                <Check size={10} strokeWidth={4} />
+                                            </button>
+                                            <span className="text-[7px] font-black text-gray-400 uppercase [writing-mode:vertical-rl] rotate-180">TERMINADO</span>
+                                        </div>
+
+                                        <h4 className="text-[9px] font-black text-gray-400 uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">DATOS DE TAREA</h4>
+                                    </div>
+
+                                    <div className="flex-1 p-2 overflow-y-auto space-y-1.5 custom-scrollbar">
+                                        {/* Row 1: All key details in one line */}
+                                        <div className="grid grid-cols-12 gap-1.5 items-end">
+                                            <div className="col-span-2">
+                                                <label className="block text-[8px] font-bold text-gray-400 uppercase mb-0.5">Proyecto</label>
+                                                <select
+                                                    value={taskForm.proyecto_id || ''}
+                                                    onChange={(e) => handleTaskChange('proyecto_id', e.target.value)}
+                                                    className="w-full bg-white border border-gray-200 rounded px-1.5 py-1 text-[10px] focus:ring-1 focus:ring-blue-500/20 focus:border-blue-500 appearance-none transition-colors"
+                                                >
+                                                    <option value="">- Proyecto -</option>
+                                                    {projects.map(p => (
+                                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            <div className="col-span-4">
+                                                <label className="block text-[8px] font-bold text-gray-400 uppercase mb-0.5">Espacio</label>
+                                                <SearchableSpaceSelector
+                                                    value={taskForm.espacio_uuid}
+                                                    onChange={(val) => handleTaskChange('espacio_uuid', val)}
+                                                    spaces={spaces}
+                                                    onSpaceCreated={() => {
+                                                        getSpaces().then(setSpaces).catch(console.error);
+                                                    }}
+                                                    placeholder="Seleccionar Espacio..."
+                                                />
+                                            </div>
+
+                                            <div className="col-span-2">
+                                                <label className="block text-[8px] font-bold text-gray-400 uppercase mb-0.5">Etapa (Stage)</label>
+                                                <select
+                                                    value={taskForm.stage_id || ''}
+                                                    onChange={(e) => handleTaskChange('stage_id', e.target.value)}
+                                                    className="w-full bg-white border border-gray-200 rounded px-1.5 py-1 text-[10px] focus:ring-1 focus:ring-blue-500 appearance-none"
+                                                >
+                                                    <option value="">- Etapa -</option>
+                                                    {stages.map(s => <option key={s.id} value={s.id}>{s.name || s.id}</option>)}
+                                                </select>
+                                            </div>
+
+                                            <div className="col-span-3">
+                                                <label className="block text-[8px] font-bold text-gray-400 uppercase mb-0.5 truncate">Responsable</label>
+                                                <select
+                                                    value={taskForm.staff_id || ''}
+                                                    onChange={(e) => handleTaskChange('staff_id', e.target.value)}
+                                                    className="w-full text-[10px] bg-white border border-gray-200 rounded px-1.5 py-1 focus:ring-1 focus:ring-blue-500/20 focus:border-blue-500 transition-colors h-[26px]"
+                                                >
+                                                    <option value="">- Resp -</option>
+                                                    {staffers.map(s => (
+                                                        <option key={s.id} value={s.id}>{s.name || s.nombre}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            <div className="col-span-1">
+                                                <label className="block text-[8px] font-bold text-gray-400 uppercase mb-0.5">Prio.</label>
+                                                <select
+                                                    value={taskForm.Priority || '1'}
+                                                    onChange={(e) => handleTaskChange('Priority', e.target.value)}
+                                                    className="w-full bg-white border border-gray-200 rounded px-1.5 py-1 text-[10px] focus:ring-1 focus:ring-blue-500 appearance-none h-[26px]"
+                                                >
+                                                    {[1, 2, 3, 4, 5].map(p => <option key={p} value={p}>{p}</option>)}
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        {/* Row 2: Description (Full Width) */}
+                                        <div className="grid grid-cols-1 gap-1.5">
+                                            <div>
+                                                <label className="block text-[8px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">Descripción</label>
+                                                <input
+                                                    type="text"
+                                                    value={taskForm.task_description || ''}
+                                                    onChange={(e) => handleTaskChange('task_description', e.target.value)}
+                                                    className="w-full text-[10px] bg-white border border-gray-200 rounded px-1.5 py-1 focus:ring-1 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
+                                                    placeholder="Descripción de la tarea..."
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Pause Reason (Conditional) */}
+                                        {taskForm.status === 'Pausada' && (
+                                            <div className="mb-2 transition-all">
+                                                <label className="block text-[8px] font-bold text-red-500 uppercase mb-0.5 flex items-center gap-1">
+                                                    <AlertCircle size={8} /> Razón de Pausa
+                                                </label>
+
+                                                <div className="bg-red-50 border border-red-200 rounded p-1 mb-1">
+                                                    {(() => {
+                                                        try {
+                                                            const entries = JSON.parse(taskForm.notes || '[]');
+                                                            if (!Array.isArray(entries) || entries.length === 0) {
+                                                                return <span className="text-[9px] text-gray-400 italic">Sin razón registrada.</span>;
+                                                            }
+
+                                                            // Show only the latest entry (first item)
+                                                            const latest = entries[0];
+                                                            return (
+                                                                <div className="text-[9px]">
+                                                                    <div className="flex justify-between font-bold text-red-700 opacity-70 text-[8px] mb-0.5">
+                                                                        <span>{latest.date}</span>
+                                                                        <span>{latest.user}</span>
+                                                                    </div>
+                                                                    <p className="text-gray-700 leading-tight whitespace-pre-wrap">{latest.text}</p>
+                                                                </div>
+                                                            );
+                                                        } catch (e) {
+                                                            // Legacy text fallback
+                                                            return <p className="text-[9px] text-gray-700 whitespace-pre-wrap">{taskForm.notes || 'Sin razón especificada.'}</p>;
+                                                        }
+                                                    })()}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Evidence Uploader (Task) */}
+                                        <div className="mt-2">
+                                            <EvidenceUploader
+                                                currentUrl={taskForm.evidence_url}
+                                                onUpload={(url) => handleTaskChange('evidence_url', url)}
+                                                pathPrefix="task"
+                                                label="Evidencia de Tarea"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* RIGHT: Task Actions (Timeline View) */}
+                                <div className="col-span-8 bg-gray-50/50 flex flex-col overflow-hidden relative">
+                                    {/* Header */}
+                                    <div className="flex flex-col sticky top-0 bg-gray-50 z-10 border-b border-gray-200 shadow-sm overflow-hidden">
+                                        <div className="flex items-center justify-between p-1.5 px-3">
+                                            {/* Date INICIO (Far Left) */}
+                                            <div className="flex items-center gap-1 bg-white/60 border border-gray-100 rounded px-1.5">
+                                                <span className="text-[7px] font-black text-gray-400 uppercase tracking-tighter">INICIO:</span>
+                                                <input
+                                                    type="date"
+                                                    value={taskForm.fecha_inicio || ''}
+                                                    onChange={(e) => handleTaskChange('fecha_inicio', e.target.value)}
+                                                    className="bg-transparent border-none text-[10px] font-bold text-blue-600 p-0 focus:ring-0 w-24 cursor-pointer"
+                                                />
+                                            </div>
+
+                                            {/* Days Count (Center) */}
+                                            {taskForm.fecha_inicio && taskForm.fecha_fin_estimada && (
+                                                <div className="text-[9px] font-black text-blue-700 bg-blue-50 px-3 py-0.5 rounded-full border border-blue-100 shadow-sm">
+                                                    {differenceInDays(parseISO(taskForm.fecha_fin_estimada), parseISO(taskForm.fecha_inicio)) + 1} DÍAS TOTALES
+                                                </div>
+                                            )}
+
+                                            {/* Date FIN (Far Right) */}
+                                            <div className="flex items-center gap-1 bg-white/60 border border-gray-100 rounded px-1.5">
+                                                <span className="text-[7px] font-black text-gray-400 uppercase tracking-tighter">FIN:</span>
+                                                <input
+                                                    type="date"
+                                                    value={taskForm.fecha_fin_estimada || ''}
+                                                    onChange={(e) => handleTaskChange('fecha_fin_estimada', e.target.value)}
+                                                    className="bg-transparent border-none text-[10px] font-bold text-blue-600 p-0 focus:ring-0 w-24 cursor-pointer text-right"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Day Scale Visualization - ALIGNED WITH TIMELINE BELOW */}
+                                        {taskForm.fecha_inicio && taskForm.fecha_fin_estimada && (
+                                            <div className="h-4 flex relative border-t border-gray-400 bg-white" style={{ paddingLeft: '34px', paddingRight: '6px' }}>
+                                                {(() => {
+                                                    const start = parseISO(taskForm.fecha_inicio);
+                                                    const end = parseISO(taskForm.fecha_fin_estimada);
+                                                    const days = differenceInDays(end, start) + 1;
+                                                    if (days <= 0 || days > 365) return null;
+
+                                                    return Array.from({ length: days }).map((_, i) => (
+                                                        <div
+                                                            key={i}
+                                                            className="h-full border-l border-gray-400 relative flex flex-col justify-end"
+                                                            style={{ width: `${100 / days}%` }}
+                                                        >
+                                                            {/* Only show label for every 5 days or if few days */}
+                                                            {(i % 5 === 0 || days <= 15) && (
+                                                                <span className="absolute bottom-0 left-0.5 text-[9px] font-black text-gray-600">
+                                                                    {i + 1}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    ));
+                                                })()}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Action Content */}
+                                    <div className="flex-1 overflow-y-auto p-1.5 space-y-2">
+                                        {loading ? (
+                                            <div className="text-center py-10 text-[9px] text-gray-400">Cargando acciones...</div>
+                                        ) : (
+                                            <>
+                                                {/* CONCATENATED ACTIONS (Timeline) */}
+                                                <div className="flex-1 flex gap-1 overflow-hidden">
+                                                    {/* Side Title */}
+                                                    <div className="w-6 flex flex-col items-center py-2 bg-gray-50/50 border-r border-gray-100 rounded-l-lg gap-2">
+                                                        <button
+                                                            onClick={() => {
+                                                                setConcatenatedActions(prev => {
+                                                                    const count = prev.length + 1;
+                                                                    const share = 100 / count;
+                                                                    const newAction = {
+                                                                        description: '',
+                                                                        executor_id: '',
+                                                                        fecha_ejecucion: selectedTask?.fecha_inicio || format(new Date(), 'yyyy-MM-dd'),
+                                                                        fecha_fin: selectedTask?.fecha_inicio || format(new Date(), 'yyyy-MM-dd'),
+                                                                        requiere_aprobacion_ronald: false,
+                                                                        requiere_aprobacion_wiet: false,
+                                                                        requiere_aprobacion_alejo: false,
+                                                                        completed: false,
+                                                                        tarea_id: selectedTask?.id,
+                                                                        es_paralela: false,
+                                                                        porcentaje_duracion: share,
+                                                                        color_ui: '#3b82f6',
+                                                                        _isNew: true
+                                                                    };
+                                                                    const factor = (100 - share) / 100;
+                                                                    return [...prev.map(a => ({ ...a, porcentaje_duracion: (a.porcentaje_duracion || 100 / prev.length) * factor })), newAction];
+                                                                });
+                                                            }}
+                                                            className="w-4 h-4 flex items-center justify-center bg-blue-100 text-blue-600 rounded-full hover:bg-blue-200 transition-colors"
+                                                            title="Añadir Acción al Cronograma"
+                                                        >
+                                                            <Plus size={10} strokeWidth={4} />
+                                                        </button>
+                                                        <h4 className="text-[9px] font-black text-gray-500 uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">CRONOGRAMA</h4>
+                                                    </div>
+
+                                                    <div
+                                                        ref={timelineContainerRef}
+                                                        className="flex-1 flex w-full min-h-[100px] bg-white rounded-r-lg shadow-sm border border-gray-200 overflow-hidden relative select-none"
+                                                    >
+                                                        {concatenatedActions.length === 0 ? (
+                                                            <div className="flex-1 flex items-center justify-center text-[9px] text-gray-300 italic">No hay acciones concatenadas</div>
+                                                        ) : (
+                                                            concatenatedActions.map((action, idx) => (
+                                                                <Fragment key={action.id || `c-${idx}`}>
+                                                                    <ConcatenatedActionCard
+                                                                        action={action}
+                                                                        widthPercentage={action.porcentaje_duracion || (100 / concatenatedActions.length)}
+                                                                        totalTaskDays={taskForm.fecha_inicio && taskForm.fecha_fin_estimada ? differenceInDays(parseISO(taskForm.fecha_fin_estimada), parseISO(taskForm.fecha_inicio)) + 1 : 0}
+                                                                        color={action.color_ui || '#3b82f6'}
+                                                                        staffers={staffers}
+                                                                        isDragging={isDraggingUI !== null}
+                                                                        index={idx}
+                                                                        onDragStart={(e, i) => handleDragStart(e, i, 'concatenated')}
+                                                                        onDragOver={handleDragOver}
+                                                                        onDrop={(e, i) => handleDrop(e, i, 'concatenated')}
+                                                                        onChange={(field, value) => handleSubActionChange(idx, field, value, 'concatenated')}
+                                                                        onDelete={async () => {
+                                                                            if (action._isNew) {
+                                                                                setConcatenatedActions(prev => prev.filter((_, i) => i !== idx));
+                                                                            } else if (confirm('¿Eliminar esta acción parcial?')) {
+                                                                                try {
+                                                                                    await deleteAction(action.id);
+                                                                                    setConcatenatedActions(prev => prev.filter(a => a.id !== action.id));
+                                                                                } catch (error) {
+                                                                                    alert('Error al eliminar: ' + error.message);
+                                                                                }
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                    {idx < concatenatedActions.length - 1 && (
+                                                                        <div
+                                                                            className="w-4 hover:w-6 -ml-2 -mr-2 z-10 cursor-col-resize flex items-center justify-center group/resizer"
+                                                                            onMouseDown={(e) => handleResizeStart(idx, e)}
+                                                                        >
+                                                                            <div className="h-1/2 w-0.5 bg-gray-200 group-hover/resizer:bg-blue-500 rounded-full transition-all flex items-center justify-center">
+                                                                                <GripVertical size={10} className="text-transparent group-hover/resizer:text-white" />
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </Fragment>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* PARALLEL ACTIONS (Vertical Transversal) */}
+                                                <div className="flex gap-1">
+                                                    {/* Side Title */}
+                                                    <div className="w-6 flex flex-col items-center py-2 bg-gray-50/50 border-r border-gray-100 rounded-l-lg gap-2">
+                                                        <button
+                                                            onClick={() => {
+                                                                const newAction = {
+                                                                    description: '',
+                                                                    executor_id: '',
+                                                                    fecha_ejecucion: selectedTask?.fecha_inicio || format(new Date(), 'yyyy-MM-dd'),
+                                                                    fecha_fin: selectedTask?.fecha_inicio || format(new Date(), 'yyyy-MM-dd'),
+                                                                    requiere_aprobacion_ronald: false,
+                                                                    requiere_aprobacion_wiet: false,
+                                                                    requiere_aprobacion_alejo: false,
+                                                                    completed: false,
+                                                                    tarea_id: selectedTask?.id,
+                                                                    es_paralela: true,
+                                                                    _isNew: true
+                                                                };
+                                                                setParallelActions(prev => [...prev, newAction]);
+                                                            }}
+                                                            className="w-4 h-4 flex items-center justify-center bg-indigo-100 text-indigo-600 rounded-full hover:bg-indigo-200 transition-colors"
+                                                            title="Añadir Acción Paralela"
+                                                        >
+                                                            <Plus size={10} strokeWidth={4} />
+                                                        </button>
+                                                        <h4 className="text-[9px] font-black text-gray-500 uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">PARALELAS</h4>
+                                                    </div>
+                                                    <div className="flex-1 bg-white border border-dashed border-gray-200 rounded-r-lg p-1 overflow-hidden">
+                                                        <div className="flex flex-col gap-1.5">
+                                                            {parallelActions.length === 0 ? (
+                                                                <div className="text-center py-4 text-[9px] text-gray-300 italic">Sin acciones paralelas</div>
+                                                            ) : (
+                                                                parallelActions.map((action, idx) => (
+                                                                    <ParallelActionCard
+                                                                        key={action.id || `p-${idx}`}
+                                                                        action={action}
+                                                                        staffers={staffers}
+                                                                        index={idx}
+                                                                        onDragStart={(e, i) => handleDragStart(e, i, 'parallel')}
+                                                                        onDragOver={handleDragOver}
+                                                                        onDrop={(e, i) => handleDrop(e, i, 'parallel')}
+                                                                        onChange={(field, value) => handleSubActionChange(idx, field, value, 'parallel')}
+                                                                        onDelete={async () => {
+                                                                            if (action._isNew) {
+                                                                                setParallelActions(prev => prev.filter((_, i) => i !== idx));
+                                                                            } else if (confirm('¿Eliminar esta acción paralela?')) {
+                                                                                try {
+                                                                                    await deleteAction(action.id);
+                                                                                    setParallelActions(prev => prev.filter(a => a.id !== action.id));
+                                                                                } catch (error) {
+                                                                                    alert('Error al eliminar: ' + error.message);
+                                                                                }
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                ))
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* MODE: DAY VIEW */}
+                        {panelMode === 'day' && (
+                            <div className="flex flex-col h-full bg-gray-50/50">
+                                <div className="p-3 border-b border-gray-200 bg-white flex justify-between items-center">
+                                    <div className="flex items-center gap-2">
+                                        <Calendar size={14} className="text-blue-500" />
+                                        <div>
+                                            <h3 className="text-xs font-bold text-gray-800">Tareas del {selectedDate}</h3>
+                                            <p className="text-[10px] text-gray-400">{dayTasks.length} tareas programadas</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={handleCreateTaskForDay}
+                                        className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 text-white rounded text-[10px] font-bold hover:bg-blue-700 transition-colors shadow-sm"
+                                    >
+                                        <Plus size={12} />
+                                        Nueva Tarea
+                                    </button>
+                                </div>
+
+                                <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                                    {loading ? (
+                                        <div className="text-center py-10 text-gray-400 text-xs">Cargando tareas...</div>
+                                    ) : dayTasks.length === 0 ? (
+                                        <div className="text-center py-10 text-gray-400">
+                                            <Box size={24} className="mx-auto mb-2 opacity-50" />
+                                            <p className="text-xs font-medium">No hay tareas para este día</p>
+                                            <p className="text-[10px] mt-1">Usa el botón "Nueva Tarea" para comenzar</p>
+                                        </div>
+                                    ) : (
+                                        dayTasks.map(task => (
+                                            <div
+                                                key={task.id}
+                                                onClick={() => handleSelectTask(task)}
+                                                className={`
+                                                    bg-white border rounded p-2 shadow-sm hover:shadow-md hover:border-blue-400 cursor-pointer transition-all group
+                                                    ${task.terminado ? 'opacity-60 grayscale border-gray-100' : 'border-gray-200'}
+                                                `}
+                                            >
+                                                <div className="flex justify-between items-start mb-1">
+                                                    <span className={`text-xs font-bold text-gray-800 line-clamp-2 ${task.terminado ? 'line-through' : ''}`}>
+                                                        {task.task_description}
+                                                    </span>
+                                                    {task.terminado && <CheckCircle size={12} className="text-green-500 shrink-0 mt-0.5" />}
+                                                </div>
+
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    {/* Project Badge */}
+                                                    {task.proyecto && (
+                                                        <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[9px] font-bold truncate max-w-[100px]">
+                                                            {task.proyecto.name}
+                                                        </span>
+                                                    )}
+
+                                                    {/* Staff Badge */}
+                                                    {task.staff && (
+                                                        <div className="flex items-center gap-1 text-gray-500 text-[9px]">
+                                                            <User size={10} />
+                                                            <span className="font-medium truncate">{task.staff.name.split(' ')[0]}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* MODE: ACTION (Create or Edit) */}
+                        {(panelMode === 'action' || panelMode === 'create') && (
+                            <div className="p-4 h-full overflow-y-auto">
+                                <div className="max-w-2xl mx-auto space-y-4">
+                                    <h3 className="text-xs font-bold text-gray-900 flex items-center gap-1 mb-2">
+                                        <Box size={14} className="text-blue-600" />
+                                        {panelMode === 'create' ? 'Nueva Acción' : 'Editar Acción'}
+                                    </h3>
+
+                                    {/* Description */}
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Descripción</label>
+                                        <input
+                                            type="text"
+                                            value={actionForm.description || ''}
+                                            onChange={(e) => handleActionChange('description', e.target.value)}
+                                            className="w-full text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-blue-500"
+                                            placeholder="Describe la acción..."
+                                        />
+                                    </div>
+
+                                    {/* Evidence Uploader (Action) */}
+                                    <div>
+                                        <EvidenceUploader
+                                            currentUrl={actionForm.evidence_url}
+                                            onUpload={(url) => handleActionChange('evidence_url', url)}
+                                            pathPrefix="action"
+                                            label="Evidencia de Acción"
+                                        />
+                                    </div>
+
+                                    <div className={`transition-opacity duration-200 ${actionForm.completed ? 'opacity-70' : ''}`}>
+                                        <label className={`flex items-center gap-2 cursor-pointer bg-white border rounded px-3 py-2 transition-all ${actionForm.completed ? 'border-green-300 bg-green-50' : 'border-gray-200 hover:border-blue-400'}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={actionForm.completed || false}
+                                                onChange={handleActionCompletionToggle}
+                                                className="rounded border-gray-300 text-green-600 focus:ring-green-500 h-4 w-4"
+                                            />
+                                            <div className="flex flex-col">
+                                                <span className={`text-xs font-bold uppercase ${actionForm.completed ? 'text-green-700 line-through' : 'text-gray-700'}`}>
+                                                    {actionForm.completed ? 'Acción Completada' : 'Marcar Completada'}
+                                                </span>
+                                                <span className="text-[9px] text-gray-400">
+                                                    {actionForm.completed ? 'Esta acción ha sido finalizada' : 'Haga clic para finalizar'}
+                                                </span>
+                                            </div>
+                                        </label>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        {/* Executor */}
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Ejecutor</label>
+                                            <div className="flex gap-2">
+                                                <select
+                                                    value={actionForm.executor_id || ''}
+                                                    onChange={(e) => handleActionChange('executor_id', e.target.value)}
+                                                    className="flex-1 bg-white border border-gray-200 rounded px-2 py-1.5 text-xs appearance-none"
+                                                >
+                                                    <option value="">- Seleccionar -</option>
+                                                    {staffers.map((s, idx) => (
+                                                        <option key={s.id || idx} value={s.name}>{s.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        {/* External Executor Text (Optional backup) */}
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Ejecutor Externo (Opcional)</label>
+                                            <input
+                                                type="text"
+                                                value={actionForm.ejecutor_texto || ''}
+                                                onChange={(e) => handleActionChange('ejecutor_texto', e.target.value)}
+                                                className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs"
+                                                placeholder="Nombre externo..."
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        {/* Start Date */}
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Fecha Ejecución</label>
+                                            <input
+                                                type="date"
+                                                value={actionForm.fecha_ejecucion || ''}
+                                                onChange={(e) => handleActionChange('fecha_ejecucion', e.target.value)}
+                                                className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs"
+                                            />
+                                        </div>
+
+                                        {/* End Date */}
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Fecha Fin</label>
+                                            <input
+                                                type="date"
+                                                value={actionForm.fecha_fin || ''}
+                                                onChange={(e) => handleActionChange('fecha_fin', e.target.value)}
+                                                className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Approvals */}
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Aprobaciones Requeridas</label>
+                                        <div className="flex gap-4">
+                                            <label className="flex items-center gap-2 cursor-pointer bg-gray-50 border border-gray-200 rounded px-3 py-1.5 hover:bg-white transition-colors">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={actionForm.requiere_aprobacion_ronald || false}
+                                                    onChange={(e) => handleActionChange('requiere_aprobacion_ronald', e.target.checked)}
+                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-3 w-3"
+                                                />
+                                                <span className="text-xs text-gray-700">Ronald</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 cursor-pointer bg-gray-50 border border-gray-200 rounded px-3 py-1.5 hover:bg-white transition-colors">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={actionForm.requiere_aprobacion_wiet || false}
+                                                    onChange={(e) => handleActionChange('requiere_aprobacion_wiet', e.target.checked)}
+                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-3 w-3"
+                                                />
+                                                <span className="text-xs text-gray-700">Wiet</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 cursor-pointer bg-gray-50 border border-gray-200 rounded px-3 py-1.5 hover:bg-white transition-colors">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={actionForm.requiere_aprobacion_alejo || false}
+                                                    onChange={(e) => handleActionChange('requiere_aprobacion_alejo', e.target.checked)}
+                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-3 w-3"
+                                                />
+                                                <span className="text-xs text-gray-700">Alejo</span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )
+                }
+            </div >
+        </div >
+    );
+};
+
+
+// Componente de fila de aprobación COMPACTO
+const ApprovalRow = ({ label, reqField, statusField, data, onChange }) => {
+    const isRequired = data[reqField];
+    const isApproved = data[statusField];
+    return (
+        <div className={`p-1.5 rounded border transition-all ${isRequired ? 'bg-white border-gray-200' : 'border-gray-100 bg-gray-50/50 opacity-70'}`}>
+            <div className="flex items-center justify-between">
+                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input type="checkbox" checked={!!isRequired} onChange={(e) => onChange(reqField, e.target.checked)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-3 w-3" />
+                    <span className="text-[10px] font-medium text-gray-700">{label}</span>
+                </label>
+                {isRequired && (
+                    <label className="flex items-center gap-1 cursor-pointer select-none bg-green-50 px-2 py-0.5 rounded-full border border-green-100 hover:bg-green-100 transition-colors">
+                        <input type="checkbox" checked={!!isApproved} onChange={(e) => onChange(statusField, e.target.checked)} className="rounded border-green-400 text-green-600 focus:ring-green-500 h-3 w-3" />
+                        <span className="text-[9px] font-bold text-green-700 uppercase">{isApproved ? 'OK' : 'Pend'}</span>
+                    </label>
+                )}
+            </div>
+        </div>
+    );
+};
+
+// ==========================================
+// COMPONENTE: TARJETA DE ACCIÓN PARALELA
+// ==========================================
+const ParallelActionCard = ({ action, staffers, onChange, onDelete, onDragStart, onDragOver, onDrop, index }) => {
+    return (
+        <div
+            draggable
+            onDragStart={(e) => onDragStart(e, index)}
+            onDragOver={(e) => onDragOver(e, index)}
+            onDrop={(e) => onDrop(e, index)}
+            className={`w-full bg-white border border-gray-200 rounded p-1 shadow-sm relative group flex items-center justify-between cursor-grab active:cursor-grabbing ${action.completed ? 'opacity-60 grayscale' : ''}`}
+        >
+            <div
+                className="absolute top-0 left-0 w-full h-1 bg-indigo-500 rounded-t transition-colors"
+                style={{ backgroundColor: action.completed ? '#d1d5db' : '#6366f1' }}
+            ></div>
+
+            <div className="flex flex-1 items-center gap-4 pl-2">
+                <input
+                    type="text"
+                    value={action.description || ''}
+                    onChange={(e) => onChange('description', e.target.value)}
+                    placeholder="Descripción de acción paralela..."
+                    className="flex-1 text-[10px] font-bold text-gray-800 bg-transparent border-none p-0 focus:ring-0 placeholder:text-gray-300"
+                />
+
+                <div className="flex items-center gap-3">
+                    <select
+                        value={action.executor_id || ''}
+                        onChange={(e) => onChange('executor_id', e.target.value)}
+                        className="text-[9px] bg-gray-50 border-none rounded px-1 py-0.5 w-max focus:ring-0"
+                    >
+                        <option value="">- Ejecutor -</option>
+                        {staffers.map((s, idx) => (
+                            <option key={s.id || idx} value={s.name}>{s.name}</option>
+                        ))}
+                    </select>
+
+                    <div className="flex items-center gap-1.5 pr-1">
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <input
+                                type="checkbox"
+                                checked={!!action.completed}
+                                onChange={(e) => onChange('completed', e.target.checked)}
+                                className="h-3 w-3 rounded text-green-600 focus:ring-green-500"
+                            />
+                            <button onClick={onDelete} className="text-red-400 hover:text-red-600">
+                                <Trash2 size={12} />
+                            </button>
+                        </div>
+                        <span className="text-[8px] text-gray-400 font-medium uppercase tracking-tighter">Transversal</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ==========================================
+// COMPONENTE: TARJETA DE ACCIÓN CONCATENADA
+// ==========================================
+const ConcatenatedActionCard = ({ action, widthPercentage, totalTaskDays, color, staffers, onChange, onDelete, isDragging, onDragStart, onDragOver, onDrop, index }) => {
+    const actionDays = totalTaskDays ? ((widthPercentage / 100) * totalTaskDays).toFixed(1) : '0';
+
+    return (
+        <div
+            draggable
+            onDragStart={(e) => onDragStart(e, index)}
+            onDragOver={(e) => onDragOver(e, index)}
+            onDrop={(e) => onDrop(e, index)}
+            className={`relative flex flex-col h-full bg-white overflow-hidden group cursor-grab active:cursor-grabbing border-r border-gray-100 ${isDragging ? '' : 'transition-all duration-300'} ${action.completed ? 'opacity-60 grayscale' : ''}`}
+            style={{ width: `${widthPercentage}%` }}
+        >
+            <div
+                className={`h-full border-l-2 flex flex-col p-1 m-0.5 rounded-sm transition-colors ${action.completed ? 'bg-gray-50 opacity-60 grayscale border-gray-300' : ''}`}
+                style={{ borderLeftColor: action.completed ? '#d1d5db' : (color || '#3b82f6') }}
+            >
+                {/* Header Area */}
+                <div className="flex justify-between items-start gap-1 flex-1 min-h-0">
+                    <div className="flex-1 h-full min-w-0">
+                        <textarea
+                            value={action.description || ''}
+                            onChange={(e) => onChange('description', e.target.value)}
+                            placeholder="Acción parcial..."
+                            className="w-full h-full text-[10px] font-black leading-tight text-gray-900 bg-transparent border-none p-0 resize-none focus:ring-0 placeholder:text-gray-300"
+                            rows={4}
+                        />
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                        <input
+                            type="checkbox"
+                            checked={!!action.completed}
+                            onChange={(e) => onChange('completed', e.target.checked)}
+                            className="h-3 w-3 rounded text-green-600 focus:ring-green-500"
+                        />
+                        <button onClick={onDelete} className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Trash2 size={10} />
+                        </button>
+                    </div>
+                </div>
+
+                {/* Details Area - COMPACT: Executor + Days Count */}
+                <div className="mt-auto flex items-center justify-between gap-1 overflow-hidden border-t border-gray-50 pt-1">
+                    <div className="flex-1 min-w-0">
+                        <select
+                            value={action.executor_id || ''}
+                            onChange={(e) => onChange('executor_id', e.target.value)}
+                            className="w-full text-[9px] font-bold text-blue-700 bg-blue-50/50 border-none rounded px-1 py-0 focus:ring-1 focus:ring-blue-100 appearance-none truncate cursor-pointer hover:bg-blue-100 transition-colors"
+                        >
+                            <option value="">- Ejecutor -</option>
+                            {staffers.map((s, idx) => (
+                                <option key={s.id || idx} value={s.short_name || s.name || s.nombre}>{s.short_name || s.name || s.nombre}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <span className="text-[9px] font-black text-gray-500 whitespace-nowrap bg-gray-100 px-1 rounded">
+                        {actionDays}d
+                    </span>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Helper Component: Bitácora Manager
+const BitacoraManager = ({ notesStr, onChange, staffers = [] }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [newEntry, setNewEntry] = useState('');
+    const [selectedAuthorId, setSelectedAuthorId] = useState('');
+    const [entries, setEntries] = useState([]);
+
+    // Image State
+    const [attachedImage, setAttachedImage] = useState(null); // URL string for NEW upload
+    const [uploading, setUploading] = useState(false);
+
+    // Preview State (for viewing existing images)
+    const [previewImageUrl, setPreviewImageUrl] = useState(null);
+
+    // Admin Mode
+    const [isAdminMode, setIsAdminMode] = useState(false);
+    const [showAdminInput, setShowAdminInput] = useState(false);
+    const [adminCodeInput, setAdminCodeInput] = useState('');
+
+    const handleAdminLogin = () => {
+        if (isAdminMode) {
+            setIsAdminMode(false);
+            setEditModeIndex(null);
+            return;
+        }
+        setShowAdminInput(true);
+        setAdminCodeInput('');
+    };
+
+    const confirmAdminLogin = () => {
+        if (adminCodeInput === import.meta.env.VITE_BITACORA_ADMING_CODE) {
+            setIsAdminMode(true);
+            setShowAdminInput(false);
+        } else {
+            alert("Código incorrecto");
+        }
+        setAdminCodeInput('');
+    };
+
+    // Admin Edit/Delete Logic
+    const [editModeIndex, setEditModeIndex] = useState(null);
+    const [editData, setEditData] = useState({});
+
+    const handleStartEdit = (index, entry) => {
+        setEditModeIndex(index);
+        setEditData({ ...entry });
+    };
+
+    const handleCancelEdit = () => {
+        setEditModeIndex(null);
+        setEditData({});
+    };
+
+    const handleSaveEdit = (index) => {
+        const updatedEntries = [...entries];
+        updatedEntries[index] = editData;
+
+        // If image was removed during edit (set to null), ensure we track that
+        // Note: Actual deletion from storage happens via specific button, this just updates the entry ref
+
+        setEntries(updatedEntries);
+        onChange(JSON.stringify(updatedEntries));
+        setEditModeIndex(null);
+        setEditData({});
+    };
+
+    const handleDeleteEntry = async (index) => {
+        if (!confirm('¿Eliminar esta entrada permanentemente?')) return;
+
+        try {
+            const entry = entries[index];
+            if (entry.imageUrl) {
+                const { deleteEvidence } = await import('../../services/storageService');
+                await deleteEvidence(entry.imageUrl);
+            }
+
+            const updatedEntries = entries.filter((_, i) => i !== index);
+            setEntries(updatedEntries);
+            onChange(JSON.stringify(updatedEntries));
+        } catch (error) {
+            console.error(error);
+            alert("Error al eliminar entrada: " + error.message);
+        }
+    };
+
+    const handleUpdateEntryImage = async (index, file) => {
+        try {
+            const { uploadBitacoraEvidence } = await import('../../services/storageService');
+
+            // If we are replacing an existing image in the entry
+            const currentEntry = editModeIndex === index ? editData : entries[index];
+            if (currentEntry.imageUrl) {
+                const { deleteEvidence } = await import('../../services/storageService');
+                await deleteEvidence(currentEntry.imageUrl);
+            }
+
+            const url = await uploadBitacoraEvidence(file);
+
+            if (editModeIndex === index) {
+                setEditData(prev => ({ ...prev, imageUrl: url }));
+            } else {
+                const updatedEntries = [...entries];
+                updatedEntries[index] = { ...updatedEntries[index], imageUrl: url };
+                setEntries(updatedEntries);
+                onChange(JSON.stringify(updatedEntries));
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Error al actualizar imagen: " + error.message);
+        }
+    };
+
+    const handleDeleteEntryImage = async (index) => {
+        if (!confirm('¿Eliminar imagen de esta entrada?')) return;
+
+        try {
+            const entry = editModeIndex === index ? editData : entries[index];
+            if (entry.imageUrl) {
+                const { deleteEvidence } = await import('../../services/storageService');
+                await deleteEvidence(entry.imageUrl);
+            }
+
+            if (editModeIndex === index) {
+                const newEditData = { ...editData };
+                delete newEditData.imageUrl;
+                setEditData(newEditData);
+            } else {
+                const updatedEntries = [...entries];
+                const updatedEntry = { ...updatedEntries[index] };
+                delete updatedEntry.imageUrl;
+                updatedEntries[index] = updatedEntry;
+
+                setEntries(updatedEntries);
+                onChange(JSON.stringify(updatedEntries));
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Error al eliminar imagen: " + error.message);
+        }
+    };
+
+    useEffect(() => {
+        try {
+            const parsed = JSON.parse(notesStr || '[]');
+            setEntries(Array.isArray(parsed) ? parsed : []);
+        } catch (e) {
+            // Legacy text support
+            if (notesStr && typeof notesStr === 'string' && notesStr.trim()) {
+                setEntries([{ date: '-', user: 'System', text: notesStr }]);
+            } else {
+                setEntries([]);
+            }
+        }
+    }, [notesStr]);
+
+    const handleImageSelect = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        try {
+            setUploading(true);
+            const { uploadBitacoraEvidence } = await import('../../services/storageService');
+            const url = await uploadBitacoraEvidence(file);
+            setAttachedImage(url);
+        } catch (error) {
+            console.error(error);
+            alert("Error al subir imagen: " + error.message);
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleAdd = () => {
+        if ((!newEntry.trim() && !attachedImage) || !selectedAuthorId) return;
+
+        const author = staffers.find(s => s.id === selectedAuthorId)?.name || 'Unknown';
+
+        const entry = {
+            date: format(new Date(), 'dd/MM/yyyy HH:mm'),
+            user: author,
+            text: newEntry,
+            imageUrl: attachedImage // Save URL if exists
+        };
+        const updated = [entry, ...entries];
+        onChange(JSON.stringify(updated));
+
+        // Reset form
+        setNewEntry('');
+        setAttachedImage(null);
+    };
+
+    return (
+        <div className="relative">
+            <button
+                onClick={() => {
+                    setIsOpen(!isOpen);
+                    if (isOpen) setPreviewImageUrl(null); // Close preview when closing bitacora
+                }}
+                className={`h-6 px-2 rounded flex items-center gap-1.5 transition-colors border ${isOpen ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-600'}`}
+                title="Abrir Bitácora"
+            >
+                <Book size={12} />
+                <span className="text-[9px] font-bold uppercase">Bitácora</span>
+            </button>
+
+            {isOpen && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => { setIsOpen(false); setPreviewImageUrl(null); }}>
+                    {/* Main Bitacora Panel */}
+                    <div
+                        className="bg-white border border-gray-200 shadow-2xl rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Modal Header */}
+                        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                            <div className="flex items-center gap-2">
+                                <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+                                    <Book size={20} />
+                                </div>
+                                <h4 className="text-base font-bold text-gray-800 uppercase tracking-wide">
+                                    Historial de Bitácora
+                                </h4>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={handleAdminLogin}
+                                    className={`text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all relative ${isAdminMode ? 'bg-green-100 text-green-700 font-bold border border-green-200' : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}
+                                    title="Modo Administrador"
+                                >
+                                    {isAdminMode ? <Unlock size={14} /> : <Lock size={14} />}
+                                    <span>{isAdminMode ? "Admin Activo" : "Admin"}</span>
+                                </button>
+
+                                {/* Password Input Popover - Adjusted for modal */}
+                                {showAdminInput && (
+                                    <div className="absolute top-16 right-16 bg-white shadow-2xl border border-gray-200 rounded-xl p-4 z-[110] flex flex-col gap-3 w-56 animate-in slide-in-from-top-2 duration-200">
+                                        <p className="text-xs font-bold text-gray-700">Acceso Administrador:</p>
+                                        <input
+                                            type="password"
+                                            autoFocus
+                                            value={adminCodeInput}
+                                            onChange={(e) => setAdminCodeInput(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && confirmAdminLogin()}
+                                            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                            placeholder="Código..."
+                                        />
+                                        <div className="flex justify-end gap-2">
+                                            <button onClick={() => setShowAdminInput(false)} className="text-xs px-3 py-1.5 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 transition-colors">Cancelar</button>
+                                            <button onClick={confirmAdminLogin} className="text-xs px-3 py-1.5 bg-blue-600 rounded-lg text-white hover:bg-blue-700 transition-colors">Entrar</button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <button
+                                    onClick={() => { setIsOpen(false); setPreviewImageUrl(null); }}
+                                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Modal Body - Scrollable Area */}
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50/30">
+                            {entries.length === 0 && (
+                                <div className="flex flex-col items-center justify-center py-12 text-gray-400 italic">
+                                    <Book size={48} className="mb-3 opacity-20" />
+                                    <p className="text-sm">No hay registros aún.</p>
+                                </div>
+                            )}
+
+                            {entries.map((e, idx) => (
+                                <div key={idx} className={`bg-white p-4 rounded-xl shadow-sm border transition-all ${editModeIndex === idx ? 'border-blue-400 ring-4 ring-blue-50' : 'border-gray-100 hover:border-gray-200'}`}>
+                                    {editModeIndex === idx ? (
+                                        // EDIT MODE
+                                        <div className="flex flex-col gap-4">
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Fecha/Hora</label>
+                                                    <input
+                                                        type="text"
+                                                        value={editData.date}
+                                                        onChange={(ev) => setEditData({ ...editData, date: ev.target.value })}
+                                                        className="text-xs border border-gray-200 rounded-lg px-3 py-2 w-full focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Usuario</label>
+                                                    <input
+                                                        type="text"
+                                                        value={editData.user}
+                                                        onChange={(ev) => setEditData({ ...editData, user: ev.target.value })}
+                                                        className="text-xs border border-gray-200 rounded-lg px-3 py-2 w-full focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Nota descriptiva</label>
+                                                <textarea
+                                                    value={editData.text}
+                                                    onChange={(ev) => setEditData({ ...editData, text: ev.target.value })}
+                                                    className="w-full text-sm border border-gray-200 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none min-h-[100px] transition-all"
+                                                    rows={4}
+                                                />
+                                            </div>
+
+                                            <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+                                                <div className="flex items-center gap-2">
+                                                    {editData.imageUrl ? (
+                                                        <div className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
+                                                            <ImageIcon size={14} className="text-blue-500" />
+                                                            <span className="text-[10px] font-bold text-blue-700 uppercase">Imagen adjunta</span>
+                                                            <button
+                                                                onClick={() => handleDeleteEntryImage(idx)}
+                                                                className="text-red-500 hover:bg-red-100 rounded-full p-1 transition-colors"
+                                                                title="Eliminar imagen"
+                                                            >
+                                                                <Trash2 size={12} />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="relative">
+                                                            <input
+                                                                type="file"
+                                                                id={`edit-mode-img-${idx}`}
+                                                                className="hidden"
+                                                                accept="image/*"
+                                                                onChange={(evt) => evt.target.files[0] && handleUpdateEntryImage(idx, evt.target.files[0])}
+                                                            />
+                                                            <label htmlFor={`edit-mode-img-${idx}`} className="flex items-center gap-2 text-xs font-bold text-blue-600 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg cursor-pointer hover:bg-blue-100 transition-all uppercase">
+                                                                <Plus size={14} /> Adjuntar Imagen
+                                                            </label>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <button onClick={handleCancelEdit} className="px-4 py-2 bg-white border border-gray-200 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-50 transition-all uppercase">Cancelar</button>
+                                                    <button onClick={() => handleSaveEdit(idx)} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-all uppercase shadow-md active:scale-95">
+                                                        <Save size={14} /> Guardar Cambios
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        // VIEW MODE
+                                        <>
+                                            <div className="flex justify-between items-start mb-2 border-b border-gray-50 pb-2">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">{e.date}</span>
+                                                    <span className="text-xs font-black text-blue-600 uppercase mt-0.5 tracking-tight">{e.user}</span>
+                                                </div>
+                                                {isAdminMode && (
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            onClick={() => handleStartEdit(idx, e)}
+                                                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                                            title="Editar entrada"
+                                                        >
+                                                            <Edit3 size={16} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeleteEntry(idx)}
+                                                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                                            title="Eliminar entrada"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed font-medium">{e.text}</p>
+
+                                            {e.imageUrl && (
+                                                <div className="mt-3">
+                                                    <button
+                                                        onClick={() => setPreviewImageUrl(previewImageUrl === e.imageUrl ? null : e.imageUrl)}
+                                                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${previewImageUrl === e.imageUrl ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white hover:bg-blue-50 border-blue-100 text-blue-600 uppercase'}`}
+                                                    >
+                                                        <ImageIcon size={14} />
+                                                        {previewImageUrl === e.imageUrl ? 'Cerrar Vista Previa' : 'Ver Imagen Adjunta'}
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Modal Footer - New Entry Form */}
+                        <div className="p-6 bg-white border-t border-gray-100 shadow-[0_-10px_20px_-15px_rgba(0,0,0,0.1)]">
+                            <div className="max-w-xl mx-auto space-y-3">
+                                <SearchableStaffSelector
+                                    staffers={staffers}
+                                    value={selectedAuthorId}
+                                    onChange={setSelectedAuthorId}
+                                    placeholder="¿Quién está registrando?"
+                                    label="Responsable del Registro"
+                                />
+
+                                <div className="flex gap-3 items-end">
+                                    <div className="flex-1">
+                                        <textarea
+                                            value={newEntry}
+                                            onChange={(e) => setNewEntry(e.target.value)}
+                                            placeholder="Describa el avance o incidencia..."
+                                            rows={2}
+                                            className="w-full text-sm border border-gray-200 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 bg-gray-50/50 outline-none transition-all placeholder:text-gray-400"
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && !e.shiftKey) {
+                                                    e.preventDefault();
+                                                    handleAdd();
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                        <input
+                                            type="file"
+                                            id="bitacora-img-upload"
+                                            className="hidden"
+                                            accept="image/*"
+                                            onChange={handleImageSelect}
+                                            disabled={uploading}
+                                        />
+                                        <label
+                                            htmlFor="bitacora-img-upload"
+                                            className={`flex items-center justify-center h-10 w-10 rounded-xl border-2 transition-all cursor-pointer ${attachedImage ? 'bg-green-50 border-green-200 text-green-600' : 'bg-gray-50 border-gray-100 text-gray-400 hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50'}`}
+                                            title={attachedImage ? "Imagen seleccionada" : "Adjuntar foto"}
+                                        >
+                                            {uploading ? <Loader2 size={18} className="animate-spin" /> : attachedImage ? <CheckCircle size={18} /> : <ImageIcon size={20} />}
+                                        </label>
+
+                                        <button
+                                            onClick={handleAdd}
+                                            disabled={(!newEntry.trim() && !attachedImage) || !selectedAuthorId || uploading}
+                                            className="flex items-center justify-center h-10 w-10 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-30 disabled:grayscale transition-all shadow-lg active:scale-90"
+                                            title="Registrar Nota"
+                                        >
+                                            <Plus size={24} />
+                                        </button>
+                                    </div>
+                                </div>
+                                {attachedImage && (
+                                    <div className="flex items-center justify-between bg-green-50 px-3 py-1.5 rounded-lg border border-green-100 animate-in fade-in slide-in-from-left-2 duration-200">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                                            <span className="text-[10px] font-bold text-green-700 uppercase">Foto lista para subir</span>
+                                        </div>
+                                        <button onClick={() => setAttachedImage(null)} className="p-1 text-red-500 hover:bg-red-100 rounded-full transition-colors"><X size={12} /></button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Side Preview Panel - Adjusted for centered layout */}
+                    {previewImageUrl && createPortal(
+                        <div
+                            className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-md p-8"
+                            onClick={() => setPreviewImageUrl(null)}
+                        >
+                            <div
+                                className="relative bg-white rounded-2xl overflow-hidden shadow-2xl max-w-5xl max-h-full flex flex-col"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <div className="flex justify-between items-center p-4 border-b border-gray-100 bg-white">
+                                    <h4 className="text-xs font-black text-gray-800 uppercase flex items-center gap-2">
+                                        <ImageIcon size={16} className="text-blue-500" /> Detalle de Evidencia
+                                    </h4>
+                                    <button
+                                        onClick={() => setPreviewImageUrl(null)}
+                                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                    >
+                                        <X size={24} />
+                                    </button>
+                                </div>
+                                <div className="p-2 bg-zinc-900 rounded-b-2xl overflow-hidden">
+                                    <img
+                                        src={previewImageUrl}
+                                        alt="Evidence Full View"
+                                        className="max-w-full max-h-[80vh] object-contain shadow-2xl"
+                                    />
+                                </div>
+                            </div>
+                        </div>,
+                        document.body
+                    )}
+                </div>,
+                document.body
+            )}
+        </div>
+    );
+};
+
+// Helper Component: Links Manager
+const LinksManager = ({ linksStr, onChange }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [links, setLinks] = useState([]);
+    const [newName, setNewName] = useState('');
+    const [newUrl, setNewUrl] = useState('');
+
+    useEffect(() => {
+        try {
+            const parsed = JSON.parse(linksStr || '[]');
+            setLinks(Array.isArray(parsed) ? parsed : []);
+        } catch (e) {
+            setLinks([]);
+        }
+    }, [linksStr]);
+
+    const handleAdd = () => {
+        if (!newName.trim() || !newUrl.trim()) return;
+
+        // Simple URL validation prefix
+        let formattedUrl = newUrl.trim();
+        if (!/^https?:\/\//i.test(formattedUrl)) {
+            formattedUrl = 'https://' + formattedUrl;
+        }
+
+        const newLinkObj = {
+            nombre: newName.trim(),
+            link: formattedUrl
+        };
+
+        const updated = [...links, newLinkObj];
+        onChange(JSON.stringify(updated));
+
+        setNewName('');
+        setNewUrl('');
+    };
+
+    const handleDelete = (index) => {
+        const updated = links.filter((_, i) => i !== index);
+        onChange(JSON.stringify(updated));
+    };
+
+    return (
+        <div className="relative">
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className={`h-6 px-2 rounded flex items-center gap-1.5 transition-colors border ${isOpen ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-600'}`}
+                title="Links de Interés"
+            >
+                <Layers size={12} />
+                <span className="text-[9px] font-bold uppercase">Links</span>
+            </button>
+
+            {isOpen && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setIsOpen(false)}>
+                    <div
+                        className="bg-white border border-gray-200 shadow-2xl rounded-2xl w-full max-w-sm flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                            <div className="flex items-center gap-2">
+                                <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
+                                    <Layers size={18} />
+                                </div>
+                                <h4 className="text-sm font-bold text-gray-800 uppercase tracking-wider">
+                                    Links de Interés
+                                </h4>
+                            </div>
+                            <button onClick={() => setIsOpen(false)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className="max-h-[300px] overflow-y-auto p-4 space-y-2">
+                            {links.length === 0 && (
+                                <div className="py-8 text-center text-gray-400 italic flex flex-col items-center gap-2">
+                                    <Layers size={32} className="opacity-20" />
+                                    <p className="text-xs font-medium">No hay links vinculados.</p>
+                                </div>
+                            )}
+                            {links.map((li, idx) => (
+                                <div key={idx} className="flex items-center justify-between group bg-white hover:bg-gray-50 px-3 py-2 rounded-xl border border-gray-100 hover:border-indigo-200 transition-all shadow-sm">
+                                    <div className="flex flex-col flex-1 min-w-0">
+                                        <a
+                                            href={li.link}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs text-indigo-600 hover:text-indigo-800 font-bold truncate transition-colors"
+                                            title={li.link}
+                                        >
+                                            {li.nombre}
+                                        </a>
+                                        <span className="text-[9px] text-gray-400 truncate mt-0.5">{li.link}</span>
+                                    </div>
+                                    <button
+                                        onClick={() => handleDelete(idx)}
+                                        className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all ml-2"
+                                        title="Eliminar link"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="p-6 bg-white border-t border-gray-50 space-y-3">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Título</label>
+                                <input
+                                    type="text"
+                                    placeholder="Ej: Planos de la obra"
+                                    value={newName}
+                                    onChange={(e) => setNewName(e.target.value)}
+                                    className="w-full text-xs border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-gray-300"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">URL / Link</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        placeholder="drive.google.com/..."
+                                        value={newUrl}
+                                        onChange={(e) => setNewUrl(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                                        className="flex-1 text-xs border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-gray-300"
+                                    />
+                                    <button
+                                        onClick={handleAdd}
+                                        disabled={!newName.trim() || !newUrl.trim()}
+                                        className="bg-indigo-600 text-white rounded-xl px-4 hover:bg-indigo-700 disabled:opacity-30 transition-all shadow-lg shadow-indigo-200 active:scale-90 flex items-center justify-center"
+                                    >
+                                        <Plus size={20} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+        </div>
+    );
+};
+
+const ApprovalSwitch = ({ label, value, onChange, colorClass = "text-gray-600" }) => (
+    <label className="flex items-center gap-1 cursor-pointer select-none hover:bg-gray-50 px-1.5 py-0.5 rounded transition-colors border border-transparent hover:border-gray-200">
+        <div className={`relative flex items-center justify-center w-3 h-3 rounded border ${value ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300'}`}>
+            <input
+                type="checkbox"
+                checked={!!value}
+                onChange={(e) => onChange(e.target.checked)}
+                className="opacity-0 absolute inset-0 cursor-pointer"
+            />
+            {value && <Check size={8} className="text-white" strokeWidth={4} />}
+        </div>
+        <span className={`text-[9px] font-bold uppercase ${value ? 'text-blue-700' : colorClass}`}>{label}</span>
+    </label>
+);
+
+export default ActionInspectorPanel;

@@ -1,0 +1,3029 @@
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import Header from '../components/layout/Header';
+import Sidebar from '../components/layout/Sidebar';
+import { useTranslation } from 'react-i18next';
+import { ZoomIn, ZoomOut, Maximize, ChevronDown, ChevronRight, Search, X, Save, Link, Database, FileText, Plus, ArrowLeft, Trash2, Upload, Minimize2, Eye, EyeOff, Wand2, Lock, Unlock, Printer, Users, ExternalLink, Zap, Info, Scissors, Copy, Highlighter, Focus } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
+import { useAuth } from '../context/AuthContext';
+import { useParams, useNavigate } from 'react-router-dom';
+
+const INITIAL_MIND_MAP_DATA = {
+  id: 'root',
+  name: 'Ecosistema BIM Revit (ISO 19650) y Disciplina MEP',
+  description: 'GESTIÓN CENTRALIZADA ISO 19650',
+  isRoot: true,
+  children: [
+    {
+      id: '1',
+      name: '1. ESTRATEGIA Y GESTIÓN BIM',
+      description: 'Marco procedimental y contractual que asegura que las personas correctas trabajen con la información correcta en el momento oportuno.',
+      children: [
+        {
+          id: '1.1',
+          name: 'Requisitos de Información',
+          description: 'Especifican para qué, cuándo, cómo y para quién se produce la información del proyecto.',
+          children: [
+            { id: '1.1.1', name: 'OIR / PIR / AIR', description: 'Definen las necesidades a nivel organizacional y del activo.' },
+            { id: '1.1.2', name: 'EIR (Req. de Intercambio)', description: 'Qué información debe entregarse en cada hito por contrato.' },
+            { id: '1.1.3', name: 'LOIN', description: 'Nivel de Necesidad de Información geométrica y alfanumérica.' }
+          ]
+        },
+        {
+          id: '1.2',
+          name: 'Entorno de Datos Común (CDE)',
+          description: 'Solución tecnológica y flujo de trabajo que gestiona la recopilación y difusión de la información.',
+          children: [
+            { id: '1.2.1', name: 'WIP (S0)', description: 'Trabajo en curso: Información aislada, ineditable para los demás.' },
+            { id: '1.2.2', name: 'Compartido (S1)', description: 'Información aprobada internamente para coordinación y revisión.' },
+            { id: '1.2.3', name: 'Publicado (A1)', description: 'Entregable contractual de solo lectura validado.' },
+            { id: '1.2.4', name: 'Archivado', description: 'Registro histórico inmutable utilizado para auditorías.' }
+          ]
+        },
+        {
+          id: '1.3',
+          name: 'Control de Calidad (QA/QC)',
+          description: 'Mecanismos para prevenir errores antes de compartir modelos fallidos.',
+          children: [
+            { id: '1.3.1', name: 'Auditorías y Purgado', description: 'Revisiones sistemáticas para eliminar información duplicada.' }
+          ]
+        }
+      ]
+    },
+    {
+      id: '2',
+      name: '2. BIBLIOTECA DE FAMILIAS',
+      description: 'Gestión de los activos digitales paramétricos que componen el modelo geométrico.',
+      children: [
+        {
+          id: '2.1',
+          name: 'Tipologías de Archivos',
+          description: 'Estrategia híbrida según comportamiento en software.',
+          children: [
+            { id: '2.1.1', name: 'Familias Cargables (.rfa)', description: 'Elementos manufacturados discretos independientes (equipos).' },
+            { id: '2.1.2', name: 'Archivos Contenedores (.rvt)', description: 'Recopilatorios para familias de sistema (muros, suelos).' }
+          ]
+        },
+        {
+          id: '2.2',
+          name: 'Nomenclatura (Naming)',
+          description: 'Reglas estrictas para nombrar archivos de forma consistente y evitar redundancias.'
+        },
+        {
+          id: '2.3',
+          name: 'Reglas de Modelado',
+          description: 'Prácticas minimalistas para proteger el rendimiento computacional del proyecto global.',
+          children: [
+            { id: '2.3.1', name: 'Reglas de carga geométrica', description: 'Minimizar extrusiones complejas, emplear usar símbolos 2D.' }
+          ]
+        }
+      ]
+    },
+    {
+      id: '3',
+      name: '3. REVIT MEP',
+      description: 'Disciplina técnica que modela instalaciones y se coordina obligatoriamente en el CDE.',
+      children: [
+        {
+          id: '3.1',
+          name: 'Mecánica (HVAC)',
+          description: 'Sistemas de calefacción, ventilación y A/C para habitabilidad.',
+          children: [
+            { id: '3.1.1', name: 'Equipos y Terminales', description: 'Colocación de Manejadoras de Aire (AHU) y difusores en espacios.' },
+            { id: '3.1.2', name: 'Red de Ductos', description: 'Trazado usando ductos rígidos y uniones flexibles para sortear vigas.' }
+          ]
+        },
+        {
+          id: '3.2',
+          name: 'Plomería y Contra Incendios',
+          description: 'Sistemas de gestión de fluidos por gravedad y bombeo.',
+          children: [
+            { id: '3.2.1', name: 'Equipamiento Sanitario', description: 'Ubicación precisa de Bombas, inodoros, calefones.' },
+            { id: '3.2.2', name: 'Sistemas Lógicos', description: 'Generación de redes cerradas para calcular pérdidas de presión reales.' }
+          ]
+        },
+        {
+          id: '3.3',
+          name: 'Eléctrica',
+          description: 'Redes de suministro de energía de alto y bajo voltaje.',
+          children: [
+            { id: '3.3.1', name: 'Rutas Eléctricas', description: 'Conexión lógica de luminarias a paneles mediante circuitos.' }
+          ]
+        },
+        {
+          id: '3.4',
+          name: 'Configuración Avanzada',
+          description: 'Uso intensivo de parámetros compartidos.',
+          children: [
+            { id: '3.4.1', name: 'Conectores Paramétricos', description: 'Elementos que inyectan datos físicos (caída, voltaje) a la red general.' }
+          ]
+        }
+      ]
+    },
+    {
+      id: '4',
+      name: '4. DOCUMENTACIÓN Y ENTREGABLES',
+      description: 'Productos finales derivados bidireccionalmente de la base de datos central.',
+      children: [
+        {
+          id: '4.1',
+          name: 'Tablas de Planificación',
+          description: 'Extracción automatizada de cuantificaciones de materiales e insumos.'
+        },
+        {
+          id: '4.2',
+          name: 'Planos e Isométricos',
+          description: 'Generación de Vistas 2D y 3D detalladas con anotaciones analíticas nativas.'
+        },
+        {
+          id: '4.3',
+          name: 'Entrega del PIM',
+          description: 'Emisión del Modelo validado y libre de interferencias entregado al cliente final.'
+        }
+      ]
+    }
+  ]
+};
+
+// Tree layout algorithm with dynamic heights based on expansion state
+const layoutTree = (node, startX = 100, startY = 100) => {
+  const horizontalGap = 120;
+  const verticalGap = 40;
+  
+  const columnWidths = {
+    0: 360, 1: 340, 2: 300, 3: 260
+  };
+
+  // PASS 1: Calculate subtree heights and metrics
+  const getSubtreeMetrics = (n, depth) => {
+    const nodeWidth = columnWidths[depth] || 250;
+    const isTextExpanded = !!n.isTextExpanded || n.id === 'root';
+    const isBranchExpanded = !!n.isBranchExpanded || n.id === 'root';
+    const hasDescription = !!n.description;
+    const charsPerTitleLine = Math.floor(nodeWidth / 13);
+    const charsPerDescLine = Math.floor(nodeWidth / 6.2);
+    
+    const titleLines = Math.ceil(n.name.length / charsPerTitleLine);
+    let descLines = 0;
+    if (hasDescription && isTextExpanded) {
+      descLines = Math.min(Math.ceil(n.description.length / charsPerDescLine), 5);
+    }
+
+    const basePaddings = depth === 0 ? 32 : depth === 1 ? 24 : 20;
+    const paddingAddition = (hasDescription && isTextExpanded) ? 8 : 0;
+    const nodeHeight = basePaddings + (titleLines * 18) + (descLines * 14.5) + paddingAddition;
+
+    let totalHeight = nodeHeight;
+    const childrenMetrics = [];
+
+    if (n.children && Array.isArray(n.children) && n.children.length > 0 && isBranchExpanded) {
+      let childrenTotalHeight = 0;
+      n.children.forEach(child => {
+        if (!child) return;
+        const metrics = getSubtreeMetrics(child, depth + 1);
+        childrenMetrics.push(metrics);
+        childrenTotalHeight += metrics.totalHeight + verticalGap;
+      });
+      childrenTotalHeight -= verticalGap; // Remove last gap
+      totalHeight = Math.max(nodeHeight, childrenTotalHeight);
+    }
+
+    return {
+      node: n,
+      depth,
+      nodeWidth,
+      nodeHeight,
+      totalHeight,
+      childrenMetrics,
+      isBranchExpanded
+    };
+  };
+
+  const metrics = getSubtreeMetrics(node, 0);
+  const positions = [];
+
+  // PASS 2: Assign positions
+  const assignPositions = (m, x, centerX) => {
+    const hasManualPos = m.node.x !== undefined && m.node.y !== undefined;
+    
+    const nodeX = hasManualPos ? m.node.x : x;
+    const nodeY = hasManualPos ? m.node.y : (centerX - m.nodeHeight / 2);
+
+    const nodePos = {
+      ...m.node,
+      x: nodeX,
+      y: nodeY,
+      width: m.nodeWidth,
+      height: m.nodeHeight,
+      depth: m.depth,
+      hasDescription: !!m.node.description,
+      hasChildren: m.node.children && m.node.children.length > 0,
+      isTextExpanded: !!m.node.isTextExpanded || m.node.id === 'root',
+      isBranchExpanded: m.isBranchExpanded,
+      isRoot: !!m.node.isRoot
+    };
+    positions.push(nodePos);
+
+    if (m.childrenMetrics.length > 0) {
+      const nextX = nodeX + m.nodeWidth + horizontalGap;
+      let currentChildY = nodeY + (m.nodeHeight / 2) - (m.totalHeight / 2);
+      
+      // If the parent has a manual position, we center the children relative to its ACTUAL manual center
+      // unless children also have manual positions.
+      m.childrenMetrics.forEach(childMetric => {
+        const childCenterX = currentChildY + childMetric.totalHeight / 2;
+        assignPositions(childMetric, nextX, childCenterX);
+        currentChildY += childMetric.totalHeight + verticalGap;
+      });
+    }
+  };
+
+  assignPositions(metrics, startX, startY + metrics.totalHeight / 2);
+
+  return positions;
+};
+
+const Connector = ({ start, end, parentId, childId, onCut, onInsert, onDuplicate, isAdmin }) => {
+  const midX = start.x + ((end.x - start.x) / 2);
+  
+  // Calculate approximate cubic bezier midpoint for the handle
+  const t = 0.5;
+  const mt = 1 - t;
+  const bx = mt*mt*mt*start.x + 3*mt*mt*t*midX + 3*mt*t*t*midX + t*t*t*end.x;
+  const by = mt*mt*mt*start.y + 3*mt*mt*t*start.y + 3*mt*t*t*end.y + t*t*t*end.y;
+
+  const path = `M ${start.x} ${start.y} C ${midX} ${start.y} ${midX} ${end.y} ${end.x} ${end.y}`;
+
+  return (
+    <g className="group/connector pointer-events-none">
+      {/* Invisible thicker path for easier hover */}
+      <path
+        d={path}
+        fill="none"
+        stroke="transparent"
+        strokeWidth="24"
+        className="cursor-pointer pointer-events-auto"
+        onMouseDown={(e) => e.stopPropagation()}
+      />
+      <path
+        d={path}
+        fill="none"
+        stroke="#0f4369"
+        strokeWidth="3"
+        strokeDasharray="4 4"
+        opacity="0.5"
+        className="transition-all duration-500 group-hover/connector:opacity-90 group-hover/connector:stroke-[5px] pointer-events-none"
+      />
+      {isAdmin && (
+        <foreignObject x={bx - 24} y={by - 12} width="48" height="24" className="pointer-events-auto">
+          <div className="flex gap-1 items-center justify-center h-full">
+            <button 
+                onMouseDown={(e) => {
+                e.stopPropagation();
+                onInsert(parentId, childId);
+                }}
+                className="w-5 h-5 bg-white text-[#0f4369] rounded-full flex items-center justify-center shadow-md opacity-40 group-hover/connector:opacity-100 hover:!bg-[#0f4369] hover:!text-white transition-all outline-none border-2 border-[#0f4369]/20"
+                title="Insertar nodo intermedio"
+            >
+                <Plus size={10} strokeWidth={4} />
+            </button>
+            <button 
+                onMouseDown={(e) => {
+                e.stopPropagation();
+                onDuplicate(e, childId);
+                }}
+                className="w-5 h-5 bg-[#0f4369] text-white rounded-full flex items-center justify-center shadow-md opacity-40 group-hover/connector:opacity-100 hover:!bg-[#0f4369] transition-all outline-none border-2 border-white/20"
+                title="Duplicar rama"
+            >
+                <Copy size={9} strokeWidth={4} />
+            </button>
+            <button 
+                onMouseDown={(e) => {
+                e.stopPropagation();
+                onCut(e, parentId, childId, { x: bx, y: by });
+                }}
+                className="w-5 h-5 bg-[#1c1c19] text-white rounded-full flex items-center justify-center shadow-md opacity-40 group-hover/connector:opacity-100 hover:!bg-[#e62020] transition-all outline-none border-2 border-white/20"
+                title="Cortar y mover conexión"
+            >
+                <Scissors size={10} strokeWidth={4} />
+            </button>
+          </div>
+        </foreignObject>
+      )}
+    </g>
+  );
+};
+
+// Node Component with Expandable Text and Inspection Logic
+const MindMapNode = ({ 
+  node, 
+  toggleTextExpand, 
+  toggleBranchExpand, 
+  onInspect, 
+  onAddSubNode, 
+  onImportSubNodes,
+  onDeepToggleBranch,
+  onToggleHighlight,
+  onDeleteNode, 
+  onDragStart, 
+  isAdmin, 
+  dragHappened, 
+  links, 
+  navigate, 
+  isDragging, 
+  isSelected, 
+  isLocked, 
+  isEditing, 
+  onNameSave, 
+  onStartEdit, 
+  isCreatorMode,
+  isHighlighterMode
+}) => {
+  const [editName, setEditName] = useState(node.name);
+
+  useEffect(() => {
+    if (isEditing) setEditName(node.name);
+  }, [isEditing, node.name]);
+  const transitionClass = isDragging ? "duration-0" : "duration-500 ease-out";
+  const selectionStyle = isSelected ? "ring-[4px] ring-[#0f4369] ring-offset-2 z-30" : "";
+  let containerClasses = `absolute flex flex-col p-4 transition-all hover:z-20 border-[3px] shadow-[4px_4px_0_0_rgba(28,28,25,1)] select-none group/node ${transitionClass} ${selectionStyle} `;
+  let titleClasses = "font-black tracking-tighter uppercase leading-tight pr-4 ";
+  let descClasses = "font-mono leading-relaxed text-left overflow-hidden transition-all duration-300 pr-4 [display:-webkit-box] [-webkit-box-orient:vertical] ";
+
+  if (node.isRoot) {
+    containerClasses += "bg-[#0f4369] border-[#1c1c19] text-white shadow-[8px_8px_0_0_rgba(28,28,25,0.2)] p-5";
+    titleClasses += "text-lg md:text-xl";
+    descClasses += "text-[11px] text-white/80 uppercase tracking-widest";
+  } else if (node.depth === 1) {
+    containerClasses += "bg-[#1c1c19] border-[#1c1c19] text-[#fcf9f4] shadow-[6px_6px_0_0_rgba(15,67,105,1)] p-4";
+    titleClasses += "text-sm";
+    descClasses += "text-xs text-[#fcf9f4]/80";
+  } else if (node.depth === 2) {
+    containerClasses += "bg-[#f6f3ee] border-[#1c1c19] text-[#1c1c19] hover:bg-[#e5e2dd] p-3";
+    titleClasses += "text-sm text-[#0f4369]";
+    descClasses += "text-[11px] text-[#493f36]";
+  } else {
+    containerClasses += "bg-white border-dashed border-[#1c1c19]/60 text-[#1c1c19] hover:border-solid hover:border-[#0f4369] hover:bg-[#f6f3ee] p-3 shadow-sm";
+    titleClasses += "text-xs text-[#1c1c19]";
+    descClasses += "text-[10px] text-[#72777f]";
+  }
+  
+  let highlightStyle = {};
+  if (node.isHighlighted) {
+    const hColor = node.highlightColor || '#fef08a';
+    highlightStyle = {
+      backgroundColor: hColor + '66', // 40% opacity approx
+      borderColor: hColor,
+      boxShadow: `0 0 15px ${hColor}4d`
+    };
+  }
+
+  const isClickable = node.hasDescription;
+
+  return (
+    <div
+      className={`${containerClasses} ${isClickable ? 'cursor-pointer' : ''}`}
+      style={{ 
+          left: node.x, 
+          top: node.y, 
+          width: node.width, 
+          minHeight: node.height,
+          ...highlightStyle 
+      }}
+      onMouseDown={(e) => onDragStart(e, node.id)}
+      onClick={(e) => {
+        // Prevent click if we were dragging (travel threshold check)
+        if (dragHappened.current) return;
+        
+        if (isHighlighterMode) {
+            e.stopPropagation();
+            onToggleHighlight(node.id);
+            return;
+        }
+
+        if (isClickable && !isLocked && !isCreatorMode) toggleTextExpand(node.id);
+      }}
+    >
+      <div className="flex items-start justify-between gap-1 w-full relative">
+        <div className="flex items-start gap-2 pt-0.5 flex-1">
+          {node.depth === 0 && <div className="w-3 h-3 bg-[#e5e2dd] shrink-0 mt-2 border border-black" />}
+          {node.depth === 1 && <div className="w-2 h-2 bg-[#fcf9f4] shrink-0 mt-1.5" />}
+          {isEditing ? (
+            <input
+              autoFocus
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onNameSave(node.id, editName);
+                if (e.key === 'Escape') onNameSave(node.id, node.name);
+              }}
+              onBlur={() => onNameSave(node.id, editName)}
+              onClick={(e) => e.stopPropagation()}
+              className={`${titleClasses} bg-[#fcf9f4] border-2 border-[#0f4369] p-1 w-full outline-none text-[#1c1c19]`}
+            />
+          ) : (
+            <h3 
+              className={titleClasses}
+              onDoubleClick={(e) => {
+                if (isCreatorMode && isAdmin) {
+                  e.stopPropagation();
+                  onStartEdit(node.id);
+                }
+              }}
+            >
+              {node.name}
+            </h3>
+          )}
+        </div>
+      </div>
+
+      <div className={`${descClasses} ${node.isTextExpanded ? 'opacity-100 mt-1 pt-1 border-t border-current/10 line-clamp-5 [-webkit-line-clamp:5]' : 'opacity-0 h-0 m-0 p-0 border-none'}`}>
+        {node.description}
+      </div>
+
+      {/* Linked Data Buttons (Black Boxes) */}
+      {(links?.modules?.length > 0 || links?.resources?.length > 0 || node.externalLinks?.length > 0 || node.externalResources?.length > 0) && (
+        <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-current/5" onClick={e => e.stopPropagation()}>
+          {links?.modules?.map(modId => (
+            <button
+              key={modId}
+              onClick={(e) => { e.stopPropagation(); navigate(`/module/${modId}`); }}
+              className="px-2 py-1 bg-[#1c1c19] text-[#fcf9f4] text-[8px] font-black uppercase tracking-widest rounded shadow-[2px_2px_0_0_rgba(28,28,25,0.3)] hover:translate-y-[-1px] hover:shadow-[3px_3px_0_0_rgba(28,28,25,0.5)] transition-all flex items-center gap-1.5"
+              title="Ir al Módulo"
+            >
+              <Database size={10} /> MOD
+            </button>
+          ))}
+          {links?.resources?.map(resId => (
+            <button
+              key={resId}
+              onClick={(e) => { e.stopPropagation(); navigate(`/resource/${resId}`); }}
+              className="px-2 py-1 bg-[#0f4369] text-[#fcf9f4] text-[8px] font-black uppercase tracking-widest rounded shadow-[2px_2px_0_0_rgba(28,28,25,0.3)] hover:translate-y-[-1px] hover:shadow-[3px_3px_0_0_rgba(28,28,25,0.5)] transition-all flex items-center gap-1.5"
+              title="Ir al Recurso"
+            >
+              <FileText size={10} /> RES
+            </button>
+          ))}
+          {node.externalLinks?.map((exLink, idx) => (
+            <a
+              key={`ex-l-${idx}`}
+              href={exLink.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="px-2 py-1 bg-white border border-[#1c1c19] text-[#1c1c19] text-[8px] font-black uppercase tracking-widest rounded shadow-[2px_2px_0_0_rgba(28,28,25,0.1)] hover:translate-y-[-1px] hover:shadow-[3px_3px_0_0_rgba(28,28,25,0.2)] transition-all flex items-center gap-1.5"
+              title={exLink.title || "Abrir Link Externo"}
+            >
+              <ExternalLink size={10} /> {exLink.title || 'LINK'}
+            </a>
+          ))}
+          {node.externalResources?.map((exRes, idx) => (
+            <a
+              key={`ex-r-${idx}`}
+              href={exRes.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="px-2 py-1 bg-[#f6f3ee] border border-[#1c1c19]/50 text-[#1c1c19] text-[8px] font-black uppercase tracking-widest rounded shadow-[2px_2px_0_0_rgba(28,28,25,0.1)] hover:translate-y-[-1px] hover:shadow-[3px_3px_0_0_rgba(28,28,25,0.2)] transition-all flex items-center gap-1.5"
+              title={exRes.title || "Abrir Recurso Externo"}
+            >
+              <FileText size={10} /> {exRes.title || 'RES'}
+            </a>
+          ))}
+        </div>
+      )}
+
+      {/* Roles Display */}
+      {node.roles && (
+        <div className="mt-2 flex items-center gap-1.5 px-2 py-0.5 bg-[#0f4369]/10 rounded-full w-fit">
+          <Users size={10} className="text-[#0f4369]" />
+          <span className="text-[8px] font-black text-[#0f4369] uppercase tracking-wider">{node.roles}</span>
+        </div>
+      )}
+
+      {/* Controles del Nodo en la parte inferior derecha (Relocalizados para no tapar texto) */}
+      <div 
+        className="absolute -bottom-3 right-2 flex items-center gap-1 bg-[#1c1c19] p-0.5 shadow-[4px_4px_0_0_rgba(28,28,25,1)] z-40 opacity-0 group-hover/node:opacity-100 transition-all translate-y-2 group-hover/node:translate-y-0" 
+        onClick={e => e.stopPropagation()}
+      >
+        {isAdmin && (
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onAddSubNode(node.id); }}
+            className="p-1.5 text-green-400 hover:bg-white/10 rounded-sm transition-all hover:scale-110 flex items-center justify-center"
+            title="Añadir Rama/Módulo"
+          >
+            <Plus size={14} strokeWidth={3} />
+          </button>
+        )}
+        {isAdmin && !node.isRoot && (
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onDeleteNode(node.id);
+            }}
+            className="p-1.5 text-red-500 hover:bg-white/10 rounded-sm transition-all hover:scale-110 flex items-center justify-center"
+            title="Eliminar Estructura"
+          >
+            <Trash2 size={14} strokeWidth={3} />
+          </button>
+        )}
+        <button
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); onInspect(node); }}
+          className="p-1.5 text-[#e5e2dd] hover:bg-white/10 rounded-sm transition-all hover:scale-110 flex items-center justify-center"
+          title="Inspeccionar / Editar Nodo"
+        >
+          <Search size={14} strokeWidth={3} />
+        </button>
+        {isAdmin && (
+           <button
+             onMouseDown={(e) => e.stopPropagation()}
+             onClick={(e) => { e.stopPropagation(); onImportSubNodes(node.id, node.name); }}
+             className="p-1.5 text-yellow-400 hover:bg-white/10 rounded-sm transition-all hover:scale-110 flex items-center justify-center"
+             title="Importar Estructura JSON (AI)"
+           >
+             <Zap size={14} strokeWidth={3} />
+           </button>
+        )}
+        {node.hasDescription && (
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); if (!isLocked && !isCreatorMode) toggleTextExpand(node.id); }}
+            className={`p-1.5 text-white hover:bg-white/10 rounded-sm transition-all flex items-center justify-center ${(isLocked || isCreatorMode) ? 'opacity-30 cursor-not-allowed' : ''}`}
+            title={(isLocked || isCreatorMode) ? "Expansión bloqueada" : "Expandir/Contraer descripción"}
+          >
+            {node.isTextExpanded ? <ChevronDown size={14} strokeWidth={3} /> : <ChevronRight size={14} strokeWidth={3} />}
+          </button>
+        )}
+      </div>
+
+      {/* Branch Expand Buttons (Edge Area) */}
+      {node.hasChildren && (
+        <div className="absolute -right-3 top-1/2 -translate-y-1/2 flex flex-col gap-1 z-30">
+          {/* Shallow Toggle (Next level only) */}
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            className={`w-6 h-6 flex items-center justify-center bg-white border-[3px] border-[#1c1c19] rounded shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:bg-[#e62020] hover:text-white transition-all group ${isLocked ? 'opacity-50 grayscale cursor-not-allowed' : ''}`}
+            onClick={(e) => { 
+                e.stopPropagation(); 
+                if (!isLocked) toggleBranchExpand(node.id); 
+            }}
+            title={isLocked ? "Estructura Bloqueada" : (node.isBranchExpanded ? "Contraer nivel" : "Expandir nivel")}
+          >
+            {node.isBranchExpanded ? <ChevronDown size={14} strokeWidth={4} /> : <ChevronRight size={14} strokeWidth={4} className="text-[#e62020] group-hover:text-white" />}
+          </button>
+          
+          {/* Deep Toggle (Recursive) */}
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            className={`w-6 h-6 flex items-center justify-center bg-[#1c1c19] text-white border-[3px] border-[#1c1c19] rounded shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:bg-[#0f4369] transition-all group ${isLocked ? 'opacity-50 grayscale cursor-not-allowed' : ''}`}
+            onClick={(e) => { 
+                e.stopPropagation(); 
+                if (!isLocked) onDeepToggleBranch(node.id, !node.isBranchExpanded); 
+            }}
+            title={isLocked ? "Estructura Bloqueada" : (node.isBranchExpanded ? "COMPRIMIR TODO" : "EXPANDIR TODO RECURSIVO")}
+          >
+            {node.isBranchExpanded ? <Minimize2 size={11} strokeWidth={4} /> : <Maximize size={11} strokeWidth={4} />}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ==========================================
+// MOCK MODAL COMPONENT (Editor & Associations)
+// ==========================================
+const EsquemaNodeModal = ({ node, activeEsquema, onClose, onSave, isAdmin, onAssociationsChanged }) => {
+  const navigate = useNavigate();
+  const [name, setName] = useState(node.name || '');
+  const [description, setDescription] = useState(node.description || '');
+  const [roles, setRoles] = useState(node.roles || '');
+  const [externalLinks, setExternalLinks] = useState(node.externalLinks || []);
+  const [externalResources, setExternalResources] = useState(node.externalResources || []);
+
+  const [newLink, setNewLink] = useState({ title: '', url: '' });
+  const [newResource, setNewResource] = useState({ title: '', url: '' });
+
+  // State for local associations lists using real DB records
+  const [linkedModules, setLinkedModules] = useState([]);
+  const [linkedResources, setLinkedResources] = useState([]);
+
+  const [allModules, setAllModules] = useState([]);
+  const [allResources, setAllResources] = useState([]);
+
+  const [searchModule, setSearchModule] = useState('');
+  const [isModuleSearchOpen, setIsModuleSearchOpen] = useState(false);
+
+  const [searchResource, setSearchResource] = useState('');
+  const [isResourceSearchOpen, setIsResourceSearchOpen] = useState(false);
+
+  useEffect(() => {
+    const fetchUniverse = async () => {
+      const { data: mods } = await supabase.from('roadmap_modules').select('id, title');
+      if (mods) setAllModules(mods);
+
+      const { data: res } = await supabase.from('resources').select('id, title, category');
+      if (res) setAllResources(res);
+    };
+    fetchUniverse();
+  }, []);
+
+  useEffect(() => {
+    const loadAssociations = async () => {
+      if (!activeEsquema) return;
+
+      const { data: mLinks } = await supabase
+        .from('esquema_nodes_modules')
+        .select('module_id')
+        .eq('esquema_id', activeEsquema.id)
+        .eq('node_id', node.id);
+
+      const { data: rLinks } = await supabase
+        .from('esquema_nodes_resources')
+        .select('resource_id')
+        .eq('esquema_id', activeEsquema.id)
+        .eq('node_id', node.id);
+
+      if (mLinks) setLinkedModules(mLinks.map(l => l.module_id));
+      if (rLinks) setLinkedResources(rLinks.map(l => l.resource_id));
+    };
+    loadAssociations();
+  }, [activeEsquema, node.id]);
+
+  const handleLinkModule = async (moduleId) => {
+    const { error } = await supabase.from('esquema_nodes_modules').insert([{
+      esquema_id: activeEsquema.id,
+      node_id: node.id,
+      module_id: moduleId
+    }]);
+    if (!error) {
+        setLinkedModules(prev => [...prev, moduleId]);
+        if (onAssociationsChanged) onAssociationsChanged();
+    }
+    setIsModuleSearchOpen(false);
+    setSearchModule('');
+  };
+
+  const handleUnlinkModule = async (moduleId) => {
+    if (!window.confirm("¿Seguro que deseas desconectar este módulo de este nodo?")) return;
+    const { error } = await supabase.from('esquema_nodes_modules')
+      .delete()
+      .eq('esquema_id', activeEsquema.id)
+      .eq('node_id', node.id)
+      .eq('module_id', moduleId);
+    if (!error) {
+        setLinkedModules(prev => prev.filter(id => id !== moduleId));
+        if (onAssociationsChanged) onAssociationsChanged();
+    }
+  };
+
+  const handleLinkResource = async (resourceId) => {
+    const { error } = await supabase.from('esquema_nodes_resources').insert([{
+      esquema_id: activeEsquema.id,
+      node_id: node.id,
+      resource_id: resourceId
+    }]);
+    if (!error) {
+        setLinkedResources(prev => [...prev, resourceId]);
+        if (onAssociationsChanged) onAssociationsChanged();
+    }
+    setIsResourceSearchOpen(false);
+    setSearchResource('');
+  };
+
+  const handleUnlinkResource = async (resourceId) => {
+    if (!window.confirm("¿Seguro que deseas desconectar este recurso de este nodo?")) return;
+    const { error } = await supabase.from('esquema_nodes_resources')
+      .delete()
+      .eq('esquema_id', activeEsquema.id)
+      .eq('node_id', node.id)
+      .eq('resource_id', resourceId);
+    if (!error) {
+        setLinkedResources(prev => prev.filter(id => id !== resourceId));
+        if (onAssociationsChanged) onAssociationsChanged();
+    }
+  };
+
+  const handleSave = () => {
+    onSave({ 
+        ...node, 
+        name, 
+        description, 
+        roles, 
+        externalLinks, 
+        externalResources 
+    });
+  };
+
+  const addExternalLink = () => {
+    if (!newLink.url) return;
+    setExternalLinks([...externalLinks, { ...newLink }]);
+    setNewLink({ title: '', url: '' });
+  };
+
+  const removeExternalLink = (index) => {
+    setExternalLinks(externalLinks.filter((_, i) => i !== index));
+  };
+
+  const addExternalResource = () => {
+    if (!newResource.url) return;
+    setExternalResources([...externalResources, { ...newResource }]);
+    setNewResource({ title: '', url: '' });
+  };
+
+  const removeExternalResource = (index) => {
+    setExternalResources(externalResources.filter((_, i) => i !== index));
+  };
+
+  const displayLinkedModules = allModules.filter(m => linkedModules.includes(m.id));
+  const displayLinkedResources = allResources.filter(r => linkedResources.includes(r.id));
+  const filteredSearchModules = allModules.filter(m => !linkedModules.includes(m.id) && m.title?.toLowerCase().includes(searchModule.toLowerCase()));
+  const filteredSearchResources = allResources.filter(r => !linkedResources.includes(r.id) && r.title?.toLowerCase().includes(searchResource.toLowerCase()));
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="bg-[#fcf9f4] w-full max-w-5xl h-[85vh] flex flex-col border-2 border-[#1c1c19] shadow-[16px_16px_0_0_rgba(28,28,25,1)] font-sans">
+
+        {/* Header Blueprint - Standardized */}
+        <div className="bg-[#1c1c19] text-white p-4 flex justify-between items-center border-b-2 border-[#1c1c19]">
+          <div className="flex items-center gap-4">
+            <Database className="text-[#e5e2dd]" size={20} strokeWidth={3} />
+            <div>
+              <h2 className="text-lg font-black uppercase tracking-tighter">INSPECCIÓN_NODO_ISO: {node.id}</h2>
+              <p className="font-mono text-[9px] text-white/50 tracking-[3px] uppercase opacity-70">REF_UUID: {node.id.toUpperCase()}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-red-600 transition-all border-2 border-transparent hover:border-white">
+            <X size={20} strokeWidth={3} />
+          </button>
+        </div>
+
+        {/* Split Body */}
+        <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+
+          {/* Left Column: Data Editor */}
+          <div className="flex-1 p-6 flex flex-col gap-6 overflow-auto border-r-[3px] border-[#1c1c19] bg-white">
+            <div>
+              <label className="block font-mono text-[9px] font-black tracking-widest text-[#0f4369] mb-2 border-b-2 border-[#1c1c19]/10 pb-1 uppercase">TÍTULO DEL COMPONENTE</label>
+              <input
+                value={name}
+                onChange={e => setName(e.target.value)}
+                className="w-full text-base font-bold border-2 border-[#1c1c19] bg-[#fcf9f4] p-3 focus:outline-none focus:shadow-[4px_4px_0_0_rgba(15,67,105,1)] transition-all uppercase"
+              />
+            </div>
+
+            <div className="flex-1 flex flex-col">
+              <label className="block font-mono text-[10px] font-black tracking-widest text-[#0f4369] mb-2 border-b-2 border-[#1c1c19] pb-1 uppercase">DEFINICIÓN NORMATIVA (MARKDOWN ENABLED)</label>
+              <textarea
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                className="flex-1 w-full min-h-[150px] resize-none font-mono text-sm leading-relaxed border-2 border-[#1c1c19] bg-[#f6f3ee] p-4 focus:outline-none focus:ring-4 focus:ring-[#0f4369]/20 shadow-[inner_4px_4px_0_0_rgba(28,28,25,0.05)] transition-all"
+                placeholder="Escribe la definición aquí..."
+              />
+            </div>
+
+            {/* Roles Section */}
+            <div>
+              <label className="block font-mono text-[9px] font-black tracking-widest text-[#0f4369] mb-2 border-b-2 border-[#1c1c19]/10 pb-1 uppercase">ROLES ASOCIADOS (EJ: BIM MANAGER, COORDINADOR)</label>
+              <div className="flex gap-2">
+                <div className="bg-[#1c1c19] p-3 flex items-center justify-center text-white border-2 border-[#1c1c19]">
+                  <Users size={18} />
+                </div>
+                <input
+                  value={roles}
+                  onChange={e => setRoles(e.target.value)}
+                  placeholder="Especifique roles..."
+                  className="w-full text-sm font-bold border-2 border-[#1c1c19] bg-[#fcf9f4] p-3 focus:outline-none focus:shadow-[4px_4px_0_0_rgba(15,67,105,1)] transition-all uppercase"
+                />
+              </div>
+            </div>
+
+            {/* External Links Section */}
+            <div className="border-2 border-[#1c1c19] p-4 bg-[#fcf9f4]">
+              <label className="block font-mono text-[9px] font-black tracking-widest text-[#0f4369] mb-4 border-b-2 border-[#1c1c19]/10 pb-1 uppercase">ENLACES EXTERNOS (LINK)</label>
+              
+              <div className="flex flex-col gap-2 mb-4">
+                {externalLinks.map((link, idx) => (
+                  <div key={idx} className="flex items-center justify-between bg-white border-2 border-[#1c1c19] p-2 shadow-[2px_2px_0_0_rgba(28,28,25,1)]">
+                    <div className="flex flex-col overflow-hidden">
+                      <span className="text-[10px] font-black uppercase truncate">{link.title || 'Sin Título'}</span>
+                      <span className="text-[8px] font-mono opacity-50 truncate">{link.url}</span>
+                    </div>
+                    <button onClick={() => removeExternalLink(idx)} className="text-red-500 hover:bg-red-50 p-1">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {isAdmin && (
+                <div className="flex gap-2">
+                  <div className="flex-1 flex flex-col gap-1">
+                    <input 
+                      placeholder="Título (Opcional)"
+                      value={newLink.title}
+                      onChange={e => setNewLink({...newLink, title: e.target.value})}
+                      className="text-[10px] uppercase font-bold p-2 border border-[#1c1c19] focus:outline-none"
+                    />
+                    <input 
+                      placeholder="URL (https://...)"
+                      value={newLink.url}
+                      onChange={e => setNewLink({...newLink, url: e.target.value})}
+                      className="text-[10px] font-mono p-2 border border-[#1c1c19] focus:outline-none"
+                    />
+                  </div>
+                  <button 
+                    onClick={addExternalLink}
+                    className="bg-[#0f4369] text-white px-4 flex items-center justify-center hover:bg-[#1c1c19] transition-all"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* External Resources Section */}
+            <div className="border-2 border-dashed border-[#1c1c19]/30 p-4 bg-white">
+              <label className="block font-mono text-[9px] font-black tracking-widest text-[#e62020] mb-4 border-b-2 border-[#1c1c19]/10 pb-1 uppercase">RECURSOS ADICIONALES (EXTERNOS)</label>
+              
+              <div className="flex flex-col gap-2 mb-4">
+                {externalResources.map((res, idx) => (
+                  <div key={idx} className="flex items-center justify-between bg-[#f6f3ee] border border-[#1c1c19] p-2">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <FileText size={12} className="text-[#0f4369]" />
+                      <div className="flex flex-col overflow-hidden">
+                        <span className="text-[10px] font-bold uppercase truncate">{res.title || 'Recurso'}</span>
+                        <span className="text-[8px] font-mono opacity-50 truncate">{res.url}</span>
+                      </div>
+                    </div>
+                    <button onClick={() => removeExternalResource(idx)} className="text-red-500 hover:bg-red-50 p-1">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {isAdmin && (
+                <div className="flex gap-2">
+                  <div className="flex-1 flex flex-col gap-1">
+                    <input 
+                      placeholder="Nombre del Recurso"
+                      value={newResource.title}
+                      onChange={e => setNewResource({...newResource, title: e.target.value})}
+                      className="text-[10px] uppercase font-bold p-2 border border-[#1c1c19] bg-[#fcf9f4] focus:outline-none"
+                    />
+                    <input 
+                      placeholder="URL del Recurso"
+                      value={newResource.url}
+                      onChange={e => setNewResource({...newResource, url: e.target.value})}
+                      className="text-[10px] font-mono p-2 border border-[#1c1c19] bg-[#fcf9f4] focus:outline-none"
+                    />
+                  </div>
+                  <button 
+                    onClick={addExternalResource}
+                    className="bg-[#e62020] text-white px-4 flex items-center justify-center hover:bg-red-800 transition-all shadow-[2px_2px_0_0_rgba(28,28,25,1)]"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column: Simulated Relational Tools */}
+          <div className="w-full md:w-[400px] p-6 flex flex-col gap-8 overflow-auto bg-[#f6f3ee]">
+
+            {/* Modules */}
+            <section>
+              <div className="flex justify-between items-end mb-4 border-b-2 border-[#1c1c19] pb-1 relative">
+                <label className="block font-mono text-[10px] font-black tracking-widest text-[#1c1c19] uppercase">MÓDULOS ASOCIADOS</label>
+                {isAdmin && (
+                  <button
+                    onClick={() => setIsModuleSearchOpen(!isModuleSearchOpen)}
+                    className="text-[10px] font-bold text-[#0f4369] hover:underline flex items-center gap-1"
+                  >
+                    <Plus size={12} strokeWidth={3} /> VINCULAR
+                  </button>
+                )}
+              </div>
+
+              {isModuleSearchOpen && isAdmin && (
+                <div className="mb-4 bg-white border-2 border-[#0f4369] p-2 relative z-10 shadow-lg">
+                  <div className="flex items-center border-b-2 border-[#1c1c19] pb-1 mb-2">
+                    <Search size={14} className="text-[#0f4369] mr-2" />
+                    <input
+                      autoFocus
+                      value={searchModule}
+                      onChange={e => setSearchModule(e.target.value)}
+                      placeholder="Buscar módulo..."
+                      className="w-full text-xs font-bold bg-transparent outline-none uppercase"
+                    />
+                    <button onClick={() => setIsModuleSearchOpen(false)} className="text-[#e62020]"><X size={14} /></button>
+                  </div>
+                  <div className="max-h-[120px] overflow-auto flex flex-col gap-1">
+                    {filteredSearchModules.map(m => (
+                      <div
+                        key={m.id}
+                        onClick={() => handleLinkModule(m.id)}
+                        className="text-xs font-bold cursor-pointer hover:bg-[#0f4369] hover:text-white p-1"
+                      >
+                        {m.title}
+                      </div>
+                    ))}
+                    {filteredSearchModules.length === 0 && <div className="text-[10px] text-gray-500 p-1">No hay coincidencias.</div>}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2">
+                {displayLinkedModules.map(m => (
+                  <div key={m.id} className="bg-white border-2 border-[#1c1c19] p-2 group shadow-[2px_2px_0_0_rgba(28,28,25,1)] flex items-center justify-between">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <div className="w-8 h-8 flex items-center justify-center bg-[#1c1c19] text-white shrink-0">
+                        <Database size={14} />
+                      </div>
+                      <p className="text-xs font-bold uppercase leading-tight truncate">{m.title}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => navigate(`/module/${m.id}`)}
+                        className="p-1 px-2 border-2 border-[#1c1c19] text-[#1c1c19] bg-[#fcf9f4] hover:bg-[#1c1c19] hover:text-white transition-all text-[9px] font-bold uppercase tracking-widest flex items-center gap-1.5"
+                        title="View module"
+                      >
+                        <Eye size={12} /> VER
+                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleUnlinkModule(m.id)}
+                          className="p-1 text-[#e62020] hover:bg-[#e62020]/10 transition-all"
+                          title="Eliminar asociación"
+                        >
+                          <X size={14} strokeWidth={3} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {displayLinkedModules.length === 0 && <p className="text-[10px] font-mono opacity-50 uppercase text-center py-4 bg-white/30 border-2 border-dashed border-[#1c1c19]/10">No hay módulos vinculados.</p>}
+              </div>
+            </section>
+
+            {/* Resources */}
+            <section>
+              <div className="flex justify-between items-end mb-4 border-b-2 border-[#1c1c19] pb-1 relative">
+                <label className="block font-mono text-[10px] font-black tracking-widest text-[#1c1c19] uppercase">RECURSOS TÉCNICOS</label>
+                {isAdmin && (
+                  <button
+                    onClick={() => setIsResourceSearchOpen(!isResourceSearchOpen)}
+                    className="text-[10px] font-bold text-[#e62020] hover:underline flex items-center gap-1"
+                  >
+                    <Plus size={12} strokeWidth={3} /> VINCULAR
+                  </button>
+                )}
+              </div>
+
+              {isResourceSearchOpen && isAdmin && (
+                <div className="mb-4 bg-white border-2 border-[#e62020] p-2 relative z-10 shadow-lg">
+                  <div className="flex items-center border-b-2 border-[#1c1c19] pb-1 mb-2">
+                    <Search size={14} className="text-[#e62020] mr-2" />
+                    <input
+                      autoFocus
+                      value={searchResource}
+                      onChange={e => setSearchResource(e.target.value)}
+                      placeholder="Buscar recurso..."
+                      className="w-full text-xs font-bold bg-transparent outline-none uppercase"
+                    />
+                    <button onClick={() => setIsResourceSearchOpen(false)} className="text-[#e62020]"><X size={14} /></button>
+                  </div>
+                  <div className="max-h-[120px] overflow-auto flex flex-col gap-1">
+                    {filteredSearchResources.map(r => (
+                      <div
+                        key={r.id}
+                        onClick={() => handleLinkResource(r.id)}
+                        className="text-[11px] cursor-pointer hover:bg-[#e62020] hover:text-white p-1 flex justify-between"
+                      >
+                        <span className="font-bold truncate">{r.title}</span>
+                        <span className="text-[9px] font-black opacity-70 ml-2 shrink-0">{r.category}</span>
+                      </div>
+                    ))}
+                    {filteredSearchResources.length === 0 && <div className="text-[10px] text-gray-500 p-1">No hay coincidencias.</div>}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2">
+                {displayLinkedResources.map(r => (
+                  <div key={r.id} className="bg-white border-2 border-[#1c1c19] p-2 flex items-center justify-between group transition-all shadow-[2px_2px_0_0_rgba(28,28,25,0.1)] hover:shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:-translate-y-0.5">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <FileText size={14} className="text-[#0f4369] shrink-0" />
+                      <p className="text-[11px] font-bold truncate pr-1">{r.title}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => navigate(`/resource/${r.id}`)}
+                        className="p-1 px-2 border border-[#1c1c19] text-[#1c1c19] bg-[#fcf9f4] hover:bg-[#1c1c19] hover:text-white transition-all text-[8px] font-bold uppercase tracking-widest flex items-center gap-1.5"
+                        title="View resource"
+                      >
+                        <Eye size={10} /> VER
+                      </button>
+                      <span className="text-[7px] font-black bg-[#1c1c19] text-white px-1 py-0.5">{r.category?.substring(0, 3).toUpperCase() || 'DOC'}</span>
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleUnlinkResource(r.id)}
+                          className="p-0.5 text-[#e62020] hover:bg-[#e62020]/10 transition-all opacity-0 group-hover:opacity-100"
+                          title="Eliminar asociación"
+                        >
+                          <X size={12} strokeWidth={3} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {displayLinkedResources.length === 0 && <p className="text-[10px] font-mono opacity-50 uppercase text-center py-4 bg-white/30 border-2 border-dashed border-[#1c1c19]/10">No hay recursos vinculados.</p>}
+              </div>
+            </section>
+          </div>
+        </div>
+
+        {/* Footer Controls */}
+        <div className="bg-[#1c1c19] p-4 flex justify-end gap-4 border-t-4 border-[#1c1c19] shrink-0">
+          <div className="flex gap-4">
+            <button onClick={onClose} className="px-6 py-2 text-white font-bold tracking-widest text-sm hover:underline font-mono">
+              CANCELAR
+            </button>
+            {isAdmin ? (
+              <button
+                onClick={handleSave}
+                className="flex items-center gap-2 px-8 py-2 bg-[#e5e2dd] text-[#1c1c19] font-black tracking-widest text-sm uppercase shadow-[4px_4px_0_0_rgba(255,255,255,0.2)] hover:bg-white transition-colors"
+              >
+                <Save size={16} strokeWidth={3} />
+                GUARDAR CAMBIOS
+              </button>
+            ) : (
+              <button className="px-8 py-2 bg-[#1c1c19] border-2 border-[#f6f3ee]/20 text-[#f6f3ee]/50 font-black tracking-widest text-sm uppercase cursor-not-allowed">
+                SOLO LECTURA
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Custom Premium Confirmation Modal for Deletion
+const DeleteConfirmationModal = ({ onConfirm, onCancel }) => {
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+      <div className="bg-[#fcf9f4] border-[3px] border-[#1c1c19] w-full max-w-sm shadow-[12px_12px_0_0_rgba(230,32,32,1)] flex flex-col p-6 text-center transform animate-in zoom-in-95 duration-200">
+        <div className="flex justify-center mb-6">
+          <div className="w-16 h-16 bg-[#e62020] text-white flex items-center justify-center rounded-full border-4 border-[#1c1c19] shadow-[4px_4px_0_0_rgba(28,28,25,0.2)]">
+            <Trash2 size={32} strokeWidth={3} />
+          </div>
+        </div>
+        
+        <h2 className="text-xl font-black uppercase tracking-tighter mb-2">Protocolo de Eliminación</h2>
+        <p className="font-mono text-[10px] text-[#72777f] uppercase tracking-widest leading-relaxed mb-8">
+          ADVERTENCIA: Esta acción purgará el nodo seleccionado y todas sus dependencias jerárquicas del esquema activo.
+        </p>
+
+        <div className="grid grid-cols-2 gap-4">
+          <button 
+            onClick={onCancel}
+            className="py-3 border-2 border-[#1c1c19] font-black uppercase tracking-widest text-[11px] hover:bg-[#1c1c19] hover:text-white transition-all shadow-[4px_4px_0_0_rgba(28,28,25,0.1)] active:translate-y-0.5 active:shadow-none"
+          >
+            Cancelar
+          </button>
+          <button 
+            onClick={onConfirm}
+            className="py-3 bg-[#e62020] text-white border-2 border-[#1c1c19] font-black uppercase tracking-widest text-[11px] hover:bg-red-700 transition-all shadow-[4px_4px_0_0_rgba(28,28,25,0.2)] active:translate-y-0.5 active:shadow-none"
+          >
+            Confirmar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Modal for JSON Operations (Import/Export branches)
+const NodeJsonOperationsModal = ({ node, onImport, onCancel, onCopyPrompt }) => {
+  const [activeTab, setActiveTab] = useState('import'); // 'import' | 'export'
+  const [importJsonText, setImportJsonText] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+
+  const handleProcessImport = () => {
+    if (!importJsonText.trim()) return;
+    setIsImporting(true);
+    try {
+      // Robust parsing: strip markdown code fences if present
+      let cleanedJson = importJsonText.trim();
+      if (cleanedJson.startsWith('```')) {
+        cleanedJson = cleanedJson.replace(/^```[a-z]*\n/i, '').replace(/\n```$/m, '');
+      }
+      
+      const jsonData = JSON.parse(cleanedJson);
+      onImport(jsonData);
+      onCancel();
+    } catch (err) {
+      alert("Error: El JSON no es válido. Asegúrate de copiar solo el bloque de código entre llaves { }.");
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleCopyNodeJson = () => {
+    // We export a clean version (no UI state)
+    const cleanNode = (n) => {
+        const { x, y, width, height, isTextExpanded, isBranchExpanded, depth, hasDescription, hasChildren, ...rest } = n;
+        return {
+            ...rest,
+            children: n.children && Array.isArray(n.children) ? n.children.map(cleanNode) : []
+        };
+    };
+    const jsonStr = JSON.stringify(cleanNode(node), null, 2);
+    navigator.clipboard.writeText(jsonStr);
+    alert("¡Estructura JSON copiada al portapapeles!");
+  };
+
+  return (
+    <div className="fixed inset-0 z-[350] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-[#fcf9f4] border-[3px] border-[#1c1c19] w-full max-w-xl shadow-[16px_16px_0_0_rgba(15,67,105,1)] flex flex-col transform animate-in zoom-in-95 duration-200 overflow-hidden">
+        {/* Header */}
+        <div className="bg-[#1c1c19] p-6 text-white flex justify-between items-start">
+          <div>
+            <h2 className="text-2xl font-black uppercase tracking-tighter">Operaciones JSON</h2>
+            <p className="font-mono text-[10px] text-white/60 font-bold uppercase tracking-[0.2em] mt-1">
+              Nodo: <span className="text-yellow-400">{node.name}</span>
+            </p>
+          </div>
+          <button onClick={onCancel} className="p-2 hover:bg-white/10 transition-all"><X size={24} /></button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b-2 border-[#1c1c19]">
+            <button 
+                onClick={() => setActiveTab('import')}
+                className={`flex-1 py-4 font-black uppercase tracking-widest text-xs transition-all ${activeTab === 'import' ? 'bg-[#fcf9f4] text-[#1c1c19]' : 'bg-[#e5e2dd] text-[#1c1c19]/40 hover:text-[#1c1c19]'}`}
+            >
+                Inyectar Estructura
+            </button>
+            <button 
+                onClick={() => setActiveTab('export')}
+                className={`flex-1 py-4 font-black uppercase tracking-widest text-xs transition-all ${activeTab === 'export' ? 'bg-[#fcf9f4] text-[#1c1c19]' : 'bg-[#e5e2dd] text-[#1c1c19]/40 hover:text-[#1c1c19]'}`}
+            >
+                Extraer Rama (Export)
+            </button>
+        </div>
+
+        <div className="p-8">
+            {activeTab === 'import' ? (
+                <>
+                    <div className="mb-6 bg-[#0f4369] p-4 border-l-8 border-[#1c1c19] text-white">
+                        <div className="flex items-center gap-3 mb-2">
+                            <Wand2 size={18} className="text-yellow-400" />
+                            <p className="text-xs font-bold uppercase tracking-tight">¿No tienes el JSON?</p>
+                        </div>
+                        <p className="text-[10px] opacity-80 leading-relaxed mb-3">
+                            Copia el prompt especializado para Gemini. Pídele que genere la estructura técnica para "{node.name}" y pega el resultado aquí abajo.
+                        </p>
+                        <button 
+                            onClick={onCopyPrompt}
+                            className="w-full py-2 bg-white text-[#0f4369] font-black text-[10px] uppercase tracking-widest border-2 border-[#1c1c19] shadow-[4px_4px_0_0_rgba(0,0,0,0.2)] hover:translate-y-0.5 hover:shadow-none transition-all"
+                        >
+                            COPIAR PROMPT PARA AI
+                        </button>
+                    </div>
+
+                    <label className="block font-mono text-[9px] font-black mb-2 uppercase opacity-60">Pegar Código JSON del sub-árbol</label>
+                    <textarea
+                        autoFocus
+                        value={importJsonText}
+                        onChange={(e) => setImportJsonText(e.target.value)}
+                        placeholder={`{ "children": [...] }`}
+                        className="w-full h-48 p-4 font-mono text-[11px] bg-white border-2 border-[#1c1c19] focus:outline-none focus:border-[#0f4369] resize-none mb-6 shadow-inner"
+                    />
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <button onClick={onCancel} className="py-3 border-2 border-[#1c1c19] font-black uppercase tracking-widest text-xs hover:bg-[#1c1c19] hover:text-white transition-all">CANCELAR</button>
+                        <button 
+                            onClick={handleProcessImport}
+                            disabled={isImporting || !importJsonText.trim()}
+                            className="py-3 bg-[#1c1c19] text-white border-2 border-[#1c1c19] font-black uppercase tracking-widest text-xs hover:bg-[#0f4369] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-[4px_4px_0_0_rgba(15,67,105,0.3)]"
+                        >
+                            {isImporting ? <Zap size={16} className="animate-spin" /> : <Zap size={16} />}
+                            INCORPORAR ESTRUCTURA
+                        </button>
+                    </div>
+                </>
+            ) : (
+                <div className="flex flex-col items-center text-center py-4">
+                    <div className="w-16 h-16 bg-[#e5e2dd] border-2 border-[#1c1c19] flex items-center justify-center mb-6 shadow-[4px_4px_0_0_rgba(28,28,25,1)]">
+                        <Copy size={32} className="text-[#1c1c19]" />
+                    </div>
+                    <h3 className="text-lg font-black uppercase tracking-tighter mb-2">Exportar Rama Seleccionada</h3>
+                    <p className="font-mono text-[11px] text-[#72777f] uppercase tracking-widest mb-8 max-w-sm">
+                        Esto copiará toda la jerarquía de "{node.name}" (incluyendo todos sus sub-nodos hijos) al portapapeles.
+                    </p>
+                    
+                    <button 
+                        onClick={handleCopyNodeJson}
+                        className="w-full py-4 bg-[#1c1c19] text-white font-black uppercase tracking-[0.3em] text-[11px] border-2 border-[#1c1c19] shadow-[8px_8px_0_0_rgba(15,67,105,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all flex items-center justify-center gap-3"
+                    >
+                        <Zap size={18} className="text-yellow-400" />
+                        COPIAR ESTRUCTURA JSON
+                    </button>
+                </div>
+            )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+
+
+export default function EsquemasView() {
+  const { t } = useTranslation();
+  const { isAdmin } = useAuth();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [zoom, setZoom] = useState(0.85);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const containerRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const wheelTimeout = useRef(null);
+
+  const { schemaId } = useParams();
+  const navigate = useNavigate();
+
+  const [esquemas, setEsquemas] = useState([]);
+  const [activeEsquema, setActiveEsquema] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // JSON Import states
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importJsonText, setImportJsonText] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+
+  // State for editable maps
+  const [mapData, setMapData] = useState(INITIAL_MIND_MAP_DATA);
+
+  // Modal inspection state
+  const [inspectedNode, setInspectedNode] = useState(null);
+
+  // Dragging state
+  const [draggingNodeId, setDraggingNodeId] = useState(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [startDragPos, setStartDragPos] = useState({ x: 0, y: 0 });
+  // Dragging & Panning state
+  const dragHappened = useRef(false);
+  const requestRef = useRef();
+  const [isPanning, setIsPanning] = useState(false);
+  const lastMousePos = useRef({ x: 0, y: 0 });
+  const panClickStart = useRef({ x: 0, y: 0 });
+
+  // Saving states
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [lastSavedData, setLastSavedData] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  // Global links lookup for canvas nodes
+  const [nodeLinks, setNodeLinks] = useState({});
+
+  // Multi-selection state
+  const [selectedNodeIds, setSelectedNodeIds] = useState(new Set());
+  const [selectionBox, setSelectionBox] = useState(null);
+  const dragStartPositions = useRef({});
+
+  const [isLocked, setIsLocked] = useState(false);
+  const [showJsonView, setShowJsonView] = useState(false);
+  const [isCreatorMode, setIsCreatorMode] = useState(false);
+  const [editingNodeId, setEditingNodeId] = useState(null);
+  const [reconnectingData, setReconnectingData] = useState(null); // { parentId, childId, mouseX, mouseY }
+  const [reconnectTargetId, setReconnectTargetId] = useState(null);
+  const [duplicatingData, setDuplicatingData] = useState(null); // { branchRootNode, mouseX, mouseY }
+
+  // Highlight mode state
+  const [isHighlighterActive, setIsHighlighterActive] = useState(false);
+  const [markerColor, setMarkerColor] = useState('#fef08a'); // default yellow-200
+
+  const MARKER_COLORS = [
+    { name: 'yellow', value: '#fef08a' },
+    { name: 'green', value: '#bbf7d0' },
+    { name: 'blue', value: '#bfdbfe' },
+    { name: 'pink', value: '#fbcfe8' },
+    { name: 'purple', value: '#e9d5ff' }
+  ];
+
+  // Global UI Toggles for HUD
+  const [allBranchesExpanded, setAllBranchesExpanded] = useState(false);
+  const [allDataExpanded, setAllDataExpanded] = useState(false);
+
+  // Advanced Node Import state
+  const [importTargetNode, setImportTargetNode] = useState(null); // Node object
+
+  const fetchSchemaLinks = async (schemaId) => {
+    if (!schemaId) return;
+    const [modRes, resRes] = await Promise.all([
+      supabase.from('esquema_nodes_modules').select('node_id, module_id').eq('esquema_id', schemaId),
+      supabase.from('esquema_nodes_resources').select('node_id, resource_id').eq('esquema_id', schemaId)
+    ]);
+
+    const lookup = {};
+    if (modRes.data) {
+      modRes.data.forEach(link => {
+        if (!lookup[link.node_id]) lookup[link.node_id] = { modules: [], resources: [] };
+        lookup[link.node_id].modules.push(link.module_id);
+      });
+    }
+    if (resRes.data) {
+      resRes.data.forEach(link => {
+        if (!lookup[link.node_id]) lookup[link.node_id] = { modules: [], resources: [] };
+        lookup[link.node_id].resources.push(link.resource_id);
+      });
+    }
+    setNodeLinks(lookup);
+  };
+
+  // Generate layout based on expansion state and current data
+  const treeNodes = useMemo(() => layoutTree(mapData, 100, 100), [mapData]);
+
+
+  const copyAiPrompt = () => {
+    const prompt = `Genera ÚNICAMENTE un objeto JSON para un mapa mental siguiendo esta estructura exacta:
+{
+  "id": "root",
+  "name": "NOMBRE DEL SISTEMA",
+  "description": "Descripción breve",
+  "isRoot": true,
+  "children": [
+    {
+      "id": "sub-1",
+      "name": "Subcategoría",
+      "description": "Detalle técnico",
+      "children": []
+    }
+  ]
+}
+REGLAS:
+1. Retorna SOLO el JSON, sin texto introductorio ni explicaciones.
+2. Usa una jerarquía profunda (mínimo 3 niveles).
+3. Cada nodo debe tener "id", "name" y "description".
+4. El tema central es: [DESCRIPCIÓN DEL SISTEMA QUE DESEAS CREAR]`;
+
+    navigator.clipboard.writeText(prompt);
+    alert("Prompt para SISTEMA COMPLETO copiado.");
+  };
+
+  const copyBranchAiPrompt = (nodeName) => {
+    const prompt = `Actúa como un experto en estructuración de datos. Genera ÚNICAMENTE un objeto JSON que contenga los nodos hijos para expandir el nodo: "${nodeName}".
+
+ESTRUCTURA REQUERIDA:
+{
+  "children": [
+    {
+      "id": "id_unico_1",
+      "name": "Nombre del Sub-Nodo",
+      "description": "Descripción técnica concisa",
+      "children": []
+    }
+  ]
+}
+
+REGLAS CRÍTICAS:
+1. Retorna EXCLUSIVAMENTE el bloque JSON.
+2. NO incluyas markdown, ni texto antes o después.
+3. Los datos deben ser altamente técnicos y específicos para el contexto de: "${nodeName}".
+4. Proporciona al menos 2 niveles de profundidad en la rama.
+5. Usa la siguiente información para alimentar el contenido: [PEGA AQUÍ TU INFORMACIÓN O INSTRUCCIONES ADICIONALES]`;
+
+    navigator.clipboard.writeText(prompt);
+    alert("Prompt para RAMA copiado. Pégalo en Gemini.");
+  };
+
+  useEffect(() => {
+    fetchEsquemas();
+  }, []);
+
+  // Debounced auto-save effect
+  useEffect(() => {
+    if (!isDirty || !activeEsquema) return;
+
+    const timer = setTimeout(async () => {
+      setIsSaving(true);
+      try {
+        const { error } = await supabase.from('esquemas').update({ map_data: mapData }).eq('id', activeEsquema.id);
+        if (!error) {
+          setIsDirty(false);
+          setLastSavedData(JSON.stringify(mapData));
+        }
+      } finally {
+        setIsSaving(false);
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [mapData, isDirty, activeEsquema]);
+
+  // Handle URL changes to set active schema
+  useEffect(() => {
+    if (esquemas.length > 0 && schemaId) {
+      const found = esquemas.find(e => e.id === schemaId);
+      if (found) {
+        openEsquema(found);
+      } else {
+        // If ID not found, maybe redirect to main list
+        setActiveEsquema(null);
+      }
+    } else if (!schemaId) {
+      setActiveEsquema(null);
+    }
+  }, [schemaId, esquemas]);
+  
+  // Attach wheel listener manually to avoid Chrome's passive-by-default behavior
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !activeEsquema) return;
+
+    const onWheelWrapper = (e) => {
+      handleWheel(e);
+    };
+
+    container.addEventListener('wheel', onWheelWrapper, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', onWheelWrapper);
+    };
+  }, [activeEsquema, zoom, panOffset]);
+
+  const fetchEsquemas = async () => {
+    setIsLoading(true);
+    const { data, error } = await supabase.from('esquemas').select('*').order('created_at', { ascending: false });
+    if (!error && data) {
+      setEsquemas(data);
+    }
+    setIsLoading(false);
+  };
+
+  const handleCreateEsquema = async () => {
+    const newEsquema = {
+      name: 'Nuevo Ecosistema',
+      description: 'Generado automáticamente',
+      map_data: {
+        id: 'root',
+        name: 'Nuevo Ecosistema',
+        description: 'Descripción inicial',
+        isRoot: true,
+        children: []
+      }
+    };
+    const { data, error } = await supabase.from('esquemas').insert([newEsquema]).select();
+    if (!error && data) {
+      setEsquemas([data[0], ...esquemas]);
+      openEsquema(data[0]);
+    }
+  };
+
+  const handleDeleteEsquema = async (e, id) => {
+    e.stopPropagation();
+    if (!window.confirm("¿Seguro que deseas eliminar el esquema completo? Esto no se puede deshacer.")) return;
+    const { error } = await supabase.from('esquemas').delete().eq('id', id);
+    if (!error) {
+      setEsquemas(prev => prev.filter(esq => esq.id !== id));
+    }
+  };
+
+  const handleImportJson = async () => {
+    if (!importJsonText.trim()) return;
+    setIsImporting(true);
+    try {
+      const jsonData = JSON.parse(importJsonText);
+      const name = jsonData.name || 'Imported Schema';
+      const description = jsonData.description || 'Imported via JSON Paste';
+
+      const newEsquema = {
+        name,
+        description,
+        map_data: jsonData
+      };
+
+      const { data, error } = await supabase.from('esquemas').insert([newEsquema]).select();
+      if (!error && data) {
+        setEsquemas([data[0], ...esquemas]);
+        setIsImportModalOpen(false);
+        setImportJsonText('');
+        // Optional: open the newly imported schema
+        // openEsquema(data[0]);
+      } else if (error) {
+        alert("Database error: " + error.message);
+      }
+    } catch (err) {
+      alert("Error processing JSON. Please verify the format.");
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const jsonData = JSON.parse(event.target.result);
+        const name = jsonData.name || 'Imported Schema';
+        const description = jsonData.description || 'Imported via JSON file';
+
+        const newEsquema = {
+          name,
+          description,
+          map_data: jsonData
+        };
+
+        const { data, error } = await supabase.from('esquemas').insert([newEsquema]).select();
+        if (!error && data) {
+          setEsquemas([data[0], ...esquemas]);
+        }
+      } catch (err) {
+        alert("Error processing JSON file. Please verify the format.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = null; // reset input
+  };
+
+  const sanitizeMapData = (node, forceNewIds = false) => {
+    if (!node) return null;
+    
+    // 1. Gather all existing IDs in the current session mapData to avoid collisions
+    const existingIds = new Set();
+    const gatherIds = (n) => {
+      if (!n) return;
+      existingIds.add(n.id);
+      if (n.children) n.children.forEach(gatherIds);
+    };
+    if (mapData && !forceNewIds) gatherIds(mapData);
+
+    const seenInThisPass = new Set();
+
+    const recursivelySanitize = (n) => {
+      let newId = n.id;
+      
+      // If we force new IDs (duplication/import) OR it exists globally OR it exists in this pass
+      const isDuplicate = existingIds.has(newId) || seenInThisPass.has(newId);
+      
+      if (forceNewIds || isDuplicate || !newId) {
+        newId = 'node_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+      }
+      
+      seenInThisPass.add(newId);
+
+      return {
+        ...n,
+        id: newId,
+        children: n.children && Array.isArray(n.children) ? n.children.map(recursivelySanitize) : []
+      };
+    };
+
+    return recursivelySanitize(node);
+  };
+
+  const openEsquema = (esq) => {
+    setActiveEsquema(esq);
+    const sanitizedData = sanitizeMapData(esq.map_data);
+    setMapData(sanitizedData);
+    setLastSavedData(JSON.stringify(sanitizedData));
+    setIsDirty(false);
+
+    // Load global links for the schema
+    fetchSchemaLinks(esq.id);
+
+    // Update URL if it's not already correct
+    if (schemaId !== esq.id) {
+      navigate(`/esquemas/${esq.id}`);
+    }
+  };
+
+  const updateNodeInTree = (nodeId, updateFn) => {
+    const recursivelyUpdate = (n) => {
+      if (n.id === nodeId) return updateFn(n);
+      if (n.children) return { ...n, children: n.children.map(recursivelyUpdate) };
+      return n;
+    };
+
+    const newMapData = recursivelyUpdate(mapData);
+    setMapData(newMapData);
+    setIsDirty(true);
+    return newMapData;
+  };
+
+  const toggleTextExpand = (id) => {
+    updateNodeInTree(id, n => ({ ...n, isTextExpanded: !n.isTextExpanded }));
+  };
+
+  const toggleBranchExpand = (id) => {
+    updateNodeInTree(id, n => ({ ...n, isBranchExpanded: !n.isBranchExpanded }));
+  };
+
+  const handleToggleHighlight = (id) => {
+    updateNodeInTree(id, n => {
+        if (n.isHighlighted && n.highlightColor === markerColor) {
+            // If already highlighted with SAME color, turn off
+            return { ...n, isHighlighted: false, highlightColor: null };
+        } else {
+            // Highlight or change color
+            return { ...n, isHighlighted: true, highlightColor: markerColor };
+        }
+    });
+  };
+
+  const handleDeepToggleBranch = (nodeId, expand) => {
+    const recursivelyToggle = (n, force = false) => {
+      // If we found the target, or we are already inside a branch that's being forced
+      const isTarget = n.id === nodeId;
+      const shouldApply = force || isTarget;
+
+      let updatedNode = { ...n };
+      const hasChildren = n.children && Array.isArray(n.children) && n.children.length > 0;
+
+      if (shouldApply && hasChildren) {
+        updatedNode.isBranchExpanded = expand;
+      }
+
+      if (n.children) {
+        updatedNode.children = n.children.map(child => recursivelyToggle(child, shouldApply));
+      }
+      return updatedNode;
+    };
+
+    const newMapData = recursivelyToggle(mapData);
+    setMapData(newMapData);
+    setIsDirty(true);
+  };
+
+  const handleGlobalTreeToggle = () => {
+    const nextValue = !allBranchesExpanded;
+    handleBulkUpdate('isBranchExpanded', nextValue);
+    setAllBranchesExpanded(nextValue);
+  };
+
+  const handleGlobalDataToggle = () => {
+    const nextValue = !allDataExpanded;
+    handleBulkUpdate('isTextExpanded', nextValue);
+    setAllDataExpanded(nextValue);
+  };
+
+  const handleBulkUpdate = (updateKey, value) => {
+    const recursivelyUpdateAll = (n) => {
+      let updated = { ...n, [updateKey]: value };
+      if (n.children) {
+        updated.children = n.children.map(recursivelyUpdateAll);
+      }
+      return updated;
+    };
+
+    const newMapData = recursivelyUpdateAll(mapData);
+    setMapData(newMapData);
+    setIsDirty(true);
+  };
+
+  const handleIsolateNode = () => {
+    if (selectedNodeIds.size === 0) return;
+    
+    // Use the first selected node in the set
+    const targetId = Array.from(selectedNodeIds)[0];
+    
+    // 1. Find the path from root to targetId
+    const findPath = (node, targetId, currentPath = []) => {
+      if (node.id === targetId) return [...currentPath, node.id];
+      if (node.children) {
+        for (const child of node.children) {
+          const path = findPath(child, targetId, [...currentPath, node.id]);
+          if (path) return path;
+        }
+      }
+      return null;
+    };
+
+    const path = findPath(mapData, targetId);
+    if (!path) return;
+    const pathSet = new Set(path);
+
+    // 2. Recursively update the tree (expand only path nodes)
+    const updateNodes = (node) => {
+      // Logic: Expand if it's in the path AND it's NOT the target itself (we want to see the target, but maybe not its kids)
+      // Actually, to "open the route to the node", all ancestors must be expanded.
+      const isAncestor = pathSet.has(node.id) && node.id !== targetId;
+      
+      let updatedNode = { 
+        ...node, 
+        isBranchExpanded: isAncestor
+      };
+      
+      if (node.children) {
+        updatedNode.children = node.children.map(updateNodes);
+      }
+      return updatedNode;
+    };
+
+    setMapData(updateNodes(mapData));
+    setIsDirty(true);
+    setAllBranchesExpanded(false); // Reset global state if any
+
+    // 3. Optional: Move camera to the node
+    const nodeObj = treeNodes.find(n => n.id === targetId);
+    if (nodeObj && containerRef.current) {
+        setTimeout(() => {
+          const rect = containerRef.current.getBoundingClientRect();
+          const targetX = rect.width / 2 - (nodeObj.x + nodeObj.width / 2) * zoom;
+          const targetY = rect.height / 2 - (nodeObj.y + nodeObj.height / 2) * zoom;
+          setPanOffset({ x: targetX, y: targetY });
+        }, 150);
+    }
+  };
+
+  const handleMouseDownMain = (e) => {
+    // If we are currently editing a node name, a click on the background should save it.
+    if (editingNodeId && document.activeElement instanceof HTMLInputElement) {
+      document.activeElement.blur();
+    }
+    // If Shift is pressed or right-click, we might want marquee selection
+    if (e.button === 0 && e.shiftKey) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const x = (e.clientX - rect.left - panOffset.x) / zoom;
+        const y = (e.clientY - rect.top - panOffset.y) / zoom;
+        setSelectionBox({ startX: x, startY: y, endX: x, endY: y });
+        setSelectedNodeIds(new Set()); // Clear selection when starting new marquee
+        return;
+    }
+
+    // Enable panning with Middle (1) or Left (0) if not on an interactive node
+    if (e.button === 1 || e.button === 0) {
+      if (e.target.closest('button')) return;
+      
+      e.preventDefault();
+      setIsPanning(true);
+      lastMousePos.current = { x: e.clientX, y: e.clientY };
+      panClickStart.current = { x: e.clientX, y: e.clientY };
+      return;
+    }
+  };
+
+  const handleWheel = (e) => {
+    if (!containerRef.current) return;
+    e.preventDefault();
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Relative mouse position on the canvas before zoom
+    const canvasMouseX = (mouseX - panOffset.x) / zoom;
+    const canvasMouseY = (mouseY - panOffset.y) / zoom;
+
+    const delta = -e.deltaY;
+    const zoomIntensity = 0.001;
+    let newZoom = zoom + delta * zoomIntensity * zoom;
+    newZoom = Math.min(Math.max(0.1, newZoom), 3);
+
+    // New pan offset to keep mouse position stable
+    const newPanX = mouseX - canvasMouseX * newZoom;
+    const newPanY = mouseY - canvasMouseY * newZoom;
+
+    setZoom(newZoom);
+    setPanOffset({ x: newPanX, y: newPanY });
+  };
+
+  const handleDragStart = (e, nodeId) => {
+    if (!isAdmin) return;
+    e.stopPropagation();
+
+    // Handle selection logic
+    let newSelection = new Set(selectedNodeIds);
+    if (!newSelection.has(nodeId)) {
+        if (!e.shiftKey) {
+            newSelection = new Set([nodeId]);
+        } else {
+            newSelection.add(nodeId);
+        }
+    }
+    setSelectedNodeIds(newSelection);
+
+    // Initialize start positions for all selected nodes
+    const starts = {};
+    treeNodes.forEach(n => {
+        if (newSelection.has(n.id)) {
+            starts[n.id] = { x: n.x, y: n.y };
+        }
+    });
+    dragStartPositions.current = starts;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    setStartDragPos({ x: e.clientX, y: e.clientY });
+    setDragOffset({
+      x: (e.clientX - rect.left) / zoom,
+      y: (e.clientY - rect.top) / zoom
+    });
+    
+    dragHappened.current = false;
+    setDraggingNodeId({ id: nodeId, confirmed: false });
+  };
+
+  const handleMouseMove = (e) => {
+    if (selectionBox && containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const x = (e.clientX - rect.left - panOffset.x) / zoom;
+        const y = (e.clientY - rect.top - panOffset.y) / zoom;
+        setSelectionBox(prev => ({ ...prev, endX: x, endY: y }));
+        return;
+    }
+
+    if (reconnectingData && containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const mouseX = (e.clientX - rect.left - panOffset.x) / zoom;
+        const mouseY = (e.clientY - rect.top - panOffset.y) / zoom;
+        setReconnectingData(prev => ({ ...prev, mouseX, mouseY }));
+
+        // Detect target node
+        const target = treeNodes.find(n => {
+            return mouseX >= n.x && mouseX <= n.x + n.width && 
+                   mouseY >= n.y && mouseY <= n.y + n.height &&
+                   n.id !== reconnectingData.childId &&
+                   n.id !== reconnectingData.parentId;
+        });
+        setReconnectTargetId(target?.id || null);
+        return;
+    }
+
+    if (duplicatingData && containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const mouseX = (e.clientX - rect.left - panOffset.x) / zoom;
+        const mouseY = (e.clientY - rect.top - panOffset.y) / zoom;
+        setDuplicatingData(prev => ({ ...prev, mouseX, mouseY }));
+
+        // Detect target node
+        const target = treeNodes.find(n => {
+            return mouseX >= n.x && mouseX <= n.x + n.width && 
+                   mouseY >= n.y && mouseY <= n.y + n.height;
+        });
+        setReconnectTargetId(target?.id || null);
+        return;
+    }
+
+    if (isPanning) {
+      const dx = e.clientX - lastMousePos.current.x;
+      const dy = e.clientY - lastMousePos.current.y;
+      setPanOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+      lastMousePos.current = { x: e.clientX, y: e.clientY };
+      return;
+    }
+
+    if (!draggingNodeId || !containerRef.current) return;
+
+    // Check threshold (10px)
+    if (!draggingNodeId.confirmed) {
+      const dx = e.clientX - startDragPos.x;
+      const dy = e.clientY - startDragPos.y;
+      if (Math.sqrt(dx * dx + dy * dy) > 10) {
+        setDraggingNodeId(prev => ({ ...prev, confirmed: true }));
+        dragHappened.current = true;
+      } else {
+        return;
+      }
+    }
+
+    if (requestRef.current) cancelAnimationFrame(requestRef.current);
+
+    requestRef.current = requestAnimationFrame(() => {
+      const dx = (e.clientX - startDragPos.x) / zoom;
+      const dy = (e.clientY - startDragPos.y) / zoom;
+
+      const recursivelyUpdateAllSelected = (n) => {
+        let updatedNode = n;
+        if (selectedNodeIds.has(n.id)) {
+            const start = dragStartPositions.current[n.id];
+            if (start) {
+                updatedNode = { ...n, x: start.x + dx, y: start.y + dy };
+            }
+        }
+        
+        if (n.children) {
+            return { ...updatedNode, children: n.children.map(recursivelyUpdateAllSelected) };
+        }
+        return updatedNode;
+      };
+
+      setMapData(prev => recursivelyUpdateAllSelected(prev));
+      setIsDirty(true);
+    });
+  };
+
+  const handleMouseUp = (e) => {
+    // If it was a pan, check if we actually moved. If it was a short click, deselect.
+    if (isPanning && panClickStart.current) {
+        const dx = e.clientX - panClickStart.current.x;
+        const dy = e.clientY - panClickStart.current.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Threshold: 5 pixels to be considered a click instead of a pan
+        if (distance < 5 && !e.shiftKey) {
+            setSelectedNodeIds(new Set());
+        }
+    }
+
+    setIsPanning(false);
+    
+    if (selectionBox) {
+        // Find nodes within boundaries
+        // ... previous marquee logic ...
+        const xMin = Math.min(selectionBox.startX, selectionBox.endX);
+        const xMax = Math.max(selectionBox.startX, selectionBox.endX);
+        const yMin = Math.min(selectionBox.startY, selectionBox.endY);
+        const yMax = Math.max(selectionBox.startY, selectionBox.endY);
+
+        const newlySelected = new Set();
+        treeNodes.forEach(node => {
+            const centerX = node.x + node.width / 2;
+            const centerY = node.y + node.height / 2;
+            if (centerX >= xMin && centerX <= xMax && centerY >= yMin && centerY <= yMax) {
+                newlySelected.add(node.id);
+            }
+        });
+        setSelectedNodeIds(newlySelected);
+        setSelectionBox(null);
+    }
+
+    if (reconnectingData) {
+        if (reconnectTargetId) {
+            handleReconnectNode(reconnectingData.parentId, reconnectingData.childId, reconnectTargetId);
+        }
+        setReconnectingData(null);
+        setReconnectTargetId(null);
+    }
+
+    if (duplicatingData) {
+        if (reconnectTargetId) {
+            handleAttachDuplicatedBranch(reconnectTargetId, duplicatingData.branchRootNode);
+        }
+        setDuplicatingData(null);
+        setReconnectTargetId(null);
+    }
+
+    if (draggingNodeId) {
+      setDraggingNodeId(null);
+    }
+  };
+
+  const handleReconnectNode = (oldParentId, childId, newParentId) => {
+    // 1. Get the branch to move
+    let nodeToMove = null;
+    const findAndExtract = (n) => {
+        if (!n || !n.children) return n;
+        const nodeIdx = n.children.findIndex(c => c.id === childId);
+        if (nodeIdx > -1) {
+            nodeToMove = n.children[nodeIdx];
+            // Remove from current children
+            return {
+                ...n,
+                children: n.children.filter(c => c.id !== childId)
+            };
+        }
+        return {
+            ...n,
+            children: n.children.map(findAndExtract)
+        };
+    };
+
+    const tempTree = findAndExtract(mapData);
+    if (!nodeToMove) return;
+
+    // 2. Insert into new parent
+    const insertIntoNew = (n) => {
+        if (n.id === newParentId) {
+            return {
+                ...n,
+                children: [...(n.children || []), nodeToMove]
+            };
+        }
+        if (n.children) {
+            return { ...n, children: n.children.map(insertIntoNew) };
+        }
+        return n;
+    };
+
+    setMapData(insertIntoNew(tempTree));
+    setIsDirty(true);
+  };
+
+  const handleInsertIntermediateNode = (parentId, childId) => {
+    if (!isAdmin) return;
+    
+    const newNodeID = 'node_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    const newNode = {
+      id: newNodeID,
+      name: "Nuevo Módulo",
+      description: "Inserción jerárquica",
+      children: [],
+      isBranchExpanded: true,
+      isTextExpanded: false
+    };
+
+    const insertBetween = (n) => {
+        if (!n || !n.children) return n;
+        if (n.id === parentId) {
+            const childIdx = n.children.findIndex(c => c.id === childId);
+            if (childIdx > -1) {
+                const originalChild = n.children[childIdx];
+                const updatedNewNode = { ...newNode, children: [originalChild] };
+                const newChildren = [...n.children];
+                newChildren[childIdx] = updatedNewNode;
+                return { ...n, children: newChildren };
+            }
+        }
+        return {
+            ...n,
+            children: n.children.map(insertBetween)
+        };
+    };
+
+    setMapData(insertBetween(mapData));
+    setIsDirty(true);
+    
+    // Focus rename automatically
+    setTimeout(() => {
+        setEditingNodeId(newNodeID);
+    }, 200);
+  };
+
+  const handleStartCut = (e, parentId, childId, handlePos) => {
+    if (!isAdmin) return;
+    setReconnectingData({
+        parentId,
+        childId,
+        mouseX: handlePos.x,
+        mouseY: handlePos.y
+    });
+  };
+
+  const handleStartDuplicateBranch = (e, childId) => {
+    if (!isAdmin) return;
+    
+    // 1. Find the node to duplicate
+    const findNode = (n) => {
+        if (n.id === childId) return n;
+        if (n.children) {
+            for (let child of n.children) {
+                const found = findNode(child);
+                if (found) return found;
+            }
+        }
+        return null;
+    };
+    
+    const nodeToDuplicate = findNode(mapData);
+    if (!nodeToDuplicate) return;
+
+    // 2. Clone it (sanitize inside the attach handler to ensure unique IDs everywhere)
+    const clone = JSON.parse(JSON.stringify(nodeToDuplicate));
+    
+    const rect = containerRef.current.getBoundingClientRect();
+    const mouseX = (e.clientX - rect.left - panOffset.x) / zoom;
+    const mouseY = (e.clientY - rect.top - panOffset.y) / zoom;
+
+    setDuplicatingData({
+        branchRootNode: clone,
+        mouseX,
+        mouseY
+    });
+  };
+
+  const handleAttachDuplicatedBranch = (targetParentId, branchRoot) => {
+    // Sanitize to get fresh IDs for the entire new branch (true = force new IDs)
+    const sanitizedBranch = sanitizeMapData(branchRoot, true);
+
+    const recursivelyAdd = (n) => {
+        if (n.id === targetParentId) {
+            return {
+                ...n,
+                children: [...(n.children || []), sanitizedBranch],
+                isBranchExpanded: true
+            };
+        }
+        if (n.children) {
+            return { ...n, children: n.children.map(recursivelyAdd) };
+        }
+        return n;
+    };
+
+    setMapData(recursivelyAdd(mapData));
+    setIsDirty(true);
+  };
+
+  // Save logic (Recursive update & Supabase persist)
+  const handleSaveNode = async (updatedNode) => {
+    const recursivelyUpdate = (n) => {
+      if (n.id === updatedNode.id) {
+        return { 
+            ...n, 
+            name: updatedNode.name, 
+            description: updatedNode.description,
+            roles: updatedNode.roles,
+            externalLinks: updatedNode.externalLinks,
+            externalResources: updatedNode.externalResources
+        };
+      }
+      if (n.children) {
+        return { ...n, children: n.children.map(recursivelyUpdate) };
+      }
+      return n;
+    };
+
+    const newMapData = recursivelyUpdate(mapData);
+    setMapData(newMapData);
+    setIsDirty(true);
+    setInspectedNode(null);
+
+    // Si es el root, actualizamos también el nombre del esquema en la lista local inmediatamente para feedback visual
+    if (updatedNode.isRoot && activeEsquema) {
+      setEsquemas(prev => prev.map(e => e.id === activeEsquema.id ? { 
+          ...e, 
+          name: updatedNode.name, 
+          description: updatedNode.description 
+      } : e));
+    }
+  };
+
+  const handleSaveNodeName = (nodeId, newName) => {
+    updateNodeInTree(nodeId, n => ({ ...n, name: newName }));
+    setEditingNodeId(null);
+  };
+
+
+
+  const handleAddSubNodeToTree = (parentId) => {
+    // Intentamos obtener la ubicación actual del padre para spawnear cerca
+    const parentLayout = treeNodes.find(n => n.id === parentId);
+
+    const newNodeID = 'node_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    const newNode = {
+      id: newNodeID,
+      name: 'NUEVO SUB-MÓDULO',
+      description: 'Añada una definición técnica...',
+      children: [],
+      // No manual coordinates: the layout engine will place it perfectly
+      // to avoid any overlaps regardless of size.
+    };
+
+
+    const recursivelyAdd = (n) => {
+      if (n.id === parentId) {
+        return { ...n, children: n.children ? [...n.children, newNode] : [newNode], isBranchExpanded: true };
+      }
+      if (n.children) {
+        return { ...n, children: n.children.map(recursivelyAdd) };
+      }
+      return n;
+    };
+
+    const newMapData = recursivelyAdd(mapData);
+    setMapData(newMapData);
+    setIsDirty(true);
+
+    // Auto-open modal for the new node ONLY if NOT in creator mode
+    if (!isCreatorMode) {
+      setTimeout(() => setInspectedNode(newNode), 100);
+    } else {
+      // In creator mode, trigger in-place name editing
+      setTimeout(() => setEditingNodeId(newNodeID), 200);
+    }
+  };
+
+  const handleImportBranchToNode = (parentId, jsonData) => {
+    // 1. Determine nodes to add (might be a list of children or a single node)
+    let nodesToAdd = [];
+    if (jsonData.children && Array.isArray(jsonData.children)) {
+      nodesToAdd = jsonData.children;
+    } else if (Array.isArray(jsonData)) {
+      nodesToAdd = jsonData;
+    } else {
+      nodesToAdd = [jsonData];
+    }
+
+    // 2. Sanitize IDs (Force new IDs for imported content)
+    const sanitizedNodes = nodesToAdd.map(node => sanitizeMapData(node, true));
+
+    // 3. Recursive insertion
+    const recursivelyAddBranch = (n) => {
+      if (n.id === parentId) {
+        return { 
+          ...n, 
+          children: n.children ? [...n.children, ...sanitizedNodes] : [...sanitizedNodes], 
+          isBranchExpanded: true 
+        };
+      }
+      if (n.children) {
+        return { ...n, children: n.children.map(recursivelyAddBranch) };
+      }
+      return n;
+    };
+
+    const newMapData = recursivelyAddBranch(mapData);
+    setMapData(newMapData);
+    setIsDirty(true);
+    setImportTargetNode(null);
+  };
+
+
+  const handleDeleteNodeFromTree = (nodeId) => {
+    setConfirmDeleteId(nodeId);
+  };
+
+  const executeDeleteNode = () => {
+    if (!confirmDeleteId) return;
+    const nodeId = confirmDeleteId;
+    console.log("EXECUTING CONFIRMED DELETE FOR:", nodeId);
+
+    // 1. Cleanup dangling states
+    if (selectedNodeIds.has(nodeId)) {
+        setSelectedNodeIds(prev => {
+            const next = new Set(prev);
+            next.delete(nodeId);
+            return next;
+        });
+    }
+    if (editingNodeId === nodeId) setEditingNodeId(null);
+    if (inspectedNode?.id === nodeId) setInspectedNode(null);
+
+    // 2. Perform recursive removal
+    const recursivelyRemove = (n) => {
+      if (!n || !n.children) return n;
+      return {
+        ...n,
+        children: n.children
+          .filter(child => child.id !== nodeId)
+          .map(recursivelyRemove)
+      };
+    };
+
+    setMapData(currentData => recursivelyRemove(currentData));
+    setIsDirty(true);
+    setConfirmDeleteId(null);
+  };
+
+  const handleAutoOrganize = () => {
+    const isSelectionActive = selectedNodeIds.size > 0;
+    
+    // We pass parentIsSelected to identify "heads" of selection
+    const recursivelyRemoveCoords = (n, parentIsSelected = false) => {
+      const isSelected = selectedNodeIds.has(n.id);
+      
+      // Rule: Clear coords if it's selected AND its parent is also selected (it's a descendant in the group).
+      // If parent is NOT selected, this node is the "Head" of its selection block and should stay put.
+      const shouldClear = isSelectionActive && isSelected && parentIsSelected;
+      
+      // If no selection is active, we clear EVERYTHING (original behavior)
+      const forceClearAll = !isSelectionActive;
+
+      let updatedNode = { ...n };
+      if (shouldClear || forceClearAll) {
+          delete updatedNode.x;
+          delete updatedNode.y;
+      }
+      
+      if (updatedNode.children && Array.isArray(updatedNode.children)) {
+        updatedNode.children = updatedNode.children.map(child => recursivelyRemoveCoords(child, isSelected));
+      }
+      return updatedNode;
+    };
+
+    setMapData(recursivelyRemoveCoords(mapData));
+    setIsDirty(true);
+    
+    // Reset pan and zoom to see the new layout if organizing everything
+    if (!isSelectionActive) {
+        setTimeout(() => {
+            centerOnRoot();
+        }, 100);
+    }
+  };
+
+
+  // Explicit dynamic dimensions for SVG - HUGE CANVAS for total freedom
+  const maxX = treeNodes.length > 0 ? Math.max(...treeNodes.map(n => n.x + n.width), 1500) + 400 : 2000;
+  const maxY = treeNodes.length > 0 ? Math.max(...treeNodes.map(n => n.y + n.height), 800) + 400 : 2000;
+
+  // Auto-centering helper - Updated for coordinate-based system
+  const centerOnRoot = () => {
+    if (!containerRef.current || treeNodes.length === 0) return;
+    const root = treeNodes.find(n => n.isRoot) || treeNodes[0];
+    const rect = containerRef.current.getBoundingClientRect();
+
+    // Center of viewport - (Target center in canvas * zoom)
+    const targetX = rect.width / 2 - (root.x + root.width / 2) * zoom;
+    const targetY = rect.height / 2 - (root.y + root.height / 2) * zoom;
+
+    setPanOffset({ x: targetX, y: targetY });
+  };
+
+  // Auto-centering effect when schema OR zoom changes significantly
+  useEffect(() => {
+    if (activeEsquema) {
+      setTimeout(centerOnRoot, 100);
+    }
+  }, [activeEsquema?.id]);
+
+  return (
+    <div className="flex h-screen bg-[#fcf9f4] overflow-hidden font-sans text-[#1c1c19]">
+      <style>
+        {`
+          @media print {
+            .no-print, 
+            header, 
+            nav, 
+            aside,
+            .fixed.bottom-10,
+            .fixed.top-24 {
+              display: none !important;
+            }
+            
+            body, html {
+              background: white !important;
+              overflow: visible !important;
+              height: auto !important;
+              width: auto !important;
+            }
+
+            .flex.h-screen {
+              display: block !important;
+              height: auto !important;
+              overflow: visible !important;
+            }
+
+            main {
+              overflow: visible !important;
+              background: white !important;
+              position: relative !important;
+              width: 100% !important;
+              height: auto !important;
+              padding: 0 !important;
+              margin: 0 !important;
+            }
+
+            canvas, svg, .absolute {
+              print-color-adjust: exact;
+              -webkit-print-color-adjust: exact;
+            }
+
+            /* Reset transforms for print to let browser handle large content */
+            .absolute[style*="transform: translate"] {
+              transform: none !important;
+              position: relative !important;
+              top: 0 !important;
+              left: 0 !important;
+              width: 100% !important;
+            }
+          }
+        `}
+      </style>
+      <div className="no-print h-full flex flex-col shrink-0">
+        <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+      </div>
+
+      <div className="flex-1 flex flex-col h-full relative z-0">
+        <div className="no-print">
+            <Header
+            title={t('nav.esquemas')}
+            onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            />
+        </div>
+
+        {!activeEsquema ? (
+          <div className="flex-1 p-8 overflow-auto bg-[#fcf9f4]">
+            <div className="flex justify-between items-center mb-8 border-b-4 border-[#1c1c19] pb-4">
+              <div>
+                <h1 className="text-3xl font-black uppercase tracking-tighter">BIM Schemas</h1>
+                <p className="font-mono text-sm tracking-widest text-[#0f4369] mt-2">DATA STRUCTURE DASHBOARD</p>
+              </div>
+              <div className="flex gap-4">
+                {isAdmin && (
+                  <>
+                    <button
+                      onClick={() => setIsImportModalOpen(true)}
+                      className="flex items-center gap-2 bg-[#1c1c19] text-[#fcf9f4] border-2 border-[#1c1c19] px-6 py-3 font-black tracking-widest uppercase hover:bg-transparent hover:text-[#1c1c19] transition-all"
+                    >
+                      <Upload size={20} />
+                      PASTE JSON
+                    </button>
+                    <button
+                      onClick={handleCreateEsquema}
+                      className="flex items-center gap-2 bg-[#e5e2dd] text-[#1c1c19] border-2 border-[#1c1c19] px-6 py-3 font-black tracking-widest uppercase shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:translate-y-1 hover:shadow-none transition-all"
+                    >
+                      <Plus size={20} />
+                      NEW SCHEMA
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {isLoading ? (
+              <p className="font-mono text-sm">Loading schemas...</p>
+            ) : esquemas.length === 0 ? (
+              <div className="text-center p-12 border-[3px] border-dashed border-[#1c1c19] opacity-50">
+                <p className="font-mono font-bold tracking-widest">NO SCHEMAS CREATED</p>
+                <p className="text-sm mt-2">Click on NEW SCHEMA to begin.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {esquemas.map(esq => (
+                  <div
+                    key={esq.id}
+                    onClick={() => openEsquema(esq)}
+                    className="bg-white border-[3px] border-[#1c1c19] p-6 shadow-[8px_8px_0_0_rgba(15,67,105,1)] hover:translate-y-1 hover:shadow-[4px_4px_0_0_rgba(15,67,105,1)] cursor-pointer transition-all flex flex-col group"
+                  >
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 bg-[#1c1c19] text-[#fcf9f4] flex items-center justify-center shrink-0">
+                        <Database size={20} />
+                      </div>
+                      <h3 className="font-black uppercase tracking-tighter leading-tight group-hover:text-[#0f4369] transition-colors">{esq.name}</h3>
+                    </div>
+                    <p className="font-mono text-xs text-[#72777f] line-clamp-3 mb-4 flex-1">{esq.description}</p>
+                    <div className="mt-auto border-t-2 border-dashed border-[#1c1c19]/20 pt-4 flex justify-between items-center text-[10px] font-black tracking-widest text-[#1c1c19]">
+                      <span>ID: {esq.id.substring(0, 8)}</span>
+                      <div className="flex items-center gap-4">
+                        {isAdmin && (
+                          <button
+                            onClick={(e) => handleDeleteEsquema(e, esq.id)}
+                            className="text-[#e62020] hover:scale-125 transition-transform bg-white rounded-full p-1 border-2 border-transparent hover:border-[#1c1c19]"
+                            title="Delete Schema Permanently"
+                          >
+                            <Trash2 size={16} strokeWidth={3} />
+                          </button>
+                        )}
+                        <span className="text-[#0f4369]">OPEN &rarr;</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            <main
+              className={`flex-1 overflow-hidden relative ${isPanning || draggingNodeId || selectionBox ? 'cursor-grabbing select-none' : 'cursor-grab'} bg-[#fcf9f4]`}
+              ref={containerRef}
+              onMouseDown={handleMouseDownMain}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              onAuxClick={(e) => { if (e.button === 1) e.preventDefault(); }}
+            >
+              {/* Infinite CAD Grid Background */}
+              <div
+                className="absolute inset-0 pointer-events-none opacity-[0.12]"
+                style={{
+                  backgroundImage: `
+                    linear-gradient(to right, #1c1c19 1px, transparent 1px),
+                    linear-gradient(to bottom, #1c1c19 1px, transparent 1px),
+                    linear-gradient(to right, #1c1c19 2px, transparent 2px),
+                    linear-gradient(to bottom, #1c1c19 2px, transparent 2px)
+                  `,
+                  backgroundSize: `${30 * zoom}px ${30 * zoom}px, ${30 * zoom}px ${30 * zoom}px, ${150 * zoom}px ${150 * zoom}px, ${150 * zoom}px ${150 * zoom}px`,
+                  backgroundPosition: `${panOffset.x}px ${panOffset.y}px`
+                }}
+              />
+
+              {/* Dashboard Status HUD - Aligned */}
+              <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-4 transition-all duration-300 pointer-events-none">
+                {isSaving ? (
+                  <div className="bg-[#1c1c19] text-[#e5e2dd] px-4 py-2 border-2 border-[#1c1c19] shadow-[4px_4px_0_1px_rgba(0,255,249,0.5)] flex items-center gap-3 animate-pulse">
+                    <Save size={14} className="animate-spin-slow" />
+                    <span className="font-mono text-[9px] font-black tracking-[3px] uppercase">Sync h-16/Cloud</span>
+                  </div>
+                ) : isDirty ? (
+                  <div className="bg-[#f6f3ee] text-[#1c1c19] px-4 py-2 border-2 border-[#1c1c19] shadow-[4px_4px_0_0_rgba(28,28,25,0.1)] flex items-center gap-2">
+                    <div className="w-2 h-2 bg-yellow-500 rounded-full animate-ping" />
+                    <span className="font-mono text-[9px] font-black tracking-[3px] uppercase">Pending Edits</span>
+                  </div>
+                ) : activeEsquema && (
+                  <div className="bg-white text-green-700 px-4 py-2 border-2 border-green-600 shadow-[4px_4px_0_0_rgba(22,101,52,0.1)] flex items-center gap-2 opacity-0 hover:opacity-100 transition-opacity">
+                    <Database size={14} strokeWidth={3} />
+                    <span className="font-mono text-[9px] font-black tracking-[3px] uppercase">Sys. Secured</span>
+                  </div>
+                )}
+              </div>
+
+              <div
+                className="absolute"
+                style={{
+                  transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
+                  transformOrigin: '0 0',
+                  width: `${maxX}px`,
+                  height: `${maxY}px`,
+                  transition: isPanning ? 'none' : 'transform 0.1s ease-out'
+                }}
+              >
+                {/* Paper Surface Wrapper */}
+                <div className="relative w-full h-full">
+                  {/* Adaptive Frame Boundary */}
+                  <div
+                    className="absolute border-[3px] border-[#1c1c19] bg-white shadow-2xl pointer-events-none z-[1]"
+                    style={{
+                      width: `${maxX - 100}px`,
+                      height: `${maxY - 100}px`,
+                      left: '50px',
+                      top: '50px'
+                    }}
+                  />
+
+                  {/* SVG Connections Layer */}
+                  <svg
+                    className="absolute top-0 left-0 pointer-events-none z-[15] overflow-visible"
+                    width={maxX}
+                    height={maxY}
+                  >
+                    {treeNodes.map((parent, idx) => {
+                      if (!parent.children || !parent.isBranchExpanded) return null;
+                      return parent.children.map((childName, cIdx) => {
+                        const child = treeNodes.find(n => n.id === childName.id);
+                        if (!child) return null;
+
+                        const startX = parent.x + parent.width;
+                        const startY = parent.y + (parent.height / 2);
+                        const endX = child.x;
+                        const endY = child.y + (child.height / 2);
+
+                        return (
+                          <Connector
+                            key={`${parent.id}-${child.id}`}
+                            start={{ x: startX, y: startY }}
+                            end={{ x: endX, y: endY }}
+                            parentId={parent.id}
+                            childId={child.id}
+                            onCut={handleStartCut}
+                            onInsert={handleInsertIntermediateNode}
+                            onDuplicate={handleStartDuplicateBranch}
+                            isAdmin={isAdmin}
+                          />
+                        );
+                      });
+                    })}
+                    
+                    {/* Temporay line for reconnection */}
+                    {reconnectingData && (
+                        <line 
+                            x1={reconnectingData.mouseX} 
+                            y1={reconnectingData.mouseY} 
+                            x2={(() => {
+                                const node = treeNodes.find(n => n.id === reconnectingData.childId);
+                                return node ? node.x : reconnectingData.mouseX;
+                            })()}
+                            y2={(() => {
+                                const node = treeNodes.find(n => n.id === reconnectingData.childId);
+                                return node ? node.y + node.height/2 : reconnectingData.mouseY;
+                            })()}
+                            stroke={reconnectTargetId ? "#22c55e" : "#0f4369"}
+                            strokeWidth="4"
+                            strokeDasharray="5 5"
+                        />
+                     )}
+
+                    {/* Temporary shadow/ghost for duplication */}
+                    {duplicatingData && (
+                        <g>
+                            <circle 
+                                cx={duplicatingData.mouseX} 
+                                cy={duplicatingData.mouseY} 
+                                r="10" 
+                                fill={reconnectTargetId ? "#22c55e" : "#0f4369"} 
+                                opacity="0.6"
+                                className="animate-pulse"
+                            />
+                            <text 
+                                x={duplicatingData.mouseX + 15} 
+                                y={duplicatingData.mouseY + 5} 
+                                className="font-black text-[10px] fill-[#1c1c19] uppercase tracking-widest pointer-events-none"
+                            >
+                                DUPLICANDO: {duplicatingData.branchRootNode.name}
+                            </text>
+                            {treeNodes.find(n => n.id === reconnectTargetId) && (
+                                <line 
+                                    x1={duplicatingData.mouseX} 
+                                    y1={duplicatingData.mouseY} 
+                                    x2={treeNodes.find(n => n.id === reconnectTargetId).x + treeNodes.find(n => n.id === reconnectTargetId).width}
+                                    y2={treeNodes.find(n => n.id === reconnectTargetId).y + treeNodes.find(n => n.id === reconnectTargetId).height/2}
+                                    stroke="#22c55e"
+                                    strokeWidth="2"
+                                    strokeDasharray="4 4"
+                                />
+                            )}
+                        </g>
+                    )}
+                  </svg>
+
+                  {/* Nodes Interactive Layer */}
+                  <div className="absolute top-0 left-0 w-full h-full z-10 pointer-events-auto">
+                    {treeNodes.map((node) => (
+                      <MindMapNode
+                        key={node.id}
+                        node={node}
+                        toggleTextExpand={toggleTextExpand}
+                        toggleBranchExpand={toggleBranchExpand}
+                        onInspect={setInspectedNode}
+                        onAddSubNode={handleAddSubNodeToTree}
+                        onImportSubNodes={(node) => setImportTargetNode(node)}
+                        onDeepToggleBranch={handleDeepToggleBranch}
+                        onToggleHighlight={handleToggleHighlight}
+                        onDeleteNode={handleDeleteNodeFromTree}
+                        onDragStart={handleDragStart}
+                        isAdmin={isAdmin}
+                        dragHappened={dragHappened}
+                        links={nodeLinks[node.id]}
+                        navigate={navigate}
+                        isDragging={draggingNodeId?.id === node.id}
+                        isSelected={selectedNodeIds.has(node.id)}
+                        isLocked={isLocked}
+                        isEditing={editingNodeId === node.id}
+                        onNameSave={handleSaveNodeName}
+                        onStartEdit={setEditingNodeId}
+                        isCreatorMode={isCreatorMode}
+                        isHighlighterMode={isHighlighterActive}
+                      />
+                    ))}
+
+                    {/* Marquee Selection Rectangle */}
+                    {selectionBox && (
+                        <div 
+                           className="absolute border-2 border-[#0f4369] bg-[#0f4369]/10 pointer-events-none z-[1000]"
+                           style={{
+                               left: Math.min(selectionBox.startX, selectionBox.endX),
+                               top: Math.min(selectionBox.startY, selectionBox.endY),
+                               width: Math.abs(selectionBox.endX - selectionBox.startX),
+                               height: Math.abs(selectionBox.endY - selectionBox.startY)
+                           }}
+                        />
+                    )}
+                  </div>
+                </div>
+              </div>
+            </main>
+
+            {/* Advanced JSON Operations Modal */}
+            {importTargetNode && (
+              <NodeJsonOperationsModal 
+                node={importTargetNode}
+                onCancel={() => setImportTargetNode(null)}
+                onImport={(json) => handleImportBranchToNode(importTargetNode.id, json)}
+                onCopyPrompt={() => copyBranchAiPrompt(importTargetNode.name)}
+              />
+            )}
+
+            {/* OPTIMIZED FLOATING HUD CONTROLS - BLOCK DESIGN */}
+            <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] flex items-stretch gap-6 animate-in slide-in-from-bottom-8 duration-500">
+              
+              {/* BLOQUE 1: NAVEGACIÓN Y ZOOM */}
+              <div className="flex items-stretch bg-[#fcf9f4] border-2 border-[#1c1c19] shadow-[6px_6px_0_0_rgba(28,28,25,1)]">
+                <button
+                  onClick={() => {
+                    const newZoom = Math.min(zoom + 0.1, 3);
+                    if (containerRef.current) {
+                      const rect = containerRef.current.getBoundingClientRect();
+                      const cx = rect.width / 2;
+                      const cy = rect.height / 2;
+                      const canvasX = (cx - panOffset.x) / zoom;
+                      const canvasY = (cy - panOffset.y) / zoom;
+                      setPanOffset({ x: cx - canvasX * newZoom, y: cy - canvasY * newZoom });
+                    }
+                    setZoom(newZoom);
+                  }}
+                  className="w-12 h-12 flex items-center justify-center text-[#0f4369] hover:bg-[#e5e2dd] border-r-2 border-[#1c1c19]/10 transition-all"
+                  title="Acercar (Zoom In)"
+                >
+                  <ZoomIn size={18} strokeWidth={3} />
+                </button>
+                
+                <div className="flex flex-col items-center justify-center px-3 border-r-2 border-[#1c1c19]/10 min-w-[70px]">
+                  <span className="font-mono text-[8px] font-black text-[#72777f] uppercase tracking-[1px] leading-none mb-1">ZOOM</span>
+                  <span className="font-mono text-sm font-black text-[#1c1c19] leading-none">{(zoom * 100).toFixed(0)}%</span>
+                </div>
+
+                <button
+                  onClick={() => {
+                    const newZoom = Math.max(zoom - 0.1, 0.1);
+                    if (containerRef.current) {
+                      const rect = containerRef.current.getBoundingClientRect();
+                      const cx = rect.width / 2;
+                      const cy = rect.height / 2;
+                      const canvasX = (cx - panOffset.x) / zoom;
+                      const canvasY = (cy - panOffset.y) / zoom;
+                      setPanOffset({ x: cx - canvasX * newZoom, y: cy - canvasY * newZoom });
+                    }
+                    setZoom(newZoom);
+                  }}
+                  className="w-12 h-12 flex items-center justify-center text-[#0f4369] hover:bg-[#e5e2dd] border-r-2 border-[#1c1c19]/10 transition-all"
+                  title="Alejar (Zoom Out)"
+                >
+                  <ZoomOut size={18} strokeWidth={3} />
+                </button>
+
+                <button
+                  onClick={() => setZoom(1)}
+                  className="w-12 h-12 flex items-center justify-center text-[#1c1c19] hover:bg-[#e5e2dd] border-r-2 border-[#1c1c19]/10 transition-all"
+                  title="Reset Zoom (100%)"
+                >
+                  <Maximize size={16} strokeWidth={3} />
+                </button>
+
+                <button
+                  onClick={centerOnRoot}
+                  className="w-12 h-12 flex items-center justify-center bg-[#1c1c19] text-white hover:bg-[#0f4369] transition-all"
+                  title="Centrar en el inicio"
+                >
+                  <Minimize2 size={16} strokeWidth={3} className="rotate-45" />
+                </button>
+              </div>
+
+              {/* BLOQUE 2: GESTIÓN DE VISTA (TOGGLES) */}
+              <div className="flex items-stretch bg-[#fcf9f4] border-2 border-[#1c1c19] shadow-[6px_6px_0_0_rgba(15,67,105,1)]">
+                {/* Tree Visibility Toggle */}
+                <button
+                  onClick={handleGlobalTreeToggle}
+                  className={`w-12 h-12 flex flex-col items-center justify-center border-r-2 border-[#1c1c19]/10 transition-all ${allBranchesExpanded ? 'bg-[#0f4369] text-white' : 'text-[#0f4369] hover:bg-[#e5e2dd]'}`}
+                  title={allBranchesExpanded ? "Contraer todas las ramas" : "Expandir todas las ramas"}
+                >
+                  <ChevronDown size={18} strokeWidth={4} className={allBranchesExpanded ? 'rotate-180 transition-transform' : ''} />
+                  <span className="font-mono text-[7px] font-black mt-0.5">TREE</span>
+                </button>
+
+                {/* Data Visibility Toggle */}
+                <button
+                  onClick={handleGlobalDataToggle}
+                  className={`w-12 h-12 flex flex-col items-center justify-center border-r-2 border-[#1c1c19]/10 transition-all ${allDataExpanded ? 'bg-[#1c1c19] text-white' : 'text-[#1c1c19] hover:bg-[#e5e2dd]'}`}
+                  title={allDataExpanded ? "Ocultar descriptiones" : "Mostrar descriptiones"}
+                >
+                  {allDataExpanded ? <EyeOff size={16} /> : <Eye size={16} />}
+                  <span className="font-mono text-[7px] font-black mt-0.5">DATA</span>
+                </button>
+
+                {/* Marker Toggle */}
+                <div className="flex border-r-2 border-[#1c1c19]/10">
+                    <button
+                    onClick={() => setIsHighlighterActive(!isHighlighterActive)}
+                    className={`w-12 h-12 flex flex-col items-center justify-center transition-all ${isHighlighterActive ? 'bg-[#1c1c19] text-white' : 'text-[#1c1c19] hover:bg-[#e5e2dd]'}`}
+                    title="Modo Resaltador"
+                    >
+                    <Highlighter size={16} strokeWidth={3} style={{ color: isHighlighterActive ? markerColor : 'currentColor' }} />
+                    <span className="font-mono text-[7px] font-black mt-0.5">MARK</span>
+                    </button>
+                    
+                    {isHighlighterActive && (
+                        <div className="flex flex-col gap-0.5 p-1 bg-[#1c1c19]/5">
+                            {MARKER_COLORS.map(c => (
+                                <button
+                                    key={c.name}
+                                    onClick={() => setMarkerColor(c.value)}
+                                    className={`w-3 flex-1 border border-[#1c1c19]/20 transition-transform ${markerColor === c.value ? 'scale-110 border-[#1c1c19] z-10 shadow-sm' : 'opacity-60 hover:opacity-100'}`}
+                                    style={{ backgroundColor: c.value }}
+                                    title={`Color ${c.name}`}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Lock Toggle */}
+                <button 
+                  disabled={isCreatorMode}
+                  onClick={() => setIsLocked(!isLocked)}
+                  className={`w-12 h-12 flex items-center justify-center border-r-2 border-[#1c1c19]/10 transition-all ${isCreatorMode ? 'opacity-30 cursor-not-allowed' : (isLocked ? 'bg-red-50 text-red-600' : 'text-green-600 hover:bg-green-50')}`}
+                  title={isLocked ? "Desbloquear" : "Bloquear"}
+                >
+                  {isLocked ? <Lock size={16} strokeWidth={3} /> : <Unlock size={16} strokeWidth={3} />}
+                </button>
+
+                {/* Isolate Toggle */}
+                <button 
+                  disabled={selectedNodeIds.size === 0}
+                  onClick={handleIsolateNode}
+                  className={`w-12 h-12 flex flex-col items-center justify-center transition-all ${selectedNodeIds.size > 0 ? 'text-[#0f4369] hover:bg-[#e5e2dd]' : 'opacity-20 cursor-not-allowed'}`}
+                  title="Aislar Nodo (Solo ruta activa)"
+                >
+                  <Focus size={16} strokeWidth={3} />
+                  <span className="font-mono text-[7px] font-black mt-0.5">ISO</span>
+                </button>
+              </div>
+
+              {/* BLOQUE 3: ACCIONES Y MODOS */}
+              <div className="flex items-stretch bg-[#fcf9f4] border-2 border-[#1c1c19] shadow-[6px_6px_0_0_rgba(230,32,32,0.4)]">
+                <button
+                  onClick={() => window.print()}
+                  className="w-12 h-12 flex items-center justify-center text-[#1c1c19] hover:bg-[#1c1c19] hover:text-white border-r-2 border-[#1c1c19]/10 transition-all"
+                  title="Imprimir (Export)"
+                >
+                  <Printer size={18} strokeWidth={3} />
+                </button>
+
+                <button
+                  onClick={handleAutoOrganize}
+                  className={`px-4 h-12 flex flex-col items-center justify-center border-r-2 border-[#1c1c19]/10 transition-all ${selectedNodeIds.size > 0 ? 'bg-green-600 text-white' : 'text-[#0f4369] hover:bg-[#e5e2dd]'}`}
+                  title="Auto-organizar"
+                >
+                  <Wand2 size={16} className={selectedNodeIds.size > 0 ? 'animate-bounce' : ''} />
+                  <span className="font-mono text-[8px] font-black mt-0.5">LAYOUT</span>
+                </button>
+
+                <button
+                  onClick={() => setIsCreatorMode(!isCreatorMode)}
+                  className={`px-4 h-12 flex flex-col items-center justify-center transition-all ${isCreatorMode ? 'bg-[#e62020] text-white' : 'text-[#1c1c19] hover:bg-[#e5e2dd]'}`}
+                  title="Modo Edición AI"
+                >
+                  {isCreatorMode ? <Zap size={16} className="animate-pulse" /> : <Info size={16} />}
+                  <span className="font-mono text-[8px] font-black mt-0.5">{isCreatorMode ? 'CREATOR_ON' : 'DETAIL_MODE'}</span>
+                </button>
+
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowJsonView(!showJsonView)}
+                    className={`px-4 h-12 flex flex-col items-center justify-center border-l-2 border-[#1c1c19]/10 transition-all ${showJsonView ? 'bg-[#1c1c19] text-white' : 'text-[#1c1c19] hover:bg-[#e5e2dd]'}`}
+                    title="Ver Estructura JSON"
+                  >
+                    <FileText size={14} className={showJsonView ? 'text-green-400' : ''} />
+                    <span className="font-mono text-[8px] font-black mt-0.5">JSON_DATA</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* RENDER MODAL CONDICIONALMENTE */}
+      {inspectedNode && (
+        <EsquemaNodeModal
+          node={inspectedNode}
+          activeEsquema={activeEsquema}
+          onClose={() => setInspectedNode(null)}
+          onSave={handleSaveNode}
+          isAdmin={isAdmin}
+        />
+      )}
+
+      {/* JSON IMPORT MODAL - ALIGNED DESIGN */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-[#fcf9f4] border-2 border-[#1c1c19] w-full max-w-2xl shadow-[12px_12px_0_0_rgba(28,28,25,1)] flex flex-col">
+            <div className="bg-[#1c1c19] text-white p-4 flex justify-between items-center">
+              <h2 className="font-display font-black uppercase tracking-widest text-lg flex items-center gap-3">
+                <Upload size={20} className="text-[#e5e2dd]" />
+                Paste Schema JSON
+              </h2>
+              <button
+                onClick={() => setIsImportModalOpen(false)}
+                className="p-1 hover:bg-white/10 transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <p className="text-xs font-mono mb-4 text-[#72777f] uppercase tracking-widest leading-loose">
+                Paste the entire JSON structure below. The system will analyze the hierarchy, normalize unique identifiers, and generate a new interactive dashboard entry.
+              </p>
+
+              <div className="mb-4">
+                <button
+                  onClick={copyAiPrompt}
+                  className="w-full flex items-center justify-center gap-2 bg-[#f6f3ee] border-2 border-[#1c1c19] border-dashed py-3 px-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#1c1c19] hover:text-[#e5e2dd] transition-all group"
+                >
+                  <FileText size={16} className="text-[#0f4369] group-hover:text-[#e5e2dd]" />
+                  Copy AI Instruction Prompt
+                </button>
+              </div>
+
+              <textarea
+                autoFocus
+                value={importJsonText}
+                onChange={(e) => setImportJsonText(e.target.value)}
+                placeholder='{ "name": "Project Schema", "children": [...] }'
+                className="w-full h-80 bg-white border-2 border-[#1c1c19] p-4 font-mono text-xs focus:outline-none focus:border-[#0f4369] transition-colors resize-none"
+              />
+
+              <div className="mt-6 flex justify-end gap-4">
+                <button
+                  onClick={() => { setIsImportModalOpen(false); setImportJsonText(''); }}
+                  className="px-6 py-2 font-display font-bold uppercase tracking-widest text-[11px] border-2 border-[#1c1c19] hover:bg-[#1c1c19] hover:text-white transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleImportJson}
+                  disabled={isImporting || !importJsonText.trim()}
+                  className="px-10 py-2 bg-[#e5e2dd] text-[#1c1c19] font-display font-black uppercase tracking-widest text-[11px] border-2 border-[#1c1c19] hover:translate-y-1 hover:shadow-none transition-all shadow-[6px_6px_0_0_rgba(28,28,25,1)] disabled:opacity-50 disabled:grayscale"
+                >
+                  {isImporting ? 'Processing...' : 'Analyze & Load'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RENDER CONFIRM DELETE MODAL */}
+      {confirmDeleteId && (
+        <DeleteConfirmationModal 
+          onConfirm={executeDeleteNode}
+          onCancel={() => setConfirmDeleteId(null)}
+        />
+      )}
+
+      {/* JSON VIEW SIDE PANEL - PREMIUM OVERLAY */}
+      {showJsonView && isAdmin && activeEsquema && (
+        <div className="fixed top-24 right-6 bottom-32 w-full max-w-md z-[150] bg-[#1c1c19] border-2 border-[#1c1c19] shadow-[12px_12px_0_0_rgba(28,28,25,0.3)] flex flex-col animate-in slide-in-from-right-10 duration-500">
+          <div className="bg-[#1c1c19] p-4 flex justify-between items-center border-b border-white/10">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-green-500/20 text-green-400 flex items-center justify-center rounded">
+                <FileText size={18} />
+              </div>
+              <div>
+                <h3 className="text-white font-black uppercase tracking-tighter text-sm">Schema Data Structure</h3>
+                <p className="font-mono text-[8px] text-white/40 tracking-[3px] uppercase">RAW_JSON_ACCESS</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(JSON.stringify(mapData, null, 2));
+                  alert("JSON structure copied to clipboard!");
+                }}
+                className="p-2 text-white/60 hover:text-white hover:bg-white/10 transition-all"
+                title="Copiar JSON"
+              >
+                <Save size={16} />
+              </button>
+              <button 
+                onClick={() => setShowJsonView(false)}
+                className="p-2 text-white/60 hover:text-red-400 hover:bg-red-400/10 transition-all"
+              >
+                <X size={20} />
+              </button>
+            </div>
+          </div>
+          
+          <div className="flex-1 overflow-hidden p-4 bg-[#141412]">
+             <div className="h-full w-full relative group">
+                <div className="absolute top-2 right-4 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                   <span className="text-[9px] font-mono text-green-400 bg-black/50 px-2 py-1 border border-green-400/30">READ_ONLY_ACCESS</span>
+                </div>
+                <textarea
+                  readOnly
+                  value={JSON.stringify(mapData, null, 2)}
+                  className="w-full h-full bg-transparent text-green-400/90 font-mono text-xs p-4 focus:outline-none resize-none scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent custom-json-scroll"
+                  spellCheck="false"
+                />
+             </div>
+          </div>
+
+          <div className="bg-[#1c1c19] p-4 border-t border-white/10 flex flex-col gap-2">
+            <p className="text-[9px] font-mono text-white/40 uppercase leading-relaxed">
+              Use this JSON to migrate between environments or perform bulk edits. Changes made in the canvas are reflected here in real-time.
+            </p>
+            <button 
+              onClick={() => {
+                navigator.clipboard.writeText(JSON.stringify(mapData, null, 2));
+                alert("JSON structure copied to clipboard!");
+              }}
+              className="mt-2 w-full py-3 bg-white text-[#1c1c19] font-black uppercase text-[10px] tracking-widest hover:bg-green-400 transition-all shadow-[4px_4px_0_0_rgba(0,0,0,0.5)] active:translate-y-1 active:shadow-none"
+            >
+              Copy Structure
+            </button>
+          </div>
+          
+          <style>
+            {`
+              .custom-json-scroll::-webkit-scrollbar {
+                width: 6px;
+              }
+              .custom-json-scroll::-webkit-scrollbar-track {
+                background: transparent;
+              }
+              .custom-json-scroll::-webkit-scrollbar-thumb {
+                background: rgba(255, 255, 255, 0.1);
+                border-radius: 10px;
+              }
+              .custom-json-scroll::-webkit-scrollbar-thumb:hover {
+                background: rgba(255, 255, 255, 0.2);
+              }
+            `}
+          </style>
+        </div>
+      )}
+    </div>
+  );
+}
