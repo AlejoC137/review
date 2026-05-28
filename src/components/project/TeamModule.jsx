@@ -6,6 +6,7 @@ import { openInspector } from '../../store/uiSlice';
 import RolesModal from './RolesModal';
 import SpecialtiesModal from './SpecialtiesModal';
 import BepTeamModule from './BepTeamModule';
+import TeamTableModule from './TeamTableModule';
 import { useAuth } from '../../context/AuthContext';
 import { projectService } from '../../services/projectService';
 
@@ -28,12 +29,13 @@ export default function TeamModule({ project }) {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isRolesModalOpen, setIsRolesModalOpen] = useState(false);
   const [isSpecialtiesModalOpen, setIsSpecialtiesModalOpen] = useState(false);
-  const [editForm, setEditForm] = useState({ name: '', role_description: '', especialidad: '', email: '', phone: '' });
+  const [editForm, setEditForm] = useState({ name: '', role_description: '', especialidad: '', compania: '', email: '', phone: '' });
   const [isAddingStaff, setIsAddingStaff] = useState(false);
   const [newStaffForm, setNewStaffForm] = useState({
     name: '',
     role_description: '',
     especialidad: '',
+    compania: '',
     email: '',
     phone: '',
     color: '#0f4369'
@@ -90,6 +92,7 @@ export default function TeamModule({ project }) {
       name: '',
       role_description: '',
       especialidad: '',
+      compania: '',
       email: '',
       phone: '',
       color: '#0f4369'
@@ -128,6 +131,7 @@ export default function TeamModule({ project }) {
       name: selectedMember.name || selectedMember.nombre || '',
       role_description: selectedMember.role_description || '',
       especialidad: selectedMember.especialidad || '',
+      compania: selectedMember.compania || '',
       email: selectedMember.email || '',
       phone: selectedMember.phone || ''
     });
@@ -203,6 +207,18 @@ export default function TeamModule({ project }) {
           >
             Roles y Responsabilidades PEB
           </button>
+          <button 
+            onClick={() => handleSubTabChange('tabla')}
+            className={`px-4 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${activeSubTab === 'tabla' ? 'bg-[#1c1c19] text-white' : 'hover:bg-[#f6f3ee]'}`}
+          >
+            Tabla de Datos
+          </button>
+          <button 
+            onClick={() => setSearchParams({ tab: 'datos', subtab: 'cronograma' })}
+            className="px-4 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all bg-[#0f4369] text-white hover:bg-[#0a2e49] ml-1"
+          >
+            CRONOGRAMA ENTREGAS
+          </button>
         </div>
       </div>
 
@@ -210,6 +226,8 @@ export default function TeamModule({ project }) {
       <div className="flex-1 overflow-hidden">
         {activeSubTab === 'roles' ? (
           <BepTeamModule project={project} />
+        ) : activeSubTab === 'tabla' ? (
+          <TeamTableModule project={project} />
         ) : (
           <div className="flex h-full overflow-hidden">
             {/* Sidebar - Team List */}
@@ -358,6 +376,17 @@ export default function TeamModule({ project }) {
                   </div>
 
                   <div>
+                    <label className="text-[10px] font-black uppercase text-[#72777f] mb-1 block">Compañía</label>
+                    <input
+                      type="text"
+                      value={newStaffForm.compania}
+                      onChange={e => setNewStaffForm({ ...newStaffForm, compania: e.target.value })}
+                      placeholder="Ej: Bioclimática"
+                      className="w-full p-3 border-2 border-[#1c1c19] text-sm font-bold focus:outline-none focus:border-[#0f4369]"
+                    />
+                  </div>
+
+                  <div>
                     <label className="text-[10px] font-black uppercase text-[#72777f] mb-1 block">Email</label>
                     <input
                       type="email"
@@ -478,6 +507,10 @@ export default function TeamModule({ project }) {
                           </div>
                         </div>
                         <div>
+                          <label className="text-[10px] font-black uppercase text-[#72777f]">Compañía</label>
+                          <input type="text" value={editForm.compania} onChange={e => setEditForm({...editForm, compania: e.target.value})} className="w-full p-2 border-2 border-[#1c1c19] text-sm font-bold focus:outline-none focus:border-[#0f4369]" />
+                        </div>
+                        <div>
                           <label className="text-[10px] font-black uppercase text-[#72777f]">Email</label>
                           <input type="email" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})} className="w-full p-2 border-2 border-[#1c1c19] text-sm font-bold focus:outline-none focus:border-[#0f4369]" />
                         </div>
@@ -506,6 +539,11 @@ export default function TeamModule({ project }) {
                         <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#72777f]">
                           <Briefcase size={12} /> {selectedMember.role_description || 'NO_SET'}
                         </div>
+                        {selectedMember.compania && (
+                          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#1c1c19]">
+                            <Briefcase size={12} /> {selectedMember.compania}
+                          </div>
+                        )}
                         {selectedMember.especialidad && (
                           <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#0f4369]">
                             <Users size={12} /> {selectedMember.especialidad}

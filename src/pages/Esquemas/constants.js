@@ -148,6 +148,7 @@ export const NODE_TYPES = {
   DOC: 'DOC',
   FOLDER: 'FOLDER',
   RVT: '.RVT',
+  RTE: '.RTE',
   RFA: '.RFA',
   DWG: '.DWG',
   PDF: '.PDF',

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Info, Edit2, Save, X, Calendar, User, Briefcase, FileText, 
   Layers, Package, Users, Target, ClipboardList, Loader2, CheckCircle2, PlayCircle, AlertCircle, 
@@ -10,6 +10,8 @@ import { projectService } from '../../services/projectService';
 import { supabase } from '../../services/supabaseClient';
 import LodTdiMatrix from './LodTdiMatrix';
 import ProjectUnitsTab from './ProjectUnitsTab';
+import ProjectObjectivesModule from './ProjectObjectivesModule';
+import ProjectDeliveryScheduleTab from './ProjectDeliveryScheduleTab';
 
 const defaultPebInfo = {
   client: 'Grupo Attia',
@@ -20,6 +22,7 @@ const defaultPebInfo = {
   scope: 'Desarrollo de diseños técnicos de la Etapa 2',
   typology: 'Uso Residencial',
   modules: ['Gimnasio', 'Zonas húmedas', 'Áreas sociales y de recreación'],
+  lot_area: 5000.00,
   sales_area: 2500.00,
   built_area: 3500.00,
   circulation_area: 1000.00,
@@ -34,11 +37,27 @@ const defaultPebInfo = {
 };
 
 export default function ProjectDataModule({ project, onTabChange }) {
-  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [projectData, setProjectData] = useState(project);
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [subTab, setSubTab] = useState('resumen'); // 'resumen', 'peb_info', 'software', or 'lod_tdi'
+  const [subTab, setSubTab] = useState(searchParams.get('subtab') || 'resumen');
+
+  useEffect(() => {
+    const currentSubTab = searchParams.get('subtab');
+    if (currentSubTab) {
+      setSubTab(currentSubTab);
+    }
+  }, [searchParams]);
+
+  const handleSubTabChange = (newSubTab) => {
+    setSubTab(newSubTab);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('subtab', newSubTab);
+      return next;
+    });
+  };
 
   // Multi-Software List States
   const [softwareList, setSoftwareList] = useState([]);
@@ -92,6 +111,7 @@ export default function ProjectDataModule({ project, onTabChange }) {
     scope: '',
     typology: '',
     modules: [],
+    lot_area: 0,
     sales_area: 0,
     built_area: 0,
     circulation_area: 0,
@@ -424,6 +444,7 @@ export default function ProjectDataModule({ project, onTabChange }) {
       scope: pebInfo.scope || '',
       typology: pebInfo.typology || '',
       modules: pebInfo.modules || [],
+      lot_area: pebInfo.lot_area || 0,
       sales_area: pebInfo.sales_area || 0,
       built_area: pebInfo.built_area || 0,
       circulation_area: pebInfo.circulation_area || 0,
@@ -577,34 +598,46 @@ export default function ProjectDataModule({ project, onTabChange }) {
         {/* Sub-tab Selection */}
         <div className="flex bg-white border-2 border-[#1c1c19] p-0.5 shadow-[3px_3px_0_0_rgba(28,28,25,1)]">
           <button 
-            onClick={() => setSubTab('resumen')}
+            onClick={() => handleSubTabChange('resumen')}
             className={`px-4 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${subTab === 'resumen' ? 'bg-[#1c1c19] text-white' : 'hover:bg-[#f6f3ee]'}`}
           >
             Resumen Operativo
           </button>
           <button 
-            onClick={() => setSubTab('peb_info')}
+            onClick={() => handleSubTabChange('peb_info')}
             className={`px-4 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${subTab === 'peb_info' ? 'bg-[#1c1c19] text-white' : 'hover:bg-[#f6f3ee]'}`}
           >
             Información General PEB
           </button>
           <button 
-            onClick={() => setSubTab('software')}
+            onClick={() => handleSubTabChange('software')}
             className={`px-4 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${subTab === 'software' ? 'bg-[#1c1c19] text-white' : 'hover:bg-[#f6f3ee]'}`}
           >
             Software y Plataformas
           </button>
           <button 
-            onClick={() => setSubTab('lod_tdi')}
+            onClick={() => handleSubTabChange('lod_tdi')}
             className={`px-4 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${subTab === 'lod_tdi' ? 'bg-[#1c1c19] text-white' : 'hover:bg-[#f6f3ee]'}`}
           >
             Matriz LOD y TDI
           </button>
           <button 
-            onClick={() => setSubTab('unidades')}
+            onClick={() => handleSubTabChange('objetivos')}
+            className={`px-4 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${subTab === 'objetivos' ? 'bg-[#1c1c19] text-white' : 'hover:bg-[#f6f3ee]'}`}
+          >
+            Objetivos del Proyecto
+          </button>
+          <button 
+            onClick={() => handleSubTabChange('unidades')}
             className={`px-4 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${subTab === 'unidades' ? 'bg-[#1c1c19] text-white' : 'hover:bg-[#f6f3ee]'}`}
           >
             Unidades y Formatos
+          </button>
+          <button 
+            onClick={() => handleSubTabChange('cronograma')}
+            className={`px-4 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${subTab === 'cronograma' ? 'bg-[#1c1c19] text-white' : 'hover:bg-[#f6f3ee]'}`}
+          >
+            Cronograma Entregas
           </button>
         </div>
       </div>
@@ -1010,7 +1043,17 @@ export default function ProjectDataModule({ project, onTabChange }) {
                 {/* 4. ÁREAS DEL PROYECTO */}
                 <div className="p-5 bg-white border-2 border-[#1c1c19] space-y-4 md:col-span-2">
                   <h4 className="text-xs font-black uppercase border-b-2 border-[#1c1c19]/10 pb-2">4. ÁREAS DEL PROYECTO</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                    <div>
+                      <label className="text-[9px] font-black uppercase text-[#72777f]">Área del lote (m²)</label>
+                      <input 
+                        type="number" 
+                        step="0.01"
+                        value={pebForm.lot_area} 
+                        onChange={e => setPebForm({...pebForm, lot_area: parseFloat(e.target.value) || 0})}
+                        className="w-full p-2 border-2 border-[#1c1c19] font-mono text-xs font-bold" 
+                      />
+                    </div>
                     <div>
                       <label className="text-[9px] font-black uppercase text-[#72777f]">Área ventas (m²)</label>
                       <input 
@@ -1218,6 +1261,10 @@ export default function ProjectDataModule({ project, onTabChange }) {
                     4. ÁREAS DEL PROYECTO
                   </h4>
                   <div className="space-y-2 font-mono">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-[9px] font-black text-[#72777f] uppercase tracking-tighter">Área del Lote:</span>
+                      <span className="font-bold text-[#1c1c19]">{parseFloat(pebInfo.lot_area || 0).toLocaleString()} m²</span>
+                    </div>
                     <div className="flex justify-between items-center text-xs">
                       <span className="text-[9px] font-black text-[#72777f] uppercase tracking-tighter">Área Ventas:</span>
                       <span className="font-bold text-[#1c1c19]">{parseFloat(pebInfo.sales_area || 0).toLocaleString()} m²</span>
@@ -1604,6 +1651,10 @@ export default function ProjectDataModule({ project, onTabChange }) {
           <LodTdiMatrix projectId={project.id} />
         ) : subTab === 'unidades' ? (
           <ProjectUnitsTab project={projectData} />
+        ) : subTab === 'objetivos' ? (
+          <ProjectObjectivesModule project={projectData} />
+        ) : subTab === 'cronograma' ? (
+          <ProjectDeliveryScheduleTab project={projectData} />
         ) : null}
       </div>
     </div>

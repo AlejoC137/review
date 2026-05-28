@@ -220,6 +220,22 @@ export default function AdminResourceDetailView() {
   const [formData, setFormData] = useState({});
   const [blocks, setBlocks] = useState([]);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsUploadingImage(true);
+    try {
+      const publicUrl = await uploadResourceImage(file);
+      setFormData({ ...formData, image_url: publicUrl });
+    } catch (err) {
+      alert("Error al subir la imagen. Inténtalo de nuevo.");
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
 
   const [associatedEsquemas, setAssociatedEsquemas] = useState([]);
   const [showAggregator, setShowAggregator] = useState(false);
@@ -485,13 +501,36 @@ export default function AdminResourceDetailView() {
           {isEditing && (
             <div className="mb-8 p-6 bg-white border-2 border-[#ba1a1a] shadow-[4px_4px_0_0_rgba(186,26,26,0.1)]">
               <label className="font-display font-bold text-[10px] tracking-widest uppercase mb-4 block text-[#ba1a1a]">Background_Hero_Image_URL</label>
-              <input
-                type="text"
-                value={formData.image_url || ''}
-                onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                placeholder="https://..."
-                className="w-full bg-[#f6f3ee] border-2 border-[#1c1c19] p-3 text-sm focus:outline-none"
-              />
+              <div className="flex flex-col gap-4">
+                <input
+                  type="text"
+                  value={formData.image_url || ''}
+                  onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+                  placeholder="https://..."
+                  className="w-full bg-[#f6f3ee] border-2 border-[#1c1c19] p-3 text-sm focus:outline-none"
+                />
+                <div className="flex items-center gap-4">
+                  <div className="h-[2px] flex-1 bg-[#1c1c19]/10"></div>
+                  <span className="text-[10px] font-display font-bold uppercase tracking-widest text-[#72777f]">O SUBIR IMAGEN DESDE EL EQUIPO</span>
+                  <div className="h-[2px] flex-1 bg-[#1c1c19]/10"></div>
+                </div>
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    disabled={isUploadingImage}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10"
+                  />
+                  <div className={`flex items-center justify-center gap-2 border-2 border-dashed border-[#1c1c19] p-4 text-center transition-colors ${isUploadingImage ? 'bg-[#e5e2dd] text-[#72777f]' : 'bg-[#fcf9f4] hover:bg-[#e5e2dd]'}`}>
+                    {isUploadingImage ? (
+                      <><Loader2 size={16} className="animate-spin" /> <span className="font-display font-bold text-[10px] tracking-widest uppercase">SUBIENDO IMAGEN...</span></>
+                    ) : (
+                      <><ImageIcon size={16} /> <span className="font-display font-bold text-[10px] tracking-widest uppercase">CLICK AQUÍ PARA SELECCIONAR Y SUBIR IMAGEN</span></>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

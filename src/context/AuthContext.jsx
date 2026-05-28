@@ -41,10 +41,11 @@ export const AuthProvider = ({ children }) => {
           localStorage.removeItem('custom_user_id');
           setUser(null);
           setIsAdmin(false);
-        } else {
           setUser(data);
           const adminValue = data.admin;
           setIsAdmin(adminValue === true || adminValue === 'true' || adminValue === 1 || adminValue === 'TRUE');
+          const bimManagerValue = data.bim_manager;
+          setIsBimManager(bimManagerValue === true || bimManagerValue === 'true' || bimManagerValue === 1 || bimManagerValue === 'TRUE');
         }
       } else {
         // Invalid session or user deleted
@@ -90,6 +91,8 @@ export const AuthProvider = ({ children }) => {
         setUser(data);
         const adminValue = data.admin;
         setIsAdmin(adminValue === true || adminValue === 'true' || adminValue === 1 || adminValue === 'TRUE');
+        const bimManagerValue = data.bim_manager;
+        setIsBimManager(bimManagerValue === true || bimManagerValue === 'true' || bimManagerValue === 1 || bimManagerValue === 'TRUE');
 
         return { error: null };
       } catch (err) {

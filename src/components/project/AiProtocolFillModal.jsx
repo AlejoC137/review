@@ -159,9 +159,10 @@ ${positioningContext}
 ### INSTRUCCIONES DE GENERACIÓN (USANDO TUS FUENTES DE NOTEBOOK LM)
 1. **Protocolo Maestro**: Redacta el contenido principal del protocolo en formato Markdown (mínimo 600 palabras) utilizando las fuentes del proyecto.
 2. **Manuales Secundarios**: Redacta al menos 2 manuales operativos específicos derivados de este protocolo en formato Markdown (mínimo 350 palabras por manual).
-3. **Plantillas**: Identifica al menos 2 plantillas de descarga necesarias y provee un título, descripción y URL (puede ser de Google Drive o un enlace ficticio).
-4. **Eliminar citas**: No incluyas citas, referencias bibliográficas, notas al pie ni numeraciones de fuente en el texto de salida. Conserva todo el contenido y la información, pero elimina cualquier marca de cita o referencia.
-5. **No uses etiquetas de cita**: No incluyas texto como [cite:...] ni otras marcas de cita en ninguna parte del contenido generado.
+3. **Paso a paso detallado**: Tanto en el Protocolo Maestro como en los Manuales, DEBES incluir instrucciones y un paso a paso MUY específico basado estrictamente en las fuentes, prestando especial atención y énfasis a la información proporcionada en las clases grabadas/transcritas.
+4. **Plantillas**: Identifica al menos 2 plantillas de descarga necesarias y provee un título, descripción y URL (puede ser de Google Drive o un enlace ficticio).
+5. **Eliminar citas**: No incluyas citas, referencias bibliográficas, notas al pie ni numeraciones de fuente en el texto de salida. Conserva todo el contenido y la información, pero elimina cualquier marca de cita o referencia.
+6. **No uses etiquetas de cita**: No incluyas texto como [cite:...] ni otras marcas de cita en ninguna parte del contenido generado.
 
 ---
 

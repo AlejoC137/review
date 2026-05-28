@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Users, User, Plus, Trash2, Edit2, Save, X, Loader2, 
   ShieldAlert, FolderOpen, Workflow, ClipboardList, CheckCircle, 
-  HelpCircle, ChevronRight, PlusCircle, Check
+  HelpCircle, ChevronRight, PlusCircle, Check, Table, Columns
 } from 'lucide-react';
 import { projectService } from '../../services/projectService';
 import { useAuth } from '../../context/AuthContext';
@@ -58,7 +58,7 @@ const seedBepRoles = [
 
 export default function BepTeamModule({ project }) {
   const { isAdmin, isBimManager } = useAuth();
-  const canEdit = isBimManager;
+  const canEdit = isAdmin || isBimManager;
 
   const [bepRoles, setBepRoles] = useState([]);
   const [generalStaff, setGeneralStaff] = useState([]);
@@ -68,6 +68,7 @@ export default function BepTeamModule({ project }) {
   const [isFallbackActive, setIsFallbackActive] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
+  const [viewMode, setViewMode] = useState('table');
 
   // Form states
   const [roleForm, setRoleForm] = useState({
@@ -330,14 +331,15 @@ export default function BepTeamModule({ project }) {
     }
   };
 
-  const startEdit = () => {
-    const defaultStrategy = getBimStrategyContext(selectedRole.role_name);
+  const startEdit = (roleToEdit = selectedRole) => {
+    if (!roleToEdit) return;
+    const defaultStrategy = getBimStrategyContext(roleToEdit.role_name);
     setEditForm({
-      organization: selectedRole.organization || '',
-      responsibilities: selectedRole.responsibilities || '',
-      bim_uses: selectedRole.bim_uses || defaultStrategy.uses,
-      lod_tdi: selectedRole.lod_tdi || defaultStrategy.lod,
-      cde_collaboration: selectedRole.cde_collaboration || defaultStrategy.cde
+      organization: roleToEdit.organization || '',
+      responsibilities: roleToEdit.responsibilities || '',
+      bim_uses: roleToEdit.bim_uses || defaultStrategy.uses,
+      lod_tdi: roleToEdit.lod_tdi || defaultStrategy.lod,
+      cde_collaboration: roleToEdit.cde_collaboration || defaultStrategy.cde
     });
     setIsEditing(true);
   };
@@ -386,25 +388,103 @@ export default function BepTeamModule({ project }) {
   };
 
   return (
-    <div className="flex h-full bg-white overflow-hidden border-0">
-      {/* 1. Sidebar - Roles List */}
-      <div className="w-80 border-r-2 border-[#1c1c19] flex flex-col bg-[#f6f3ee]">
+    <div className="flex flex-col h-full bg-white overflow-hidden border-0 relative">
+      {/* Persistent Top Bar for View Toggle */}
+      <div className="p-3 border-b-2 border-[#1c1c19] bg-[#fcf9f4] flex justify-between items-center shrink-0 shadow-[0_2px_10px_rgba(28,28,25,0.05)] z-20 relative">
+        <h3 className="text-sm font-black italic uppercase tracking-tighter text-[#1c1c19]">
+          Vista Actual: <span className="text-[#0f4369]">{viewMode === 'table' ? 'Tabla de Responsabilidades' : 'Detalles de Roles'}</span>
+        </h3>
+        <div className="flex gap-1 bg-white border-2 border-[#1c1c19] p-1 shadow-[2px_2px_0_0_rgba(28,28,25,1)]">
+          <button
+            onClick={() => setViewMode('split')}
+            className={`px-3 py-1.5 flex items-center gap-2 text-[10px] font-black uppercase transition-all ${viewMode === 'split' ? 'bg-[#0f4369] text-white shadow-inner' : 'text-[#72777f] hover:text-[#1c1c19] hover:bg-[#f6f3ee]'}`}
+            title="Ver Perfiles"
+          >
+            <Columns size={14} strokeWidth={3} /> Perfiles
+          </button>
+          <div className="w-[2px] bg-[#1c1c19]/10"></div>
+          <button
+            onClick={() => setViewMode('table')}
+            className={`px-3 py-1.5 flex items-center gap-2 text-[10px] font-black uppercase transition-all ${viewMode === 'table' ? 'bg-[#0f4369] text-white shadow-inner' : 'text-[#72777f] hover:text-[#1c1c19] hover:bg-[#f6f3ee]'}`}
+            title="Ver Tabla General"
+          >
+            <Table size={14} strokeWidth={3} /> Tabla
+          </button>
+        </div>
+      </div>
+
+      {viewMode === 'table' ? (
+        <div className="flex-1 overflow-y-auto p-8 relative bg-white">
+          <div className="absolute inset-0 pointer-events-none opacity-[0.02]" style={{
+            backgroundImage: 'radial-gradient(circle at center, rgba(28, 28, 25, 0.8) 1px, transparent 1px)',
+            backgroundSize: '20px 20px'
+          }} />
+          <div className="border-2 border-[#1c1c19] bg-white shadow-[4px_4px_0_0_rgba(28,28,25,1)] z-10 relative">
+            <table className="w-full text-left border-collapse min-w-[600px]">
+              <thead>
+                <tr className="bg-[#f6f3ee] border-b-2 border-[#1c1c19]">
+                  <th className="p-3 text-[10px] font-black uppercase text-[#1c1c19] border-r-2 border-[#1c1c19] w-1/4">Rol</th>
+                  <th className="p-3 text-[10px] font-black uppercase text-[#1c1c19] border-r-2 border-[#1c1c19]">Responsabilidad y Obligaciones</th>
+                  <th className="p-3 text-[10px] font-black uppercase text-[#1c1c19] border-r-2 border-[#1c1c19] w-1/5">Usos BIM</th>
+                  <th className="p-3 text-[10px] font-black uppercase text-[#1c1c19] w-1/5">Matriz LOD y TDI</th>
+                  {canEdit && <th className="p-3 text-[10px] font-black uppercase text-[#1c1c19] w-10"></th>}
+                </tr>
+              </thead>
+              <tbody>
+                {bepRoles.length === 0 ? (
+                  <tr><td colSpan={canEdit ? "5" : "4"} className="p-4 text-center text-xs font-mono opacity-50 uppercase">No hay roles registrados</td></tr>
+                ) : bepRoles.map((role) => (
+                  <tr key={role.id} className="border-b border-[#1c1c19]/20 hover:bg-[#f6f3ee]/50 transition-colors group">
+                    <td className="p-3 text-xs font-bold text-[#1c1c19] border-r-2 border-[#1c1c19]/20 align-top uppercase">
+                      {role.role_name}
+                      <div className="text-[9px] text-[#72777f] mt-1 font-bold">{role.organization}</div>
+                    </td>
+                    <td className="p-3 text-xs font-medium text-gray-700 whitespace-pre-wrap align-top leading-relaxed">{role.responsibilities}</td>
+                    <td className="p-3 text-[10px] font-medium text-gray-700 whitespace-pre-wrap align-top border-r-2 border-[#1c1c19]/20">{role.bim_uses || getBimStrategyContext(role.role_name).uses}</td>
+                    <td className="p-3 text-[10px] font-medium text-gray-700 whitespace-pre-wrap align-top">{role.lod_tdi || getBimStrategyContext(role.role_name).lod}</td>
+                    {canEdit && (
+                      <td className="p-3 text-center align-top opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => {
+                            setSelectedRole(role);
+                            startEdit(role);
+                            setViewMode('split');
+                          }}
+                          className="p-1.5 bg-[#1c1c19] text-white hover:bg-[#0f4369] transition-colors shadow-sm"
+                          title="Editar Rol"
+                        >
+                          <Edit2 size={12} strokeWidth={3} />
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-1 overflow-hidden">
+          {/* 1. Sidebar - Roles List */}
+          <div className="w-80 border-r-2 border-[#1c1c19] flex flex-col bg-[#f6f3ee]">
         <div className="p-6 border-b-2 border-[#1c1c19] bg-white">
           <div className="flex justify-between items-center mb-2">
             <h3 className="text-lg font-black italic uppercase tracking-tighter">Roles del PEB</h3>
-            {canEdit && (
-              <button
-                onClick={() => {
-                  setRoleForm({ role_name: '', organization: '', responsibilities: '' });
-                  setIsAdding(true);
-                  setIsEditing(false);
-                }}
-                className="p-1.5 bg-[#0f4369] text-white border-2 border-[#1c1c19] shadow-[3px_3px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
-                title="Añadir Rol Personalizado"
-              >
-                <Plus size={16} strokeWidth={3} />
-              </button>
-            )}
+            <div className="flex gap-2">
+              {canEdit && (
+                <button
+                  onClick={() => {
+                    setRoleForm({ role_name: '', organization: '', responsibilities: '' });
+                    setIsAdding(true);
+                    setIsEditing(false);
+                  }}
+                  className="p-1.5 bg-[#0f4369] text-white border-2 border-[#1c1c19] shadow-[3px_3px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
+                  title="Añadir Rol Personalizado"
+                >
+                  <Plus size={16} strokeWidth={3} />
+                </button>
+              )}
+            </div>
           </div>
           <span className="text-[7px] font-black text-[#72777f] uppercase tracking-widest block opacity-60">
             EQUIPO_Y_RESPONSABILIDADES
@@ -736,32 +816,59 @@ export default function BepTeamModule({ project }) {
                 </h3>
 
                 {/* Uses & Strategy */}
-                <div className="bg-[#f6f3ee] border-2 border-[#1c1c19] p-5 space-y-4">
+                <div className="bg-[#fcf9f4] border-2 border-[#1c1c19] p-5 shadow-[4px_4px_0_0_rgba(28,28,25,0.05)] space-y-4">
                   <div className="space-y-1">
                     <div className="text-[7px] font-black uppercase tracking-wider text-[#72777f] flex items-center gap-1.5">
                       <Workflow size={10} className="text-[#0f4369]" /> Ejecución de Usos BIM
                     </div>
-                    <p className="text-[10px] font-semibold text-[#1c1c19] leading-relaxed uppercase font-mono">
-                      {getBimStrategyContext(selectedRole.role_name).uses}
-                    </p>
+                    {isEditing ? (
+                      <textarea
+                        value={editForm.bim_uses}
+                        onChange={e => setEditForm({ ...editForm, bim_uses: e.target.value })}
+                        rows={3}
+                        className="w-full p-2 border-2 border-[#1c1c19] text-[10px] font-mono uppercase focus:outline-none resize-none"
+                      />
+                    ) : (
+                      <p className="text-[10px] font-semibold text-[#1c1c19] leading-relaxed uppercase font-mono">
+                        {selectedRole.bim_uses || getBimStrategyContext(selectedRole.role_name).uses}
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-1 border-t border-[#1c1c19]/10 pt-3">
                     <div className="text-[7px] font-black uppercase tracking-wider text-[#72777f] flex items-center gap-1.5">
                       <ClipboardList size={10} className="text-[#0f4369]" /> Matriz LOD y TDI
                     </div>
-                    <p className="text-[10px] font-semibold text-[#1c1c19] leading-relaxed uppercase font-mono">
-                      {getBimStrategyContext(selectedRole.role_name).lod}
-                    </p>
+                    {isEditing ? (
+                      <textarea
+                        value={editForm.lod_tdi}
+                        onChange={e => setEditForm({ ...editForm, lod_tdi: e.target.value })}
+                        rows={3}
+                        className="w-full p-2 border-2 border-[#1c1c19] text-[10px] font-mono uppercase focus:outline-none resize-none"
+                      />
+                    ) : (
+                      <p className="text-[10px] font-semibold text-[#1c1c19] leading-relaxed uppercase font-mono">
+                        {selectedRole.lod_tdi || getBimStrategyContext(selectedRole.role_name).lod}
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-1 border-t border-[#1c1c19]/10 pt-3">
                     <div className="text-[7px] font-black uppercase tracking-wider text-[#72777f] flex items-center gap-1.5">
                       <FolderOpen size={10} className="text-[#0f4369]" /> Colaboración en CDE (ACC)
                     </div>
-                    <p className="text-[10px] font-semibold text-[#1c1c19] leading-relaxed uppercase font-mono">
-                      {getBimStrategyContext(selectedRole.role_name).cde}
-                    </p>
+                    {isEditing ? (
+                      <textarea
+                        value={editForm.cde_collaboration}
+                        onChange={e => setEditForm({ ...editForm, cde_collaboration: e.target.value })}
+                        rows={3}
+                        className="w-full p-2 border-2 border-[#1c1c19] text-[10px] font-mono uppercase focus:outline-none resize-none"
+                      />
+                    ) : (
+                      <p className="text-[10px] font-semibold text-[#1c1c19] leading-relaxed uppercase font-mono">
+                        {selectedRole.cde_collaboration || getBimStrategyContext(selectedRole.role_name).cde}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -789,7 +896,9 @@ export default function BepTeamModule({ project }) {
             </p>
           </div>
         )}
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

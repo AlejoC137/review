@@ -2,11 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Filter, Plus, Loader2 } from 'lucide-react';
 import { projectService } from '../../services/projectService';
 import { useDispatch } from 'react-redux';
+import { useSearchParams } from 'react-router-dom';
 import { openInspector } from '../../store/uiSlice';
 import { format, addDays, startOfWeek, isSameDay, isToday, parseISO, startOfDay } from 'date-fns';
 
 export default function CalendarModule({ project, onTabChange }) {
   const dispatch = useDispatch();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [tasks, setTasks] = useState([]);
   const [subProjects, setSubProjects] = useState([]);
@@ -132,6 +134,12 @@ export default function CalendarModule({ project, onTabChange }) {
 
         <div className="flex items-center gap-3">
           {loading && <Loader2 className="animate-spin text-[#0f4369]" size={16} />}
+          <button 
+            onClick={() => setSearchParams({ tab: 'datos', subtab: 'cronograma' })}
+            className="px-4 py-2.5 bg-white text-[#1c1c19] border-2 border-[#1c1c19] font-black text-[10px] uppercase shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
+          >
+            CRONOGRAMA ENTREGAS
+          </button>
           <button 
             onClick={() => handleDayClick(new Date())}
             className="px-6 py-2.5 bg-[#1c1c19] text-white font-black text-[10px] uppercase shadow-[6px_6px_0_0_rgba(15,67,105,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"

@@ -14,7 +14,7 @@ export default function AdminResourceLabPage() {
       </div>
 
       <div className="mt-8">
-        <AdminResourceList onlyCategory="Recurso" />
+        <AdminResourceList />
       </div>
     </div>
   );

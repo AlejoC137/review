@@ -264,6 +264,7 @@ const EsquemaNodeModal = ({ node, activeEsquema, onClose, onSave, isAdmin, onAss
                       }`}
                   >
                     {tType === '.RVT' && <span className="w-3 h-3 bg-blue-600 rounded-[1px] flex items-center justify-center text-[5px] font-black text-white">RVT</span>}
+                    {tType === '.RTE' && <span className="w-3 h-3 bg-teal-600 rounded-[1px] flex items-center justify-center text-[5px] font-black text-white">RTE</span>}
                     {tType === '.RFA' && <span className="w-3 h-3 bg-purple-600 rounded-[1px] flex items-center justify-center text-[5px] font-black text-white">RFA</span>}
                     {tType === '.DWG' && <span className="w-3 h-3 bg-orange-500 rounded-[1px] flex items-center justify-center text-[5px] font-black text-white">DWG</span>}
                     {tType === '.PDF' && <span className="w-3 h-3 bg-red-500 rounded-[1px] flex items-center justify-center text-[5px] font-black text-white">PDF</span>}

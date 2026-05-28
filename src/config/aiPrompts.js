@@ -78,5 +78,19 @@ JERARQUÍA COMPLETA: ${hierarchy}
 DETALLES TÉCNICOS:
 ${dataStr}
 
-Por favor, analízalo y bríndame recomendaciones para su correcta implementación en un proyecto real.`)
+Por favor, analízalo y bríndame recomendaciones para su correcta implementación en un proyecto real.`),
+
+    deliverySchedule: getPrompt(`Actúa como un BIM Manager experto. Genera ÚNICAMENTE un arreglo JSON para importar entregables BIM a un cronograma.
+
+ESTRUCTURA DE CADA OBJETO JSON:
+- entregable_bim: (String) Nombre del archivo o modelo.
+- responsable: (String) Cargo o persona responsable (ej. "ARQ_COL").
+- fase: (String) Fase del proyecto, DEBE SER "EB", "AP", o "PR".
+- fecha: (String) Fecha en formato YYYY-MM-DD.
+- observaciones: (String) Comentario breve.
+- formato: (String) Extensión del archivo (ej. ".RVT", ".PDF", ".DWG").
+
+REGLAS CRÍTICAS:
+1. Genera los entregables basados en lo que el usuario pida.
+2. El output debe ser ÚNICAMENTE el JSON Array, sin texto adicional ni bloques de markdown. Ejemplo: [{"entregable_bim":"Modelo Arquitectura","responsable":"ARQ","fase":"EB","fecha":"2026-06-01","observaciones":"Preliminar","formato":".RVT"}]`)
 };

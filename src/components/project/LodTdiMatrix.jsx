@@ -1,119 +1,193 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   HelpCircle, ChevronDown, RotateCcw,
-  Search, ListFilter, AlertCircle, Loader2, CheckCircle2
+  Search, ListFilter, AlertCircle, Loader2, CheckCircle2,
+  Table as TableIcon, X
 } from 'lucide-react';
 import { projectService } from '../../services/projectService';
 
 /* ─── Static data ──────────────────────────────────────────── */
 const DISCIPLINE_ELEMENTS = [
-  { discipline: 'Espacial', element: 'Ejes' },
-  { discipline: 'Espacial', element: 'Niveles' },
-  { discipline: 'Espacial', element: 'Zonas' },
-  { discipline: 'Espacial', element: 'Espacios, habitaciones' },
-  { discipline: 'Sitio', element: 'Topografía' },
-  { discipline: 'Sitio', element: 'Excavación' },
-  { discipline: 'Cimentación', element: 'Zapatas' },
-  { discipline: 'Cimentación', element: 'Muros de contención' },
-  { discipline: 'Cimentación', element: 'Pilotes' },
-  { discipline: 'Estructura', element: 'Losas' },
-  { discipline: 'Estructura', element: 'Vigas' },
-  { discipline: 'Estructura', element: 'Columnas' },
-  { discipline: 'Estructura', element: 'Muros' },
-  { discipline: 'Estructura', element: 'Escaleras' },
-  { discipline: 'Envolvente', element: 'Cubierta' },
-  { discipline: 'Envolvente', element: 'Ventanas' },
-  { discipline: 'Envolvente', element: 'Puertas, aberturas' },
-  { discipline: 'Interiorismo', element: 'Particiones' },
-  { discipline: 'Interiorismo', element: 'Puertas, aberturas' },
-  { discipline: 'Interiorismo', element: 'Falso techo' },
-  { discipline: 'Interiorismo', element: 'Pisos' },
-  { discipline: 'Interiorismo', element: 'Mobiliario' },
-  { discipline: 'Plomería (Hidrosanitario)', element: 'Tuberías' },
-  { discipline: 'Plomería (Hidrosanitario)', element: 'Accesorios' },
-  { discipline: 'Plomería (Hidrosanitario)', element: 'Equipos' },
-  { discipline: 'Plomería (Hidrosanitario)', element: 'Mobiliario' },
-  { discipline: 'Eléctrica y Comunicación', element: 'Tuberías' },
-  { discipline: 'Eléctrica y Comunicación', element: 'Accesorios' },
-  { discipline: 'Eléctrica y Comunicación', element: 'Cables' },
-  { discipline: 'Eléctrica y Comunicación', element: 'Luminarias' },
-  { discipline: 'Eléctrica y Comunicación', element: 'Equipos' },
-  { discipline: 'Seguridad y Control', element: 'Tuberías' },
-  { discipline: 'Seguridad y Control', element: 'Accesorios' },
-  { discipline: 'Seguridad y Control', element: 'Cables' },
-  { discipline: 'Seguridad y Control', element: 'Luminarias' },
-  { discipline: 'Seguridad y Control', element: 'Equipos' },
-  { discipline: 'HVAC (Aire Acondicionado)', element: 'Tubería' },
-  { discipline: 'HVAC (Aire Acondicionado)', element: 'Accesorios' },
-  { discipline: 'HVAC (Aire Acondicionado)', element: 'Equipos' },
+  { discipline: 'Espacial', element: 'Ejes', defLods: { esq: 200, ant: 300, proy: 350 } },
+  { discipline: 'Espacial', element: 'Niveles', defLods: { esq: 200, ant: 300, proy: 350 } },
+  { discipline: 'Espacial', element: 'Zonas', defLods: { esq: 200, ant: 300, proy: 350 } },
+  { discipline: 'Espacial', element: 'Espacios, habitaciones', defLods: { esq: 200, ant: 300, proy: 350 } },
+  { discipline: 'Sitio', element: 'Topografía', defLods: { esq: 200, ant: 300, proy: 350 } },
+  { discipline: 'Sitio', element: 'Excavación', defLods: { esq: 200, ant: 300, proy: 350 } },
+  { discipline: 'Cimentación', element: 'Zapatas', defLods: { esq: 200, ant: 300, proy: 350 } },
+  { discipline: 'Cimentación', element: 'Muros de contención', defLods: { esq: 200, ant: 300, proy: 350 } },
+  { discipline: 'Cimentación', element: 'Pilotes', defLods: { esq: 200, ant: 300, proy: 350 } },
+  { discipline: 'Estructura', element: 'Losas', defLods: { esq: 200, ant: 300, proy: 350 } },
+  { discipline: 'Estructura', element: 'Vigas', defLods: { esq: 200, ant: 300, proy: 350 } },
+  { discipline: 'Estructura', element: 'Columnas', defLods: { esq: 200, ant: 300, proy: 350 } },
+  { discipline: 'Estructura', element: 'Muros', defLods: { esq: 200, ant: 300, proy: 350 } },
+  { discipline: 'Estructura', element: 'Escaleras', defLods: { esq: 200, ant: 300, proy: 350 } },
+  { discipline: 'Envolvente', element: 'Cubierta', defLods: { esq: 300, ant: 300, proy: 350 } },
+  { discipline: 'Envolvente', element: 'Ventanas', defLods: { esq: 300, ant: 300, proy: 350 } },
+  { discipline: 'Envolvente', element: 'Puertas, aberturas', defLods: { esq: 300, ant: 300, proy: 350 } },
+  { discipline: 'Interiorismo', element: 'Particiones', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Interiorismo', element: 'Puertas, aberturas', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Interiorismo', element: 'Falso techo', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Interiorismo', element: 'Pisos', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Interiorismo', element: 'Mobiliario', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Plomería', element: 'Tuberías', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Plomería', element: 'Accesorios', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Plomería', element: 'Equipos', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Plomería', element: 'Mobiliario', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Eléctrica y Comunicación', element: 'Tuberías', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Eléctrica y Comunicación', element: 'Accesorios', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Eléctrica y Comunicación', element: 'Cables', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Eléctrica y Comunicación', element: 'Luminarias', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Eléctrica y Comunicación', element: 'Equipos', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Seguridad y Control', element: 'Tuberías', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Seguridad y Control', element: 'Accesorios', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Seguridad y Control', element: 'Cables', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Seguridad y Control', element: 'Luminarias', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'Seguridad y Control', element: 'Equipos', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'HVAC', element: 'Tubería', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'HVAC', element: 'Accesorios', defLods: { esq: '', ant: 300, proy: 350 } },
+  { discipline: 'HVAC', element: 'Equipos', defLods: { esq: '', ant: 300, proy: 350 } },
 ];
 
 const LOD_OPTIONS = [
-  { val: 100, label: '100', color: '#94a3b8', desc: 'Conceptual' },
-  { val: 200, label: '200', color: '#60a5fa', desc: 'Esquemático' },
-  { val: 300, label: '300', color: '#34d399', desc: 'Técnico' },
-  { val: 350, label: '350', color: '#f59e0b', desc: 'Coordinación' },
-  { val: 400, label: '400', color: '#f97316', desc: 'Construcción' },
+  { val: '', label: '-' },
+  { val: 100, label: '100' },
+  { val: 200, label: '200' },
+  { val: 300, label: '300' },
+  { val: 350, label: '350' },
+  { val: 400, label: '400' },
 ];
 
 const TDI_LETTERS = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O'];
 
-const TDI_DESCRIPTIONS = {
-  A: 'TDI_A: Información General del Proyecto',
-  B: 'TDI_B: Datos de Ubicación y Terreno',
-  C: 'TDI_C: Características Físicas y Dimensiones',
-  D: 'TDI_D: Especificaciones del Fabricante y Catálogos',
-  E: 'TDI_E: Certificados e Informes de Ensayos',
-  F: 'TDI_F: Costos y Estimaciones Financieras',
-  G: 'TDI_G: Rendimiento Energético y Sostenibilidad',
-  H: 'TDI_H: Planificación y Fases Temporales',
-  I: 'TDI_I: Requisitos de Mantenimiento y Operaciones',
-  J: 'TDI_J: Estándares de Seguridad y Normativas',
-  K: 'TDI_K: Propiedades Acústicas y Térmicas',
-  L: 'TDI_L: Ciclo de Vida y Reusabilidad de Materiales',
-  M: 'TDI_M: Datos del Diseñador e Historial de Cambios',
-  N: 'TDI_N: Requisitos de Instalación y Ensamblaje',
-  O: 'TDI_O: Manuales de Usuario y Garantías',
+const TDI_MAPPING = {
+  100: ['A','B','C','F','G','H','I','J','K','L','N'],
+  200: ['A','B','C','D','F','G','H','I','J','K','L','N'],
+  300: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N'],
+  350: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N'],
+  400: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N']
 };
 
-/* ─── LOD Slider (segmented pills) ────────────────────────── */
-function LodDial({ value, onChange }) {
+/* ─── Componentes Hijos ────────────────────────── */
+
+function PhaseCell({ data, onChange, disciplineColor }) {
   return (
-    <div className="flex flex-col items-center gap-1.5 w-full px-1">
-      {/* Pill row */}
-      <div className="flex w-full border-2 border-[#1c1c19] overflow-hidden">
-        {LOD_OPTIONS.map((opt, i) => {
-          const active = value === opt.val;
-          return (
-            <button
-              key={opt.val}
-              type="button"
-              onClick={() => onChange(opt.val)}
-              className={`flex-1 py-1.5 text-[9px] font-black font-mono tracking-wider transition-all
-                ${i < LOD_OPTIONS.length - 1 ? 'border-r border-[#1c1c19]' : ''}
-                ${active
-                  ? 'text-white shadow-inner'
-                  : 'bg-[#fcf9f4] text-[#72777f] hover:bg-[#f0ede8]'
-                }`}
-              style={active ? { backgroundColor: opt.color } : {}}
-              title={opt.desc}
-            >
-              {opt.val}
-            </button>
-          );
-        })}
-      </div>
-      {/* Active label */}
-      <span
-        className="text-[8px] font-black uppercase font-mono px-2 py-0.5 border border-[#1c1c19]/20"
-        style={{ color: LOD_OPTIONS.find(o => o.val === value)?.color }}
+    <div className={`flex w-full h-full min-h-[32px] border border-[#1c1c19]/10 overflow-hidden group focus-within:border-[#0f4369] focus-within:ring-1 focus-within:ring-[#0f4369] transition-colors ${disciplineColor}`}>
+      <select 
+        value={data.lod} 
+        onChange={e => onChange({ ...data, lod: e.target.value === '' ? '' : parseInt(e.target.value, 10) })}
+        className={`w-full p-1.5 text-[11px] font-mono font-black border-none focus:ring-0 focus:outline-none cursor-pointer appearance-none text-center bg-transparent ${data.lod ? 'text-[#0f4369]' : 'text-gray-400'}`}
       >
-        {LOD_OPTIONS.find(o => o.val === value)?.desc}
-      </span>
+        {LOD_OPTIONS.map(opt => (
+          <option key={opt.val} value={opt.val}>{opt.label}</option>
+        ))}
+      </select>
     </div>
   );
 }
 
+function TdiReferenceModal({ isOpen, onClose }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[#fcf9f4]/95 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-white border-4 border-[#1c1c19] shadow-[16px_16px_0_0_rgba(28,28,25,0.2)] w-full max-w-4xl my-8 flex flex-col">
+        <div className="p-4 border-b-2 border-[#1c1c19] bg-[#1c1c19] text-white flex justify-between items-center">
+          <h3 className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
+            <TableIcon size={16} /> Matriz Referencial TDI por Nivel LOD
+          </h3>
+          <button onClick={onClose} className="hover:text-red-400 transition-colors"><X size={20} /></button>
+        </div>
+        <div className="p-6 overflow-x-auto">
+          <table className="w-full text-center border-collapse border-2 border-[#1c1c19]">
+            <thead>
+              <tr className="bg-[#f6f3ee] border-b-2 border-[#1c1c19]">
+                <th className="p-2 border-r-2 border-[#1c1c19] font-black text-xs">NIVEL LOD</th>
+                {TDI_LETTERS.map(l => (
+                  <th key={l} className="p-2 border-r border-[#1c1c19]/20 font-mono font-bold text-xs">{l}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[100, 200, 300, 400].map(lod => {
+                const activeSet = TDI_MAPPING[lod] || [];
+                return (
+                  <tr key={lod} className="border-b border-[#1c1c19]/20">
+                    <td className="p-2 border-r-2 border-[#1c1c19] font-black text-sm text-[#0f4369]">LOD {lod}</td>
+                    {TDI_LETTERS.map(l => {
+                      const isActive = activeSet.includes(l);
+                      return (
+                        <td key={l} className="p-2 border-r border-[#1c1c19]/20">
+                          {isActive ? (
+                            <div className="w-3 h-3 rounded-full bg-red-500 mx-auto shadow-[1px_1px_0_0_rgba(0,0,0,1)]" title="Aplica"></div>
+                          ) : (
+                            <span className="text-[10px] text-gray-300 font-black">N/A</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="mt-4 text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+            * El punto rojo indica que el requerimiento de información TDI es exigible para dicho nivel LOD según el estándar del proyecto. El TDI del nivel 350 es idéntico al 300.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Funciones Utilitarias ────────────────────────── */
+
+const getPhaseColor = (discipline, lod) => {
+  // If no LOD is defined, the cell is inactive, so keep it transparent or a default empty state color
+  if (!lod) return 'bg-transparent';
+
+  if (['Espacial', 'Sitio', 'Envolvente', 'Interiorismo'].includes(discipline)) {
+    return 'bg-[#bfd4e7]'; // Arquitectura (Light Blue)
+  }
+  if (['Cimentación', 'Estructura'].includes(discipline)) {
+    return 'bg-[#d6e3c8]'; // Estructura (Light Green)
+  }
+  if (['Plomería', 'Eléctrica y Comunicación', 'Seguridad y Control', 'HVAC'].includes(discipline)) {
+    return 'bg-[#f4e29e]'; // MEP (Light Yellow)
+  }
+  
+  return 'bg-[#a3a3a3]'; // Otras (Gray)
+};
+
+const parseNotes = (notesString, defaultLods) => {
+  const def = {
+    esquema: { aem: '', lod: defaultLods?.esq || '' },
+    anteproyecto: { aem: '', lod: defaultLods?.ant || '' },
+    finales: { aem: '', lod: defaultLods?.proy || '' },
+    text: ''
+  };
+
+  if (!notesString) return def;
+
+  try {
+    if (notesString.trim().startsWith('{')) {
+      const parsed = JSON.parse(notesString);
+      return {
+        esquema: parsed.esquema || def.esquema,
+        anteproyecto: parsed.anteproyecto || def.anteproyecto,
+        finales: parsed.finales || def.finales,
+        text: parsed.text || ''
+      };
+    }
+  } catch (e) {}
+
+  // Legacy fallback
+  return { ...def, text: notesString };
+};
+
+const serializeNotes = (dataObj) => {
+  return JSON.stringify(dataObj);
+};
 
 /* ─── Main Component ───────────────────────────────────────── */
 export default function LodTdiMatrix({ projectId }) {
@@ -122,8 +196,7 @@ export default function LodTdiMatrix({ projectId }) {
   const [matrixData, setMatrixData] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDiscipline, setSelectedDiscipline] = useState('all');
-  const [activePopover, setActivePopover] = useState(null);
-  const popoverRef = useRef(null);
+  const [showTdiModal, setShowTdiModal] = useState(false);
 
   const disciplines = ['all', ...new Set(DISCIPLINE_ELEMENTS.map(e => e.discipline))];
 
@@ -138,8 +211,10 @@ export default function LodTdiMatrix({ projectId }) {
         if (data && data.length > 0) {
           const map = {};
           data.forEach(item => {
+            const staticEl = DISCIPLINE_ELEMENTS.find(de => de.discipline === item.discipline && de.element === item.element_name);
             map[`${item.discipline}::${item.element_name}`] = {
-              lod: item.lod, tdi: item.tdi || [], notes: item.notes || ''
+              parsed: parseNotes(item.notes, staticEl?.defLods),
+              rawLod: item.lod // We keep it but don't strictly rely on it for UI
             };
           });
           setMatrixData(map);
@@ -160,38 +235,56 @@ export default function LodTdiMatrix({ projectId }) {
     fetchMatrix();
   }, [projectId]);
 
-  useEffect(() => {
-    const handler = e => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target)) setActivePopover(null);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const handleUpdate = async (discipline, element, key, value) => {
+  const handleUpdate = async (discipline, element, field, subfield, value) => {
     const itemKey = `${discipline}::${element}`;
-    const cur = matrixData[itemKey] || { lod: 100, tdi: [], notes: '' };
-    const updated = { ...cur, [key]: value };
-    const next = { ...matrixData, [itemKey]: updated };
-    setMatrixData(next);
-    localStorage.setItem(`peb_lod_tdi_matrix_${projectId}`, JSON.stringify(next));
-    setSavingState('saving');
-    try {
-      await projectService.saveLodTdiElement(projectId, discipline, element, updated.lod, updated.tdi, updated.notes);
-      setSavingState('saved');
-    } catch { setSavingState('local'); }
-  };
+    const staticEl = DISCIPLINE_ELEMENTS.find(de => de.discipline === discipline && de.element === element);
+    
+    // Get current or initialize with defaults
+    const currentData = matrixData[itemKey] || { parsed: parseNotes('', staticEl?.defLods) };
+    
+    // Create updated parsed object
+    let updatedParsed = { ...currentData.parsed };
+    if (field === 'text') {
+      updatedParsed.text = value;
+    } else {
+      updatedParsed[field] = { ...updatedParsed[field], [subfield]: value };
+    }
 
-  const toggleTdi = (d, e, letter) => {
-    const k = `${d}::${e}`;
-    const cur = matrixData[k]?.tdi || [];
-    const s = `TDI_${letter}`;
-    const next = cur.includes(s) ? cur.filter(t => t !== s) : [...cur, s].sort();
-    handleUpdate(d, e, 'tdi', next);
+    // Determine max LOD for the legacy 'lod' column just for DB consistency
+    const maxLod = Math.max(
+      updatedParsed.esquema.lod || 0,
+      updatedParsed.anteproyecto.lod || 0,
+      updatedParsed.finales.lod || 0
+    );
+    const finalLod = maxLod === 0 ? 100 : maxLod;
+
+    const nextMatrixData = {
+      ...matrixData,
+      [itemKey]: { parsed: updatedParsed, rawLod: finalLod }
+    };
+    
+    setMatrixData(nextMatrixData);
+    localStorage.setItem(`peb_lod_tdi_matrix_${projectId}`, JSON.stringify(nextMatrixData));
+    setSavingState('saving');
+    
+    try {
+      // Serialize to store in 'notes' column. Leave 'tdi' empty since it's standard.
+      await projectService.saveLodTdiElement(
+        projectId, 
+        discipline, 
+        element, 
+        finalLod, 
+        [], 
+        serializeNotes(updatedParsed)
+      );
+      setSavingState('saved');
+    } catch { 
+      setSavingState('local'); 
+    }
   };
 
   const handleResetAll = () => {
-    if (!window.confirm('¿Reiniciar toda la matriz LOD y TDI?')) return;
+    if (!window.confirm('¿Reiniciar toda la matriz LOD? Se perderán todos los datos ingresados.')) return;
     localStorage.removeItem(`peb_lod_tdi_matrix_${projectId}`);
     setMatrixData({});
     setSavingState('saved');
@@ -226,19 +319,28 @@ export default function LodTdiMatrix({ projectId }) {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setShowTdiModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-[#0f4369] text-white border-2 border-[#1c1c19] font-black text-[10px] uppercase shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
+          >
+            <TableIcon size={14} /> Ver Matriz Referencial TDI
+          </button>
+          
+          <div className="h-6 w-[2px] bg-[#1c1c19]/20 mx-1"></div>
+
           {savingState === 'saving' && (
             <span className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 border border-amber-300 text-[10px] font-bold text-amber-800 uppercase font-mono">
-              <Loader2 className="animate-spin h-3.5 w-3.5" /> Sincronizando...
+              <Loader2 className="animate-spin h-3.5 w-3.5" /> Sincronizando
             </span>
           )}
           {savingState === 'saved' && (
             <span className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 border border-green-300 text-[10px] font-bold text-green-800 uppercase font-mono">
-              <CheckCircle2 className="h-3.5 w-3.5" /> Base de Datos OK
+              <CheckCircle2 className="h-3.5 w-3.5" /> DB_OK
             </span>
           )}
           {savingState === 'local' && (
             <span className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 border border-blue-300 text-[10px] font-bold text-blue-800 uppercase font-mono">
-              <AlertCircle className="h-3.5 w-3.5" /> Guardado Local
+              <AlertCircle className="h-3.5 w-3.5" /> Local
             </span>
           )}
           <button onClick={handleResetAll}
@@ -248,119 +350,98 @@ export default function LodTdiMatrix({ projectId }) {
         </div>
       </div>
 
-      {/* ── Help hint ── */}
-      <div className="p-4 border-2 border-dashed border-[#1c1c19] bg-[#fcf9f4] flex gap-3 items-start">
-        <HelpCircle className="text-[#0f4369] shrink-0 mt-0.5" size={16} />
-        <div className="text-[11px] font-semibold text-slate-700 leading-normal uppercase">
-          <strong className="text-[#1c1c19]">Guía:</strong> Gira el <strong className="text-[#0f4369]">dial LOD</strong> con la rueda del ratón, teclas ← → o los botones ‹ ›. Haz clic en <strong className="text-[#0f4369]">TDI</strong> para marcar atributos de información. Los cambios se guardan automáticamente.
+      {/* ── Help hint & Legend ── */}
+      <div className="flex flex-col lg:flex-row gap-4">
+        <div className="p-4 border-2 border-dashed border-[#1c1c19] bg-[#fcf9f4] flex gap-3 items-start flex-1">
+          <HelpCircle className="text-[#0f4369] shrink-0 mt-0.5" size={16} />
+          <div className="text-[10px] font-bold text-slate-700 leading-normal uppercase">
+            <strong className="text-[#1c1c19]">Guía:</strong> Define el Autor del Elemento del Modelo (AEM) y el Nivel de Desarrollo (LOD) para cada fase. El Tipo de Información (TDI) aplicable dependerá automáticamente del nivel LOD seleccionado en cada fase. (Clic en "Ver Matriz Referencial TDI" para más detalles).
+          </div>
+        </div>
+        
+        <div className="p-3 border-2 border-solid border-[#1c1c19] bg-white flex flex-col justify-center min-w-[280px] shadow-[4px_4px_0_0_rgba(28,28,25,0.1)]">
+          <div className="text-[9px] font-black uppercase text-[#0f4369] mb-2 tracking-widest border-b border-[#1c1c19]/10 pb-1">Asignación de Elementos</div>
+          <div className="grid grid-cols-2 gap-2 text-[9px] font-bold uppercase text-slate-700">
+            <div className="flex items-center gap-2"><div className="w-3.5 h-3.5 bg-[#bfd4e7] border border-black"></div> Arquitectura</div>
+            <div className="flex items-center gap-2"><div className="w-3.5 h-3.5 bg-[#d6e3c8] border border-black"></div> Estructura</div>
+            <div className="flex items-center gap-2"><div className="w-3.5 h-3.5 bg-[#f4e29e] border border-black"></div> MEP</div>
+            <div className="flex items-center gap-2"><div className="w-3.5 h-3.5 bg-[#a3a3a3] border border-black"></div> Otras</div>
+          </div>
         </div>
       </div>
 
       {/* ── Table ── */}
       <div className="bg-white border-2 border-[#1c1c19] shadow-[6px_6px_0_0_rgba(28,28,25,1)] overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full text-left border-collapse min-w-[900px]">
             <thead>
+              <tr>
+                <th colSpan="2" className="bg-[#fcf9f4] border-r-2 border-[#1c1c19] p-2 text-center text-[10px] font-black text-transparent select-none">-</th>
+                <th colSpan="3" className="bg-[#e5e2dd] border-b-2 border-r-2 border-[#1c1c19] p-2 text-center text-[10px] font-black tracking-widest text-[#0f4369] uppercase border-l-2">
+                  Fases del Proyecto (AEM & LOD)
+                </th>
+                <th className="bg-[#fcf9f4] border-b-2 border-[#1c1c19] p-2 text-center text-[10px] font-black text-transparent select-none">-</th>
+              </tr>
               <tr className="bg-[#1c1c19] text-white font-mono text-[10px] tracking-wider uppercase">
-                <th className="p-3 w-[16%] border-r border-white/10">Disciplina</th>
-                <th className="p-3 w-[20%] border-r border-white/10">Elemento del Modelo</th>
-                <th className="p-3 w-[22%] border-r border-white/10 text-center">Dial LOD</th>
-                <th className="p-3 w-[18%] border-r border-white/10">TDI (A–O)</th>
-                <th className="p-3 w-[24%]">Notas</th>
+                <th className="p-3 w-[12%] border-r border-white/20">Disciplina</th>
+                <th className="p-3 w-[15%] border-r-2 border-white/20">Elemento</th>
+                <th className="p-3 w-[18%] border-r border-white/20 text-center">Esquema Básico</th>
+                <th className="p-3 w-[18%] border-r border-white/20 text-center">Anteproyecto</th>
+                <th className="p-3 w-[18%] border-r-2 border-white/20 text-center">Proy/Finales</th>
+                <th className="p-3 w-[19%]">Notas</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1c1c19]/15">
               {loading ? (
-                <tr><td colSpan={5} className="p-12 text-center">
+                <tr><td colSpan={6} className="p-12 text-center">
                   <Loader2 className="animate-spin mx-auto text-[#0f4369]" size={28} />
                 </td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={5} className="p-8 text-center text-slate-500 italic">
+                <tr><td colSpan={6} className="p-8 text-center text-slate-500 italic">
                   No se encontraron elementos con los filtros actuales.
                 </td></tr>
               ) : filtered.map((item, index) => {
                 const key = `${item.discipline}::${item.element}`;
-                const cfg = matrixData[key] || { lod: 100, tdi: [], notes: '' };
-                const popOpen = activePopover === key;
+                const cfg = matrixData[key]?.parsed || parseNotes('', item.defLods);
+                
                 return (
                   <tr key={index} className="hover:bg-[#f6f3ee]/30 transition-colors">
-                    {/* Disciplina */}
                     <td className="p-3 border-r border-[#1c1c19]/10">
-                      <span className="px-2 py-0.5 bg-[#f6f3ee] border border-[#1c1c19]/20 text-[9px] font-black uppercase font-mono text-slate-700">
+                      <span className="px-1.5 py-0.5 bg-[#f6f3ee] border border-[#1c1c19]/20 text-[8px] font-black uppercase font-mono text-slate-700">
                         {item.discipline}
                       </span>
                     </td>
-                    {/* Elemento */}
-                    <td className="p-3 border-r border-[#1c1c19]/10 text-xs font-bold uppercase tracking-tight text-[#1c1c19]">
+                    <td className="p-3 border-r-2 border-[#1c1c19]/30 text-[10px] font-bold uppercase tracking-tight text-[#1c1c19]">
                       {item.element}
                     </td>
-                    {/* LOD DIAL */}
-                    <td className="p-2 border-r border-[#1c1c19]/10">
-                      <div className="flex justify-center">
-                        <LodDial
-                          value={cfg.lod}
-                          onChange={v => handleUpdate(item.discipline, item.element, 'lod', v)}
-                        />
-                      </div>
+                    
+                    <td className="p-1.5 border-r border-[#1c1c19]/20 bg-[#f9f9f9] hover:bg-[#f0f0f0] transition-colors">
+                      <PhaseCell 
+                        data={cfg.esquema} 
+                        onChange={(d) => handleUpdate(item.discipline, item.element, 'esquema', null, d)} 
+                        disciplineColor={getPhaseColor(item.discipline, cfg.esquema.lod)}
+                      />
                     </td>
-                    {/* TDI */}
-                    <td className="p-3 border-r border-[#1c1c19]/10 relative">
-                      <button
-                        onClick={() => setActivePopover(popOpen ? null : key)}
-                        className="w-full flex items-center justify-between bg-[#fcf9f4] hover:bg-white border-2 border-[#1c1c19] px-3 py-1.5 text-left font-bold text-[10px] tracking-tight uppercase transition-all shadow-[2px_2px_0_0_rgba(28,28,25,0.08)]"
-                      >
-                        <span className="truncate max-w-[110px] font-mono">
-                          {cfg.tdi.length > 0 ? cfg.tdi.map(t => t.replace('TDI_','')).join(', ') : 'Ninguno'}
-                        </span>
-                        <span className="text-[9px] bg-[#0f4369] text-white px-1.5 py-0.5 border border-black font-black">
-                          {cfg.tdi.length}
-                        </span>
-                      </button>
-                      {popOpen && (
-                        <div ref={popoverRef}
-                          className="absolute z-50 left-3 right-3 top-[44px] bg-[#fcf9f4] border-2 border-[#1c1c19] p-4 shadow-[8px_8px_0_0_rgba(28,28,25,1)] space-y-3 min-w-[280px]">
-                          <div className="flex justify-between items-center border-b border-[#1c1c19]/10 pb-1.5">
-                            <span className="text-[10px] font-black uppercase text-[#0f4369]">Tipos de Información (TDI)</span>
-                            <span className="text-[8px] font-black text-slate-500">{item.element}</span>
-                          </div>
-                          <div className="grid grid-cols-5 gap-1.5">
-                            {TDI_LETTERS.map(l => {
-                              const s = `TDI_${l}`;
-                              const on = cfg.tdi.includes(s);
-                              return (
-                                <button key={l} type="button"
-                                  onClick={() => toggleTdi(item.discipline, item.element, l)}
-                                  title={TDI_DESCRIPTIONS[l]}
-                                  className={`p-1.5 font-mono text-[10px] font-black border transition-all uppercase flex items-center justify-center
-                                    ${on ? 'bg-[#0f4369] text-white border-black shadow-[1px_1px_0_0_rgba(0,0,0,1)]'
-                                         : 'bg-white text-slate-700 border-slate-300 hover:border-black'}`}>
-                                  {l}
-                                </button>
-                              );
-                            })}
-                          </div>
-                          <div className="flex gap-2 justify-between pt-1 text-[9px] font-bold border-t border-[#1c1c19]/10">
-                            <div className="flex gap-1.5">
-                              <button type="button" onClick={() => handleUpdate(item.discipline, item.element, 'tdi', TDI_LETTERS.map(l => `TDI_${l}`))}
-                                className="text-[#0f4369] hover:underline">Todos</button>
-                              <span className="text-slate-400">|</span>
-                              <button type="button" onClick={() => handleUpdate(item.discipline, item.element, 'tdi', [])}
-                                className="text-red-600 hover:underline">Limpiar</button>
-                            </div>
-                            <button type="button" onClick={() => setActivePopover(null)}
-                              className="px-2 py-0.5 bg-black text-white hover:bg-slate-800 font-bold uppercase text-[8px]">
-                              Hecho
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                    <td className="p-1.5 border-r border-[#1c1c19]/20 bg-[#f9f9f9] hover:bg-[#f0f0f0] transition-colors">
+                      <PhaseCell 
+                        data={cfg.anteproyecto} 
+                        onChange={(d) => handleUpdate(item.discipline, item.element, 'anteproyecto', null, d)} 
+                        disciplineColor={getPhaseColor(item.discipline, cfg.anteproyecto.lod)}
+                      />
                     </td>
-                    {/* Notas */}
-                    <td className="p-3">
-                      <input type="text" value={cfg.notes}
-                        onChange={e => handleUpdate(item.discipline, item.element, 'notes', e.target.value)}
-                        placeholder="Notas del modelador..."
-                        className="w-full p-2 bg-[#fcf9f4] border-2 border-[#1c1c19]/25 hover:border-[#1c1c19]/60 focus:border-[#0f4369] focus:bg-white text-xs font-bold placeholder:italic placeholder:font-normal focus:outline-none"
+                    <td className="p-1.5 border-r-2 border-[#1c1c19]/30 bg-[#f9f9f9] hover:bg-[#f0f0f0] transition-colors">
+                      <PhaseCell 
+                        data={cfg.finales} 
+                        onChange={(d) => handleUpdate(item.discipline, item.element, 'finales', null, d)} 
+                        disciplineColor={getPhaseColor(item.discipline, cfg.finales.lod)}
+                      />
+                    </td>
+                    
+                    <td className="p-2">
+                      <input type="text" value={cfg.text}
+                        onChange={e => handleUpdate(item.discipline, item.element, 'text', null, e.target.value)}
+                        placeholder="Notas adicionales..."
+                        className="w-full p-1.5 bg-[#fcf9f4] border border-[#1c1c19]/20 hover:border-[#1c1c19]/50 focus:border-[#0f4369] focus:bg-white text-[10px] font-bold placeholder:italic placeholder:font-normal focus:outline-none transition-colors"
                       />
                     </td>
                   </tr>
@@ -370,10 +451,12 @@ export default function LodTdiMatrix({ projectId }) {
           </table>
         </div>
         <div className="bg-[#f6f3ee] border-t-2 border-[#1c1c19] p-3 text-[10px] font-bold text-slate-600 flex flex-wrap justify-between items-center font-mono">
-          <span>ELEMENTOS CONFIGURABLES: {DISCIPLINE_ELEMENTS.length}</span>
+          <span>ELEMENTOS: {DISCIPLINE_ELEMENTS.length}</span>
           <span>MOSTRANDO: {filtered.length}</span>
         </div>
       </div>
+
+      <TdiReferenceModal isOpen={showTdiModal} onClose={() => setShowTdiModal(false)} />
     </div>
   );
 }

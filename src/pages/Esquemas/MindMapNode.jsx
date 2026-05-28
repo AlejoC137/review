@@ -80,6 +80,7 @@ const MindMapNode = ({
   if (node.type === 'FOLDER') typeIndicator = "border-l-[6px] border-l-yellow-500";
   else if (node.type === 'TOOL') typeIndicator = "border-l-[6px] border-l-blue-500";
   else if (node.type === '.RVT') typeIndicator = "border-l-[6px] border-l-blue-600";
+  else if (node.type === '.RTE') typeIndicator = "border-l-[6px] border-l-teal-600";
   else if (node.type === '.RFA') typeIndicator = "border-l-[6px] border-l-purple-600";
   else if (node.type === '.DWG') typeIndicator = "border-l-[6px] border-l-orange-500";
   else if (node.type === 'DOC') typeIndicator = "border-l-[6px] border-l-slate-700";
@@ -136,6 +137,7 @@ const MindMapNode = ({
                 {(!node.type || node.type === 'DOC') && <FileText size={16} className="text-[#0f4369]" />}
                 {node.type === 'TOOL' && <Wrench size={16} className="text-blue-600" />}
                 {node.type === '.RVT' && <div className="w-5 h-5 bg-blue-600 text-white flex items-center justify-center rounded-[2px] font-black text-[7px]">RVT</div>}
+                {node.type === '.RTE' && <div className="w-5 h-5 bg-teal-600 text-white flex items-center justify-center rounded-[2px] font-black text-[7px]">RTE</div>}
                 {node.type === '.RFA' && <div className="w-5 h-5 bg-purple-600 text-white flex items-center justify-center rounded-[2px] font-black text-[7px]">RFA</div>}
                 {node.type === '.DWG' && <div className="w-5 h-5 bg-orange-500 text-white flex items-center justify-center rounded-[2px] font-black text-[7px]">DWG</div>}
                 {node.type === '.PDF' && <div className="w-5 h-5 bg-red-500 text-white flex items-center justify-center rounded-[2px] font-black text-[7px]">PDF</div>}
@@ -152,6 +154,7 @@ const MindMapNode = ({
                       { id: 'FOLDER', icon: Folder, color: 'text-yellow-400' },
                       { id: 'TOOL', icon: Wrench, color: 'text-blue-400' },
                       { id: '.RVT', label: 'RVT', color: 'bg-blue-600' },
+                      { id: '.RTE', label: 'RTE', color: 'bg-teal-600' },
                       { id: '.RFA', label: 'RFA', color: 'bg-purple-600' },
                       { id: '.DWG', label: 'DWG', color: 'bg-orange-500' },
                       { id: '.PDF', label: 'PDF', color: 'bg-red-500' },

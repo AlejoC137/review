@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ExternalLink, Edit, Trash2, Plus, X, Image as ImageIcon, ArrowRight, Save, LayoutTemplate, FileText, Search } from 'lucide-react';
+import { ExternalLink, Edit, Trash2, Plus, X, Image as ImageIcon, ArrowRight, Save, LayoutTemplate, FileText, Search, Sparkles, Copy, Check } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useResources } from '../../hooks/useResources';
 import { useNavigate } from 'react-router-dom';
@@ -32,6 +32,29 @@ export default function AdminResourceList({ moduleMode = false, moduleId = null,
   const [searchQuery, setSearchQuery] = useState('');
   const [draggedResourceId, setDraggedResourceId] = useState(null);
   const [dragOverResourceId, setDragOverResourceId] = useState(null);
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiTopic, setAiTopic] = useState('');
+  const [jsonInput, setJsonInput] = useState('');
+  const [jsonError, setJsonError] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+const promptText = `Eres un asistente experto en clasificación de recursos BIM y AEC. Genera los datos para un nuevo recurso en estricto formato JSON.
+El recurso trata sobre: ${aiTopic}
+
+Debes devolver ÚNICAMENTE un bloque JSON válido con la siguiente estructura exacta (sin Markdown extra, sin explicaciones):
+{
+  "title": "Título del recurso",
+  "description": "Breve descripción detallada del propósito y uso del recurso",
+  "category": "Una de estas: [Recurso, Plantilla]",
+  "url": "https://url-del-recurso.com o dejar vacío",
+  "image_url": "https://url-de-portada.com o dejar vacío"
+}`;
+
+  const handleCopyPrompt = () => {
+    navigator.clipboard.writeText(promptText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   useEffect(() => {
     fetchResources();
@@ -92,6 +115,35 @@ export default function AdminResourceList({ moduleMode = false, moduleId = null,
   const handleAdd = () => {
     setIsEditing('new');
     setFormData({ category: onlyCategory || RESOURCE_CATEGORIES[0], title: '', image_url: '', description: '', url: '', published: false });
+    setJsonInput('');
+    setJsonError(null);
+    setAiTopic('');
+  };
+
+  const handleParseJson = () => {
+    try {
+      setJsonError(null);
+      if (!jsonInput.trim()) return;
+      let cleanJson = jsonInput.trim();
+      if (cleanJson.startsWith('```json')) cleanJson = cleanJson.replace(/```json/g, '').trim();
+      if (cleanJson.startsWith('```')) cleanJson = cleanJson.replace(/```/g, '').trim();
+      if (cleanJson.endsWith('```')) cleanJson = cleanJson.replace(/```/g, '').trim();
+      
+      const parsed = JSON.parse(cleanJson);
+      
+      setFormData(prev => ({
+        ...prev,
+        title: parsed.title || prev.title,
+        description: parsed.description || prev.description,
+        category: parsed.category || prev.category,
+        url: parsed.url || prev.url,
+        image_url: parsed.image_url || prev.image_url
+      }));
+      setJsonInput('');
+      setShowAiModal(false);
+    } catch (err) {
+      setJsonError("Error al parsear JSON. Asegúrate de copiar solo el formato JSON válido. Detalles: " + err.message);
+    }
   };
 
   const handleSave = async () => {
@@ -122,7 +174,41 @@ export default function AdminResourceList({ moduleMode = false, moduleId = null,
     return matchesSearch && matchesCategory && !isExcluded;
   });
 
-  const categories = [...new Set(filteredResources.map(r => r.category))];
+  const displayCategories = onlyCategory 
+    ? [onlyCategory] 
+    : [...new Set([...RESOURCE_CATEGORIES.filter(cat => cat !== 'Protocolo' && cat !== 'Manual'), ...filteredResources.map(r => r.category)])];
+
+  const handleCategoryDrop = (e, targetCategory) => {
+    e.preventDefault();
+    const sourceResourceId = e.dataTransfer.getData('application/resource-id');
+    
+    if (!canEdit || !sourceResourceId) return;
+    
+    // Prevent if dropped on an item (handled by item drop)
+    if (dragOverResourceId) return;
+
+    const sourceIndex = resources.findIndex(r => r.id === sourceResourceId);
+    if (sourceIndex === -1) return;
+    
+    const sourceResource = resources[sourceIndex];
+    if (sourceResource.category === targetCategory) return;
+
+    const reorderedResources = Array.from(resources);
+    const [removed] = reorderedResources.splice(sourceIndex, 1);
+    
+    removed.category = targetCategory;
+    reorderedResources.push(removed);
+    
+    const updatedResources = reorderedResources.map((r, idx) => ({
+      ...r,
+      sort_order: idx + 1
+    }));
+    
+    reorderResources(updatedResources);
+    
+    setDraggedResourceId(null);
+    setDragOverResourceId(null);
+  };
 
   return (
     <div className="flex flex-col gap-10">
@@ -172,9 +258,17 @@ export default function AdminResourceList({ moduleMode = false, moduleId = null,
                 Initialize Resource
               </span>
             </div>
-            <button onClick={() => setIsEditing(null)} className="hover:text-[#ba1a1a] transition-colors p-1">
-              <X size={20} strokeWidth={2.5} />
-            </button>
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={() => setShowAiModal(true)}
+                className="bg-[#0f4369] text-white px-4 py-1.5 font-display font-bold text-[10px] md:text-[11px] tracking-widest uppercase flex items-center gap-2 hover:bg-[#1a5b8a] transition-all border-2 border-[#1c1c19]"
+              >
+                <Sparkles size={14} className="text-yellow-400" /> IMPORTADOR IA
+              </button>
+              <button onClick={() => setIsEditing(null)} className="hover:text-[#ba1a1a] transition-colors p-1">
+                <X size={20} strokeWidth={2.5} />
+              </button>
+            </div>
           </div>
           
           <div className="flex flex-col xl:flex-row divide-y-2 xl:divide-y-0 xl:divide-x-2 divide-[#1c1c19]">
@@ -182,7 +276,7 @@ export default function AdminResourceList({ moduleMode = false, moduleId = null,
             {/* Form Fields */}
             <div className="p-5 md:p-8 xl:w-2/3 flex flex-col gap-5 md:gap-6 bg-[#f6f3ee]">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6">
-                
+
                 <div className="flex flex-col gap-2">
                   <label className="text-[9px] md:text-[10px] font-display font-bold text-[#72777f] tracking-widest uppercase">Resource Title *</label>
                   <input 
@@ -306,18 +400,30 @@ export default function AdminResourceList({ moduleMode = false, moduleId = null,
 
       {loading && <div className="text-center p-8 font-display text-[12px] uppercase text-[#72777f]">Loading Resources...</div>}
       
-      {!loading && categories.map(category => (
-        <div key={category} className="flex flex-col gap-5">
+      {!loading && displayCategories.map(category => {
+        const categoryResources = filteredResources.filter(r => r.category === category);
+        return (
+        <div 
+          key={category} 
+          className="flex flex-col gap-5 rounded-md transition-colors"
+          onDragOver={(e) => { e.preventDefault(); /* Allow drop */ }}
+          onDrop={(e) => handleCategoryDrop(e, category)}
+        >
           <h3 className="font-display font-bold text-[14px] text-[#1c1c19] uppercase tracking-[0.2em] border-b-2 border-[#1c1c19] pb-2">
             {category}
           </h3>
-          <div className="flex flex-col gap-6">
-            {filteredResources.filter(r => r.category === category).map(res => (
+          <div className="flex flex-col gap-6 min-h-[50px] p-2 -m-2 border-2 border-transparent hover:border-[#d8d3cc] border-dashed rounded transition-colors">
+            {categoryResources.length === 0 && (
+              <div className="text-center p-4 font-display text-[10px] uppercase text-[#d8d3cc] tracking-widest border-2 border-dashed border-[#d8d3cc] bg-[#fcf9f4]/50 pointer-events-none">
+                Drop items here to move to {category}
+              </div>
+            )}
+            {categoryResources.map(res => (
               
               <div 
                 key={res.id}
-                onDragOver={(e) => handleDragOver(e, res.id)}
-                onDrop={(e) => handleDrop(e, res.id)}
+                onDragOver={(e) => { e.stopPropagation(); handleDragOver(e, res.id); }}
+                onDrop={(e) => { e.stopPropagation(); handleDrop(e, res.id); }}
                 className="relative"
               >
                 {canEdit && dragOverResourceId === res.id && (
@@ -409,7 +515,7 @@ export default function AdminResourceList({ moduleMode = false, moduleId = null,
             ))}
           </div>
         </div>
-      ))}
+      )})}
 
       {!loading && resources.length === 0 && (
         <div className="py-12 flex flex-col items-center justify-center text-[#72777f] border-2 border-dashed border-[#d8d3cc] bg-[#fcf9f4]/50">
@@ -422,6 +528,87 @@ export default function AdminResourceList({ moduleMode = false, moduleId = null,
         <div className="py-12 flex flex-col items-center justify-center text-[#72777f] border-2 border-dashed border-[#d8d3cc] bg-[#fcf9f4]/50">
           <Search size={32} className="mb-4 text-[#d8d3cc]" strokeWidth={1} />
           <span className="font-display font-bold text-[12px] uppercase tracking-widest">No matching resources found for "{searchQuery}".</span>
+        </div>
+      )}
+
+      {/* AI Modal */}
+      {showAiModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[#fcf9f4]/95 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white border-4 border-[#1c1c19] shadow-[16px_16px_0_0_rgba(28,28,25,0.2)] w-full max-w-3xl my-8 flex flex-col max-h-[90vh]">
+            
+            {/* Header */}
+            <div className="p-6 border-b-2 border-[#1c1c19] bg-[#0f4369] text-white flex justify-between items-center flex-none">
+              <div className="flex items-center gap-3">
+                <Sparkles size={24} className="text-yellow-400" />
+                <h3 className="text-xl font-black italic uppercase tracking-tighter">IMPORTADOR_RECURSOS_IA</h3>
+              </div>
+              <button onClick={() => setShowAiModal(false)} className="text-white hover:rotate-90 transition-transform">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-8 flex-1 overflow-y-auto custom-scrollbar space-y-8">
+              
+              {/* Step 1: Configure and Copy Prompt */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 border-b-2 border-[#1c1c19] pb-2">
+                  <span className="bg-[#1c1c19] text-white font-black text-xs px-2 py-1">PASO 1</span>
+                  <h4 className="text-sm font-black uppercase tracking-widest text-[#1c1c19]">CONFIGURAR Y COPIAR PROMPT</h4>
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-[#72777f]">¿QUÉ RECURSO NECESITAS CREAR?</label>
+                  <textarea
+                    value={aiTopic}
+                    onChange={e => setAiTopic(e.target.value)}
+                    placeholder="Ej: Necesito un manual de usuario para Revit..."
+                    className="w-full bg-[#f6f3ee] border-2 border-[#1c1c19] p-4 text-[12px] font-sans focus:outline-none min-h-[100px] custom-scrollbar"
+                  />
+                </div>
+
+                <button
+                  onClick={handleCopyPrompt}
+                  className={`w-full py-4 border-2 font-display font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${copied ? 'bg-green-600 text-white border-green-800' : 'bg-[#1c1c19] text-white border-[#1c1c19] hover:bg-[#0f4369]'}`}
+                >
+                  {copied ? <Check size={16} /> : <Copy size={16} />}
+                  {copied ? '¡PROMPT COPIADO!' : 'COPIAR PROMPT MAESTRO A IA'}
+                </button>
+              </div>
+
+              {/* Step 2: Paste and Validate Result */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 border-b-2 border-[#1c1c19] pb-2">
+                  <span className="bg-[#1c1c19] text-white font-black text-xs px-2 py-1">PASO 2</span>
+                  <h4 className="text-sm font-black uppercase tracking-widest text-[#1c1c19]">PEGAR Y VALIDAR RESULTADO</h4>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-[#72777f]">PEGA EL JSON GENERADO POR LA IA AQUÍ:</label>
+                  <textarea
+                    value={jsonInput}
+                    onChange={e => { setJsonInput(e.target.value); setJsonError(null); }}
+                    placeholder="{ ... }"
+                    className="w-full bg-[#1c1c19] text-green-400 font-mono border-2 border-[#1c1c19] p-4 text-[10px] focus:outline-none min-h-[150px] custom-scrollbar"
+                  />
+                </div>
+
+                {jsonError && (
+                  <div className="p-3 bg-red-100 text-red-700 text-xs font-bold uppercase border-l-4 border-red-500 font-sans">
+                    {jsonError}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleParseJson}
+                  disabled={!jsonInput.trim()}
+                  className="w-full py-4 bg-[#f6f3ee] text-[#1c1c19] border-2 border-[#1c1c19] font-display font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#e5e2dd] disabled:opacity-50 transition-colors"
+                >
+                  <Check size={16} /> VALIDAR JSON
+                </button>
+              </div>
+
+            </div>
+          </div>
         </div>
       )}
     </div>
