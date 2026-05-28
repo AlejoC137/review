@@ -104,7 +104,8 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
     if (item.path === '/resources') isActive = location.pathname === '/resources';
     else if (item.path === '/materials') isActive = location.pathname === '/materials';
     else if (item.path === '/dictionary') isActive = location.pathname === '/dictionary';
-    else if (item.path === '/') isActive = location.pathname === '/' && (location.hash === item.hash || (item.hash === '#phase-1' && location.hash === ''));
+    else if (item.path === '/') isActive = location.pathname === '/';
+    else if (item.path === '/roadmap') isActive = location.pathname === '/roadmap' && (location.hash === item.hash || (item.hash === '#phase-1' && location.hash === ''));
     else if (item.path && (item.path.startsWith('/esquemas') || item.path.startsWith('/planner') || item.path.startsWith('/esquemaAdmin'))) {
       const [base, query] = item.path.split('?');
       if (query) {
@@ -272,8 +273,8 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
           </NavGroup>
 
           <NavGroup id="cursos" label="Cursos / Capacitación" icon={BookOpen} depth={0}>
-            <NavItem item={{ id: 'nav-fase-1', label: 'Fase 1', path: '/', hash: '#phase-1', icon: LayoutDashboard }} depth={1} />
-            <NavItem item={{ id: 'nav-fase-2', label: 'Fase 2', path: '/', hash: '#phase-2', icon: Layers }} depth={1} />
+            <NavItem item={{ id: 'nav-fase-1', label: 'Fase 1', path: '/roadmap', hash: '#phase-1', icon: LayoutDashboard }} depth={1} />
+            <NavItem item={{ id: 'nav-fase-2', label: 'Fase 2', path: '/roadmap', hash: '#phase-2', icon: Layers }} depth={1} />
             <NavGroup id="recursos" label="Recursos" icon={BookOpen} depth={1}>
               <NavItem item={{ id: 'nav-dictionary', label: 'Diccionario', path: '/dictionary', icon: Book }} depth={2} />
               <NavItem item={{ id: 'nav-plantillas', label: 'Plantillas', path: '#', icon: FileText }} depth={2} />

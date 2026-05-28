@@ -41,6 +41,7 @@ export const AuthProvider = ({ children }) => {
           localStorage.removeItem('custom_user_id');
           setUser(null);
           setIsAdmin(false);
+        } else {
           setUser(data);
           const adminValue = data.admin;
           setIsAdmin(adminValue === true || adminValue === 'true' || adminValue === 1 || adminValue === 'TRUE');
