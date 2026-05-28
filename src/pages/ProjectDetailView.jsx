@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { lifecycleService } from '../services/lifecycleService';
 import LifecycleView from './LifecycleView';
 import MainProject from './MainProject';
@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 
 function ProjectDetailView() {
   const { projectId } = useParams();
+  const [searchParams] = useSearchParams();
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const { t } = useTranslation();
@@ -45,10 +46,11 @@ function ProjectDetailView() {
     );
   }
 
-  // Check if it's the Kengo Kuma project
+  // Check if it's the Kengo Kuma project or if any tab is requested via query string
   const isKengoKuma = project?.name?.toLowerCase().includes('kengo kuma') || projectId === 'kengo-kuma';
+  const hasTab = searchParams.has('tab');
 
-  if (isKengoKuma) {
+  if (isKengoKuma || hasTab) {
     return <MainProject project={project} />;
   }
 

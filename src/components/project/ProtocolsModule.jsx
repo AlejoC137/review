@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   FileText, Plus, Search, ChevronRight, BookOpen, 
   Code, Save, Trash2, Edit3, Eye, Download, Lock, Key, X,
-  ExternalLink, FileDown, Layers, Book, ChevronDown, Sparkles, Copy, Check, Loader2, RefreshCw, Printer
+  ExternalLink, FileDown, Layers, Book, ChevronDown, Sparkles, Copy, Check, Loader2, RefreshCw, Printer, Eraser
 } from 'lucide-react';
 import { useResources } from '../../hooks/useResources';
 import ResourcePlaceholder from '../ui/ResourcePlaceholder';
@@ -12,6 +12,7 @@ import { useAuth } from '../../context/AuthContext';
 import ContentBlockEditor from '../modules/ContentBlockEditor';
 import { PROMPTS } from '../../config/aiPrompts';
 import { buildTreeFromFlatNodes } from '../../utils/schemaUtils';
+import AiProtocolFillModal from './AiProtocolFillModal';
 
 // Helper: Estimate reading time
 function estimateReadingTime(blocks, manualText) {
@@ -268,6 +269,13 @@ export default function ProtocolsModule({ project }) {
   // Creation/Edit state
   const [isCreating, setIsCreating] = useState(false);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [isAiFillModalOpen, setIsAiFillModalOpen] = useState(false);
+  const [selectedProtocolForAi, setSelectedProtocolForAi] = useState(null);
+
+  const handleOpenAiFillModal = (protocol) => {
+    setSelectedProtocolForAi(protocol);
+    setIsAiFillModalOpen(true);
+  };
   const [formData, setFormData] = useState({
     title: '',
     category: 'Protocolo',
@@ -759,6 +767,57 @@ export default function ProtocolsModule({ project }) {
     loadResources();
   };
 
+  const handleClearProtocolContent = async (protocol, protocolChildren) => {
+    if (!window.confirm("⚠️ ¿Estás seguro de que quieres VACIAR el contenido de este protocolo y de sus manuales asociados? Esto borrará todos los textos, pero mantendrá la estructura de documentos (los manuales y plantillas seguirán existiendo).")) {
+       return;
+    }
+    
+    setLoading(true);
+    try {
+       // 1. Clear main protocol resource manual field
+       const { error: mainErr } = await supabase
+          .from('resources')
+          .update({ manual: '' })
+          .eq('id', protocol.id);
+          
+       if (mainErr) throw mainErr;
+       
+       // 2. Delete content blocks of the main protocol
+       await supabase
+          .from('resource_content_blocks')
+          .delete()
+          .eq('resource_id', protocol.id);
+          
+       // 3. Find child manuals
+       const childManuals = protocolChildren.filter(c => c.category === 'Manual');
+       const childManualIds = childManuals.map(m => m.id);
+       
+       if (childManualIds.length > 0) {
+          // 4. Clear child manuals manual fields
+          const { error: childErr } = await supabase
+             .from('resources')
+             .update({ manual: '' })
+             .in('id', childManualIds);
+             
+          if (childErr) throw childErr;
+          
+          // 5. Delete content blocks of all child manuals
+          await supabase
+             .from('resource_content_blocks')
+             .delete()
+             .in('resource_id', childManualIds);
+       }
+       
+       alert("¡Contenido vaciado con éxito! La estructura se ha conservado.");
+       loadResources();
+    } catch (e) {
+       console.error("Error clearing content:", e);
+       alert("Error al vaciar contenido: " + e.message);
+    } finally {
+       setLoading(false);
+    }
+  };
+
   const filteredProtocols = protocols.filter(p => 
     p.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -879,6 +938,9 @@ export default function ProtocolsModule({ project }) {
                 isUnlocked={isUnlocked}
                 onAddChild={handleAddChild}
                 highlightResourceId={resourceIdParam}
+                isBimManager={isBimManager}
+                onOpenAiFill={handleOpenAiFillModal}
+                onClearContent={handleClearProtocolContent}
               />
             ))}
           </div>
@@ -973,11 +1035,19 @@ export default function ProtocolsModule({ project }) {
         onImport={handleAiImport}
         projectId={project?.id}
       />
+
+      <AiProtocolFillModal 
+        isOpen={isAiFillModalOpen} 
+        onClose={() => setIsAiFillModalOpen(false)} 
+        protocol={selectedProtocolForAi}
+        project={project}
+        onComplete={loadResources}
+      />
     </div>
   );
 }
 
-function ProtocolGroup({ protocol, children, isExpanded, onToggle, onNavigate, onDelete, isUnlocked, onAddChild, highlightResourceId }) {
+function ProtocolGroup({ protocol, children, isExpanded, onToggle, onNavigate, onDelete, isUnlocked, onAddChild, highlightResourceId, isBimManager, onOpenAiFill, onClearContent }) {
   const navigate = useNavigate();
   const [expandedItems, setExpandedItems] = useState({});
   const toggleItem = (id) => setExpandedItems(prev => ({ ...prev, [id]: !prev[id] }));
@@ -986,6 +1056,7 @@ function ProtocolGroup({ protocol, children, isExpanded, onToggle, onNavigate, o
   const templates = children.filter(c => c.category === 'Plantilla');
   const requirements = children.filter(c => c.category === 'Requisito' || c.category === 'requisito');
   const hasRequirements = requirements.length > 0;
+  const showFullProtocolActions = isBimManager;
 
   useEffect(() => {
     if (!highlightResourceId) return;
@@ -1041,7 +1112,27 @@ function ProtocolGroup({ protocol, children, isExpanded, onToggle, onNavigate, o
           >
             <Eye size={14} />
           </button>
-          
+
+          {showFullProtocolActions && (
+            <>
+              <button 
+                onClick={() => onOpenAiFill(protocol)}
+                className={`p-2 border-2 transition-all ${isExpanded ? 'border-white text-white hover:bg-white hover:text-[#0f4369]' : 'border-[#1c1c19] bg-[#f6f3ee] hover:bg-[#1c1c19] hover:text-white'}`}
+                title="Llenar con IA"
+              >
+                <Sparkles size={14} className="text-yellow-500 animate-pulse" />
+              </button>
+              
+              <button 
+                onClick={() => onClearContent(protocol, children)}
+                className={`p-2 border-2 transition-all ${isExpanded ? 'border-white text-white hover:bg-[#ba1a1a] hover:text-white hover:border-[#ba1a1a]' : 'border-[#ba1a1a] bg-[#f6f3ee] text-[#ba1a1a] hover:bg-[#ba1a1a] hover:text-white'}`}
+                title="Vaciar Contenido (sin borrar estructura)"
+              >
+                <Eraser size={14} />
+              </button>
+            </>
+          )}
+
           <button 
             onClick={() => window.open(`/print/protocol/${protocol.id}`, '_blank')}
             className={`p-2 border-2 transition-all ${isExpanded ? 'border-white text-white hover:bg-white hover:text-[#0f4369]' : 'border-[#1c1c19] bg-[#f6f3ee] hover:bg-[#1c1c19] hover:text-white'}`}
@@ -1049,8 +1140,8 @@ function ProtocolGroup({ protocol, children, isExpanded, onToggle, onNavigate, o
           >
             <Printer size={14} />
           </button>
-          
-          {isUnlocked && (
+
+          {isUnlocked && showFullProtocolActions && (
             <>
               <button 
                 onClick={onNavigate}
@@ -1068,6 +1159,7 @@ function ProtocolGroup({ protocol, children, isExpanded, onToggle, onNavigate, o
               </button>
             </>
           )}
+
           <button onClick={onToggle} className={`p-1.5 transition-transform duration-300 ${isExpanded ? 'rotate-180 text-white' : 'text-[#1c1c19]'}`}>
             <ChevronDown size={20} />
           </button>
@@ -1152,7 +1244,7 @@ function ProtocolGroup({ protocol, children, isExpanded, onToggle, onNavigate, o
                             <Eye size={12} />
                           </button>
                           
-                          {isUnlocked && (
+                          {isUnlocked && showFullProtocolActions && (
                             <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                               <button onClick={() => navigate(`/admin/resourceEdit/${m.id}`)} className="p-1 bg-[#f6f3ee] border border-[#1c1c19] hover:bg-[#1c1c19] hover:text-white transition-all"><Edit3 size={12} /></button>
                               <button onClick={() => onDelete(m.id)} className="p-1 bg-white border border-[#ba1a1a] text-[#ba1a1a] hover:bg-[#ba1a1a] hover:text-white transition-all"><Trash2 size={12} /></button>
@@ -1179,7 +1271,7 @@ function ProtocolGroup({ protocol, children, isExpanded, onToggle, onNavigate, o
                   <FileDown size={14} className="text-[#0f4369]" />
                   <span className="text-[10px] font-black uppercase tracking-wider text-[#1c1c19]">PLANTILLAS_DESCARGA</span>
                 </div>
-                {isUnlocked && (
+                {isUnlocked && showFullProtocolActions && (
                   <button 
                     onClick={() => onAddChild('Plantilla', protocol.id)}
                     className="p-1 bg-[#1c1c19] text-white hover:bg-[#0f4369] transition-colors border border-[#1c1c19]"
@@ -1241,7 +1333,7 @@ function ProtocolGroup({ protocol, children, isExpanded, onToggle, onNavigate, o
                             <Eye size={12} />
                           </button>
                           
-                          {isUnlocked && (
+                          {isUnlocked && showFullProtocolActions && (
                             <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                               <button onClick={() => navigate(`/admin/resourceEdit/${t.id}`)} className="p-1 bg-[#f6f3ee] border border-[#1c1c19] hover:bg-[#1c1c19] hover:text-white transition-all"><Edit3 size={12} /></button>
                               <button onClick={() => onDelete(t.id)} className="p-1 bg-white border border-[#ba1a1a] text-[#ba1a1a] hover:bg-[#ba1a1a] hover:text-white transition-all"><Trash2 size={12} /></button>
@@ -1269,7 +1361,7 @@ function ProtocolGroup({ protocol, children, isExpanded, onToggle, onNavigate, o
                     <FileText size={14} className="text-[#10b981]" />
                     <span className="text-[10px] font-black uppercase tracking-wider text-[#1c1c19]">REQUISITOS_ASOCIADOS</span>
                   </div>
-                  {isUnlocked && (
+                  {isUnlocked && showFullProtocolActions && (
                     <button 
                       onClick={() => onAddChild('Requisito', protocol.id)}
                       className="p-1 bg-[#1c1c19] text-white hover:bg-[#0f4369] transition-colors border border-[#1c1c19]"
@@ -1314,7 +1406,7 @@ function ProtocolGroup({ protocol, children, isExpanded, onToggle, onNavigate, o
                             <Eye size={12} />
                           </button>
                           
-                          {isUnlocked && (
+                          {isUnlocked && showFullProtocolActions && (
                             <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                               <button onClick={() => navigate(`/admin/resourceEdit/${req.id}`)} className="p-1 bg-[#f6f3ee] border border-[#1c1c19] hover:bg-[#1c1c19] hover:text-white transition-all"><Edit3 size={12} /></button>
                               <button onClick={() => onDelete(req.id)} className="p-1 bg-white border border-[#ba1a1a] text-[#ba1a1a] hover:bg-[#ba1a1a] hover:text-white transition-all"><Trash2 size={12} /></button>

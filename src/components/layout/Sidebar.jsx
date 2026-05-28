@@ -235,10 +235,12 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
             {projectsList.length > 0 ? (
               projectsList.map(proj => (
                 <NavGroup key={proj.id} id={`proj-${proj.id}`} label={proj.name} icon={Activity} depth={1}>
+                  <NavItem item={{ id: `nav-datos-${proj.id}`, label: 'Datos del Proyecto', path: `/project/${proj.id}?tab=datos`, icon: Info }} depth={2} />
                   <NavGroup id={`bep-${proj.id}`} label="BEP" icon={FileText} depth={2}>
                     <NavItem item={{ id: `nav-esquemas-${proj.id}`, label: 'Esquema', path: `/esquemas?projectId=${proj.id}`, icon: Hexagon }} depth={3} />
                     <NavItem item={{ id: `nav-planner-${proj.id}`, label: 'Organizador / Deployer', path: `/planner?projectId=${proj.id}`, icon: ClipboardList }} depth={3} />
                     <NavItem item={{ id: `nav-protocolos-${proj.id}`, label: 'Protocolos', path: `/project/${proj.id}?tab=protocolos`, icon: FileText }} depth={3} />
+                    <NavItem item={{ id: `nav-bep-equipo-${proj.id}`, label: 'Equipo y Roles', path: `/project/${proj.id}?tab=equipo&subtab=roles`, icon: Users }} depth={3} />
                   </NavGroup>
                   <NavItem item={{ id: `nav-proyecto-${proj.id}`, label: 'Sub Proyecto / Unidades', path: `/project/${proj.id}?tab=proyecto`, icon: Layers }} depth={2} />
                   <NavItem item={{ id: `nav-materiales-${proj.id}`, label: 'Materiales', path: `/materials?projectId=${proj.id}`, icon: Package }} depth={2} />
@@ -251,12 +253,14 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
               ))
             ) : (
               <NavGroup id="proyecto1" label="Proyecto 1" icon={Activity} depth={1}>
+                <NavItem item={{ id: 'nav-kengo-datos', label: 'Datos del Proyecto', path: '/project/kengo-kuma?tab=datos', icon: Info }} depth={2} />
                 <NavItem item={{ id: 'nav-kengo-proyecto', label: 'Sub Proyecto / Unidades', path: '/project/kengo-kuma?tab=proyecto', icon: Layers }} depth={2} />
                 <NavItem item={{ id: 'nav-kengo-materiales', label: 'Materiales', path: '/materials?projectId=kengo-kuma', icon: Package }} depth={2} />
                 <NavGroup id="bep" label="BEP" icon={FileText} depth={2}>
                   <NavItem item={{ id: 'nav-esquemas', label: 'Esquema', path: currentPlan ? `/esquemas/${currentPlan.id}` : '/esquemas', icon: Hexagon }} depth={3} />
                   <NavItem item={{ id: 'nav-planner', label: 'Organizador', path: currentPlan ? `/planner/${currentPlan.id}` : '/planner', icon: ClipboardList }} depth={3} />
                   <NavItem item={{ id: 'nav-protocolos', label: 'Protocolos', path: '/project/kengo-kuma?tab=protocolos', icon: FileText }} depth={3} />
+                  <NavItem item={{ id: 'nav-bep-equipo', label: 'Equipo y Roles', path: '/project/kengo-kuma?tab=equipo&subtab=roles', icon: Users }} depth={3} />
                 </NavGroup>
                 <NavItem item={{ id: 'nav-documentos', label: 'Documentos', path: '/documents', icon: FileText }} depth={2} />
                 <NavItem item={{ id: 'nav-calendario', label: 'Calendario Sem/Mes', path: '/project/kengo-kuma?tab=mes', icon: Calendar }} depth={2} />

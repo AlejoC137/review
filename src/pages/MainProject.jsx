@@ -16,6 +16,7 @@ import MonthlyModule from '../components/project/MonthlyModule';
 import ProtocolsModule from '../components/project/ProtocolsModule';
 import DirectoryModule from '../components/project/DirectoryModule';
 import RequirementsModule from '../components/project/RequirementsModule';
+import ProjectDataModule from '../components/project/ProjectDataModule';
 
 
 
@@ -41,6 +42,8 @@ export default function MainProject({ project }) {
   const renderContent = () => {
     const props = { project, onTabChange };
     switch (activeTab) {
+      case 'datos':
+        return <ProjectDataModule {...props} />;
       case 'mes':
         return <MonthlyModule {...props} />;
       case 'semanal':
@@ -84,7 +87,6 @@ export default function MainProject({ project }) {
             SYSTEM_ONLINE
           </div>
           <div className="opacity-30">|</div>
-          <div>ENCRYPTED_STREAM</div>
         </div>
       </header>
 

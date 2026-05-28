@@ -31,13 +31,31 @@ export const lifecycleService = {
 
   // Actualizar metadatos del proyecto
   updateProject: async (id, updates) => {
-    const { data, error } = await supabase
-      .from('projects')
-      .update(updates)
-      .eq('id', id)
-      .select();
-    if (error) throw error;
-    return data[0];
+    let payload = { ...updates };
+    let retries = 5;
+    
+    while (retries > 0) {
+      const { data, error } = await supabase
+        .from('projects')
+        .update(payload)
+        .eq('id', id)
+        .select();
+        
+      if (!error) {
+        return data[0];
+      }
+      
+      const errorMsg = error.message || '';
+      const match = errorMsg.match(/Could not find the '([^']+)' column/);
+      if (match && match[1]) {
+        const missingColumn = match[1];
+        console.warn(`Removing missing column '${missingColumn}' from projects update payload.`);
+        delete payload[missingColumn];
+        retries--;
+      } else {
+        throw error;
+      }
+    }
   },
 
   // Obtener etapas de un ciclo de vida específico

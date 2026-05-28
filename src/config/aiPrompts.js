@@ -1,7 +1,8 @@
 const GENERAL_RULES = `
 REGLAS GENERALES OBLIGATORIAS:
-1. Eliminar siempre las fuentes, NO deben aparecer referencias a fuentes (ej. [1], [2], etc.).
-2. El output debe limitarse a cumplir la estructura solicitada sin texto adicional ni formateos innecesarios.
+1. Eliminar siempre las fuentes y referencias, NO debe aparecer ningún marcador de cita ni referencia (ej. [1], [2], [cite:...], (Fuente), etc.).
+2. No incluyas referencias internas de estilo NotebookLM como [cite:...] o similares en la respuesta.
+3. El output debe limitarse a cumplir la estructura solicitada sin texto adicional ni formateos innecesarios.
 `;
 
 export const getPrompt = (basePrompt) => {

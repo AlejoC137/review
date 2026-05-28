@@ -1,13 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { Users, User, Search, Plus, Mail, Phone, Calendar, CheckCircle, Clock, Briefcase, ChevronDown, ChevronUp, Loader2, Edit2, Save, X } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Users, User, Search, Plus, Mail, Phone, Calendar, CheckCircle, Clock, Briefcase, ChevronDown, ChevronUp, Loader2, Edit2, Save, X, Trash2 } from 'lucide-react';
 import { useDispatch } from 'react-redux';
 import { openInspector } from '../../store/uiSlice';
 import RolesModal from './RolesModal';
 import SpecialtiesModal from './SpecialtiesModal';
+import BepTeamModule from './BepTeamModule';
 import { useAuth } from '../../context/AuthContext';
 import { projectService } from '../../services/projectService';
 
 export default function TeamModule({ project }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeSubTab = searchParams.get('subtab') || 'directorio';
+
+  const handleSubTabChange = (subtab) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('subtab', subtab);
+      return next;
+    });
+  };
+
   const [selectedMember, setSelectedMember] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [members, setMembers] = useState([]);
@@ -16,6 +29,15 @@ export default function TeamModule({ project }) {
   const [isRolesModalOpen, setIsRolesModalOpen] = useState(false);
   const [isSpecialtiesModalOpen, setIsSpecialtiesModalOpen] = useState(false);
   const [editForm, setEditForm] = useState({ name: '', role_description: '', especialidad: '', email: '', phone: '' });
+  const [isAddingStaff, setIsAddingStaff] = useState(false);
+  const [newStaffForm, setNewStaffForm] = useState({
+    name: '',
+    role_description: '',
+    especialidad: '',
+    email: '',
+    phone: '',
+    color: '#0f4369'
+  });
   const dispatch = useDispatch();
   const { isAdmin, isBimManager } = useAuth();
   
@@ -63,21 +85,41 @@ export default function TeamModule({ project }) {
 
   const filteredMembers = members.filter(m => (m.name || m.nombre || '').toLowerCase().includes(searchQuery.toLowerCase()));
 
-  const handleAddMember = async () => {
-    const name = prompt("Nombre del nuevo integrante:");
-    if (!name) return;
-    const role = prompt("Cargo/Rol (ej: Arquitecto):");
+  const handleAddMember = () => {
+    setNewStaffForm({
+      name: '',
+      role_description: '',
+      especialidad: '',
+      email: '',
+      phone: '',
+      color: '#0f4369'
+    });
+    setIsAddingStaff(true);
+    setSelectedMember(null);
+    setIsEditingProfile(false);
+  };
+
+  const handleCreateStaff = async (e) => {
+    if (e) e.preventDefault();
+    if (!newStaffForm.name.trim()) {
+      alert("El nombre es obligatorio");
+      return;
+    }
     try {
-      const newStaff = await projectService.createStaff({
-        name,
-        role_description: role,
-        email: `${name.toLowerCase().replace(' ', '.')}@ark-tvs.com`
-      });
-      setMembers([...members, newStaff]);
+      setLoading(true);
+      const newStaff = await projectService.createStaff(newStaffForm);
+      setMembers(prev => [...prev, newStaff].sort((a, b) => {
+        const nameA = (a.name || a.nombre || '').toLowerCase();
+        const nameB = (b.name || b.nombre || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      }));
       setSelectedMember(newStaff);
-      setIsEditingProfile(false);
+      setIsAddingStaff(false);
     } catch (error) {
-      alert("Error creando integrante");
+      console.error("Error creating staff:", error);
+      alert("Error al crear el integrante: " + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -104,6 +146,22 @@ export default function TeamModule({ project }) {
     }
   };
 
+  const handleDeleteStaff = async (id) => {
+    if (!window.confirm("¿Seguro que deseas eliminar a este integrante del equipo? Se removerá de todas las asignaciones.")) return;
+    try {
+      setLoading(true);
+      await projectService.deleteStaff(id);
+      const updatedMembers = members.filter(m => m.id !== id);
+      setMembers(updatedMembers);
+      setSelectedMember(updatedMembers[0] || null);
+    } catch (err) {
+      console.error("Error deleting staff member:", err);
+      alert("Error al eliminar el integrante: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const completedTasks = Array.isArray(memberTasks) ? memberTasks.filter(t => t?.finished).length : 0;
   const activeTasksCount = Array.isArray(memberTasks) ? (memberTasks.length - completedTasks) : 0;
 
@@ -114,10 +172,49 @@ export default function TeamModule({ project }) {
   );
 
   return (
-    <div className="flex h-full bg-white overflow-hidden border-2 border-[#1c1c19]">
-      {/* Sidebar - Team List */}
-      <div className="w-80 border-r-2 border-[#1c1c19] flex flex-col bg-[#f6f3ee]">
-        <div className="p-6 border-b-2 border-[#1c1c19] bg-white">
+    <div className="flex flex-col h-full bg-white border-2 border-[#1c1c19] overflow-hidden relative">
+      {/* Header with Tabs */}
+      <div className="flex-none p-4 border-b-2 border-[#1c1c19] bg-[#f6f3ee] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 z-10">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-[#0f4369] text-white border-2 border-[#1c1c19] shadow-[3px_3px_0_0_rgba(28,28,25,1)]">
+            <Users size={18} />
+          </div>
+          <div>
+            <span className="text-[7px] font-black text-[#72777f] uppercase tracking-[0.3em] mb-0.5 opacity-50 italic">
+              GESTION_DE_EQUIPO / {project?.name?.toUpperCase()}
+            </span>
+            <h2 className="text-xl font-black italic uppercase tracking-tighter leading-none">
+              Equipo del Proyecto
+            </h2>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex bg-white border-2 border-[#1c1c19] p-0.5 shadow-[3px_3px_0_0_rgba(28,28,25,1)]">
+          <button 
+            onClick={() => handleSubTabChange('directorio')}
+            className={`px-4 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${activeSubTab === 'directorio' ? 'bg-[#1c1c19] text-white' : 'hover:bg-[#f6f3ee]'}`}
+          >
+            Directorio de Staff
+          </button>
+          <button 
+            onClick={() => handleSubTabChange('roles')}
+            className={`px-4 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${activeSubTab === 'roles' ? 'bg-[#1c1c19] text-white' : 'hover:bg-[#f6f3ee]'}`}
+          >
+            Roles y Responsabilidades PEB
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-hidden">
+        {activeSubTab === 'roles' ? (
+          <BepTeamModule project={project} />
+        ) : (
+          <div className="flex h-full overflow-hidden">
+            {/* Sidebar - Team List */}
+            <div className="w-80 border-r-2 border-[#1c1c19] flex flex-col bg-[#f6f3ee]">
+              <div className="p-6 border-b-2 border-[#1c1c19] bg-white">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-black italic uppercase tracking-tighter">Equipo</h3>
             {canEdit && (
@@ -150,8 +247,9 @@ export default function TeamModule({ project }) {
               onClick={() => {
                 setSelectedMember(member);
                 setIsEditingProfile(false);
+                setIsAddingStaff(false);
               }}
-              className={`w-full text-left p-4 border-b-2 border-[#1c1c19]/10 transition-all hover:bg-white flex items-center gap-4 ${selectedMember?.id === member.id ? 'bg-white border-l-4 border-l-[#0f4369] shadow-sm' : ''}`}
+              className={`w-full text-left p-4 border-b-2 border-[#1c1c19]/10 transition-all hover:bg-white flex items-center gap-4 ${!isAddingStaff && selectedMember?.id === member.id ? 'bg-white border-l-4 border-l-[#0f4369] shadow-sm' : ''}`}
             >
               <div className="w-10 h-10 rounded-full border-2 border-[#1c1c19] flex items-center justify-center bg-white overflow-hidden">
                 <User size={20} className="text-[#0f4369]" />
@@ -173,7 +271,147 @@ export default function TeamModule({ project }) {
           backgroundSize: '20px 20px'
         }} />
 
-        {selectedMember ? (
+        {isAddingStaff ? (
+          <div className="relative h-full flex flex-col z-10 overflow-y-auto p-8">
+            <div className="w-full max-w-2xl mx-auto bg-white border-2 border-[#1c1c19] shadow-[8px_8px_0_0_rgba(28,28,25,1)] p-6 space-y-6">
+              <div className="flex justify-between items-center border-b-2 border-[#1c1c19] pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-[#0f4369] text-white border-2 border-[#1c1c19] shadow-[3px_3px_0_0_rgba(28,28,25,1)]">
+                    <User size={18} />
+                  </div>
+                  <div>
+                    <span className="text-[7px] font-black text-[#72777f] uppercase tracking-[0.3em] mb-0.5 opacity-50 italic">
+                      REGISTRO_NUEVO_INTEGRANTE
+                    </span>
+                    <h2 className="text-xl font-black italic uppercase tracking-tighter leading-none">
+                      Agregar Staff
+                    </h2>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAddingStaff(false)}
+                  className="p-2 border-2 border-[#1c1c19] hover:bg-[#f6f3ee] transition-all"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateStaff} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="text-[10px] font-black uppercase text-[#72777f] mb-1 block">Nombre Completo *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newStaffForm.name}
+                      onChange={e => {
+                        const val = e.target.value;
+                        const defaultEmail = `${val.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '.')}@ark-tvs.com`;
+                        setNewStaffForm({ ...newStaffForm, name: val, email: newStaffForm.email === '' || newStaffForm.email.endsWith('@ark-tvs.com') ? defaultEmail : newStaffForm.email });
+                      }}
+                      placeholder="Ej: Alejandro Gomez"
+                      className="w-full p-3 border-2 border-[#1c1c19] text-sm font-bold focus:outline-none focus:border-[#0f4369]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-[#72777f] mb-1 block">Cargo / Rol</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newStaffForm.role_description}
+                        onChange={e => setNewStaffForm({ ...newStaffForm, role_description: e.target.value })}
+                        placeholder="Ej: Coordinador Técnico"
+                        className="flex-1 p-3 border-2 border-[#1c1c19] text-sm font-bold focus:outline-none focus:border-[#0f4369]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setIsRolesModalOpen(true)}
+                        className="px-3 bg-[#f6f3ee] text-[#1c1c19] border-2 border-[#1c1c19] hover:bg-white transition-all flex items-center justify-center shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]"
+                        title="Seleccionar del Catálogo de Roles"
+                      >
+                        <Briefcase size={16} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-[#72777f] mb-1 block">Especialidad / Área</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newStaffForm.especialidad}
+                        onChange={e => setNewStaffForm({ ...newStaffForm, especialidad: e.target.value })}
+                        placeholder="Ej: Estructuras"
+                        className="flex-1 p-3 border-2 border-[#1c1c19] text-sm font-bold focus:outline-none focus:border-[#0f4369]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setIsSpecialtiesModalOpen(true)}
+                        className="px-3 bg-[#f6f3ee] text-[#1c1c19] border-2 border-[#1c1c19] hover:bg-white transition-all flex items-center justify-center shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]"
+                        title="Seleccionar del Catálogo de Especialidades"
+                      >
+                        <Users size={16} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-[#72777f] mb-1 block">Email</label>
+                    <input
+                      type="email"
+                      value={newStaffForm.email}
+                      onChange={e => setNewStaffForm({ ...newStaffForm, email: e.target.value })}
+                      placeholder="correo@ejemplo.com"
+                      className="w-full p-3 border-2 border-[#1c1c19] text-sm font-bold focus:outline-none focus:border-[#0f4369]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-[#72777f] mb-1 block">Teléfono</label>
+                    <input
+                      type="text"
+                      value={newStaffForm.phone}
+                      onChange={e => setNewStaffForm({ ...newStaffForm, phone: e.target.value })}
+                      placeholder="+57 300 000 0000"
+                      className="w-full p-3 border-2 border-[#1c1c19] text-sm font-bold focus:outline-none focus:border-[#0f4369]"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="text-[10px] font-black uppercase text-[#72777f] mb-1 block">Color Asignado</label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={newStaffForm.color}
+                        onChange={e => setNewStaffForm({ ...newStaffForm, color: e.target.value })}
+                        className="w-16 h-12 bg-white border-2 border-[#1c1c19] p-0.5 cursor-pointer"
+                      />
+                      <span className="text-xs font-mono font-bold uppercase">{newStaffForm.color}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t-2 border-[#1c1c19] border-dashed">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingStaff(false)}
+                    className="px-6 py-2.5 border-2 border-[#1c1c19] text-sm font-black uppercase hover:bg-gray-100 transition-all shadow-[3px_3px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 bg-[#0f4369] text-white border-2 border-[#1c1c19] text-sm font-black uppercase hover:bg-[#0a2e49] transition-all flex items-center gap-2 shadow-[3px_3px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]"
+                  >
+                    <Save size={16} /> Registrar Miembro
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : selectedMember ? (
           <div className="relative h-full flex flex-col z-10 overflow-y-auto">
             {/* Profiler Header */}
             <div className="p-8 border-b-2 border-[#1c1c19] bg-white">
@@ -254,9 +492,14 @@ export default function TeamModule({ project }) {
                       <div className="flex justify-between items-start">
                         <h2 className="text-4xl font-black italic uppercase tracking-tighter mb-2">{selectedMember.name || selectedMember.nombre}</h2>
                         {canEdit && (
-                          <button onClick={startEditing} className="p-2 border-2 border-[#1c1c19] shadow-[3px_3px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all bg-white" title="Editar Información">
-                            <Edit2 size={16} />
-                          </button>
+                          <div className="flex gap-2">
+                            <button onClick={startEditing} className="p-2 border-2 border-[#1c1c19] shadow-[3px_3px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all bg-white" title="Editar Información">
+                              <Edit2 size={16} />
+                            </button>
+                            <button onClick={() => handleDeleteStaff(selectedMember.id)} className="p-2 border-2 border-red-600 text-red-600 bg-white shadow-[3px_3px_0_0_rgba(220,38,38,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all" title="Eliminar Integrante">
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                         )}
                       </div>
                       <div className="flex flex-wrap gap-4 mt-4">
@@ -352,11 +595,19 @@ export default function TeamModule({ project }) {
         )}
       </div>
 
+      </div>
+    )}
+  </div>
+
       <RolesModal 
         isOpen={isRolesModalOpen} 
         onClose={() => setIsRolesModalOpen(false)} 
         onSelectRole={(role) => {
-          setEditForm({ ...editForm, role_description: role.name });
+          if (isAddingStaff) {
+            setNewStaffForm(prev => ({ ...prev, role_description: role.name }));
+          } else {
+            setEditForm(prev => ({ ...prev, role_description: role.name }));
+          }
           setIsRolesModalOpen(false);
         }}
       />
@@ -364,7 +615,11 @@ export default function TeamModule({ project }) {
         isOpen={isSpecialtiesModalOpen} 
         onClose={() => setIsSpecialtiesModalOpen(false)} 
         onSelectSpecialty={(specialty) => {
-          setEditForm({ ...editForm, especialidad: specialty.name });
+          if (isAddingStaff) {
+            setNewStaffForm(prev => ({ ...prev, especialidad: specialty.name }));
+          } else {
+            setEditForm(prev => ({ ...prev, especialidad: specialty.name }));
+          }
           setIsSpecialtiesModalOpen(false);
         }}
       />

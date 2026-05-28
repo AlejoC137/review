@@ -183,6 +183,15 @@ export const projectService = {
     return data;
   },
 
+  async deleteStaff(staffId) {
+    const { error } = await supabase
+      .from('staff')
+      .delete()
+      .eq('id', staffId);
+    if (error) throw error;
+    return true;
+  },
+
   // --- GESTIÓN DE TAREAS OPERATIVAS ---
   async getTasks(projectId = null, staffId = null) {
     let query = supabase
@@ -306,9 +315,10 @@ export const projectService = {
 
   async getProtocols(projectId) {
     const { data, error } = await supabase
-      .from('protocols')
+      .from('resources')
       .select('*')
       .eq('project_id', projectId)
+      .eq('category', 'Protocolo')
       .order('title', { ascending: true });
     if (error) throw error;
     return data;
@@ -432,6 +442,94 @@ export const projectService = {
       .order('name', { ascending: true });
     if (error) throw error;
     return data;
+  },
+
+  // --- MATRIZ LOD Y TDI ---
+  async getLodTdiMatrix(projectId) {
+    const { data, error } = await supabase
+      .from('project_element_lod_tdi')
+      .select('*')
+      .eq('project_id', projectId);
+    if (error) throw error;
+    return data;
+  },
+
+  async saveLodTdiElement(projectId, discipline, elementName, lod, tdi, notes) {
+    const payload = {
+      project_id: projectId,
+      discipline,
+      element_name: elementName,
+      lod,
+      tdi,
+      notes,
+      updated_at: new Date().toISOString()
+    };
+    const { data, error } = await supabase
+      .from('project_element_lod_tdi')
+      .upsert(payload, { onConflict: 'project_id,discipline,element_name' })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async saveLodTdiMatrixBatch(projectId, elements) {
+    const payload = elements.map(el => ({
+      project_id: projectId,
+      discipline: el.discipline,
+      element_name: el.element_name,
+      lod: el.lod,
+      tdi: el.tdi,
+      notes: el.notes || '',
+      updated_at: new Date().toISOString()
+    }));
+    const { data, error } = await supabase
+      .from('project_element_lod_tdi')
+      .upsert(payload, { onConflict: 'project_id,discipline,element_name' })
+      .select();
+    if (error) throw error;
+    return data;
+  },
+
+  // --- GESTIÓN DE ROLES Y EQUIPO DEL PEB ---
+  async getBepTeam(projectId) {
+    const { data, error } = await supabase
+      .from('bep_team')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return data;
+  },
+
+  async createBepRole(bepRoleData) {
+    const { data, error } = await supabase
+      .from('bep_team')
+      .insert([bepRoleData])
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async updateBepRole(roleId, updates) {
+    const { data, error } = await supabase
+      .from('bep_team')
+      .update(updates)
+      .eq('id', roleId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async deleteBepRole(roleId) {
+    const { error } = await supabase
+      .from('bep_team')
+      .delete()
+      .eq('id', roleId);
+    if (error) throw error;
+    return true;
   },
 
   async deleteAction(actionId) {
