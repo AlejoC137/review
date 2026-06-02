@@ -12,6 +12,7 @@ import SiteLogo from '../ui/SiteLogo';
 import LanguageSwitcher from '../ui/LanguageSwitcher';
 import AdminModal from '../admin/AdminModal';
 import { useAuth } from '../../context/AuthContext';
+import { useRoadmap } from '../../context/RoadmapContext';
 import { startTutorial } from '../../config/tutorialConfig';
 
 export default function Sidebar({ isOpen, onClose, className = "" }) {
@@ -20,6 +21,7 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
   const { isAdmin, user, signOut, isBimManager, setBimManager } = useAuth();
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const currentPlan = useSelector(state => state.bim.currentPlan);
+  const { roadmapData } = useRoadmap();
   const [isCollapsed, setIsCollapsed] = useState(() => {
     return localStorage.getItem('sidebarCollapsed') === 'true';
   });
@@ -87,14 +89,17 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
     if (onClose) onClose(); // Close sidebar on mobile after clicking a link
     if (item.hash) {
       e.preventDefault();
-      if (location.pathname !== '/') {
-        navigate(`/${item.hash}`);
+      const targetPath = item.path || '/';
+      if (location.pathname !== targetPath) {
+        navigate(`${targetPath}${item.hash}`);
       } else {
         navigate(item.hash, { replace: true });
-        const element = document.getElementById(item.hash.substring(1));
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
+        setTimeout(() => {
+          const element = document.getElementById(item.hash.substring(1));
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 100);
       }
     }
   };
@@ -152,12 +157,17 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
     );
   };
 
-  const NavGroup = ({ id, label, icon: Icon, children, depth = 0 }) => {
+  const NavGroup = ({ id, label, icon: Icon, children, depth = 0, path, hash }) => {
     const isExpanded = expandedSections[id];
     return (
       <div className="flex flex-col w-full">
         <button
-          onClick={() => toggleSection(id)}
+          onClick={(e) => {
+            toggleSection(id);
+            if (path || hash) {
+              handleNavClick(e, { path, hash });
+            }
+          }}
           style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
           className={`
             flex items-center w-full p-2 group/item relative transition-all duration-200 font-mono text-[#1c1c19] hover:bg-[#e5e2dd]
@@ -272,9 +282,31 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
             )}
           </NavGroup>
 
-          <NavGroup id="cursos" label="Cursos / Capacitación" icon={BookOpen} depth={0}>
-            <NavItem item={{ id: 'nav-fase-1', label: 'Fase 1', path: '/roadmap', hash: '#phase-1', icon: LayoutDashboard }} depth={1} />
-            <NavItem item={{ id: 'nav-fase-2', label: 'Fase 2', path: '/roadmap', hash: '#phase-2', icon: Layers }} depth={1} />
+          <NavGroup id="cursos" label="Cursos / Capacitación" icon={BookOpen} depth={0} path="/roadmap">
+            {roadmapData && roadmapData.map((phase) => (
+              <NavGroup 
+                key={phase.id} 
+                id={`nav-${phase.id}`} 
+                label={phase.title} 
+                icon={phase.id === 'phase-1' ? LayoutDashboard : Layers} 
+                depth={1}
+                path="/roadmap"
+                hash={`#${phase.id}`}
+              >
+                {phase.nodes && phase.nodes.map(node => (
+                  <NavItem 
+                    key={node.id} 
+                    item={{ 
+                      id: `nav-node-${node.id}`, 
+                      label: node.title, 
+                      path: `/module/${node.id}`, 
+                      icon: FileText
+                    }} 
+                    depth={2} 
+                  />
+                ))}
+              </NavGroup>
+            ))}
             <NavGroup id="recursos" label="Recursos" icon={BookOpen} depth={1}>
               <NavItem item={{ id: 'nav-dictionary', label: 'Diccionario', path: '/dictionary', icon: Book }} depth={2} />
               <NavItem item={{ id: 'nav-plantillas', label: 'Plantillas', path: '#', icon: FileText }} depth={2} />
