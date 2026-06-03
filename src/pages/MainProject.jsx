@@ -23,7 +23,7 @@ import ProjectDataModule from '../components/project/ProjectDataModule';
 
 export default function MainProject({ project }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'mes');
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'datos');
 
   const navigate = useNavigate();
   const location = useLocation();

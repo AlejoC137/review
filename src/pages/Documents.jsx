@@ -10,11 +10,14 @@ const PAGE_WIDTH = 816; // 8.5in * 96dpi
 const PAGE_HEIGHT = 1056; // 11in * 96dpi
 import { supabase } from '../services/supabaseClient';
 import MarkdownEditor from '../components/ui/MarkdownEditor';
-
-
-
+import { useAuth } from '../context/AuthContext';
+import { useSearchParams } from 'react-router-dom';
 
 const Documents = () => {
+  const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const projectId = searchParams.get('projectId');
+  
   const [documents, setDocuments] = useState([]);
   const [activeTab, setActiveTab] = useState(null); // Will store the ID of the active document
   const [isEditing, setIsEditing] = useState(false);
@@ -38,26 +41,39 @@ const Documents = () => {
     doc_date: new Date().toISOString().split('T')[0],
     content: '# Nuevo Documento\n\nComienza a escribir aquí...',
     amount: 0,
-    project_id: 'GENERAL'
+    project_id: projectId || 'GENERAL'
   });
 
   useEffect(() => {
-    fetchDocuments();
-  }, []);
+    if (user) {
+      fetchDocuments();
+    }
+  }, [user, projectId]);
 
   const fetchDocuments = async () => {
+    if (!user) return;
     setIsLoading(true);
-    const { data, error } = await supabase
+    let query = supabase
       .from('admin_documents')
       .select('*')
-      .order('doc_date', { ascending: false });
+      .eq('user_id', user.id);
+      
+    if (projectId) {
+      query = query.eq('project_id', projectId);
+    }
+      
+    const { data, error } = await query.order('doc_date', { ascending: false });
 
     if (error) {
       console.error('Error fetching documents:', error);
     } else {
       setDocuments(data);
-      if (data.length > 0 && !activeTab) {
-        setActiveTab(data[0].id);
+      if (data.length > 0) {
+        if (!activeTab || !data.find(d => d.id === activeTab)) {
+          setActiveTab(data[0].id);
+        }
+      } else {
+        setActiveTab(null);
       }
     }
     setIsLoading(false);
@@ -107,6 +123,10 @@ const Documents = () => {
       alert("Por favor ingresa un título");
       return;
     }
+    if (!user) {
+      alert("No hay sesión de usuario activa");
+      return;
+    }
 
     setIsLoading(true);
     const { data, error } = await supabase
@@ -117,8 +137,9 @@ const Documents = () => {
           type: newDoc.type,
           doc_date: newDoc.doc_date,
           content: newDoc.content,
-          project_id: newDoc.project_id,
-          amount: newDoc.amount
+          project_id: newDoc.project_id || projectId || 'GENERAL',
+          amount: newDoc.amount,
+          user_id: user.id
         }
       ])
       .select();
@@ -134,7 +155,7 @@ const Documents = () => {
         doc_date: new Date().toISOString().split('T')[0],
         content: '# Nuevo Documento\n\nComienza a escribir aquí...',
         amount: 0,
-        project_id: 'GENERAL'
+        project_id: projectId || 'GENERAL'
       });
       await fetchDocuments();
       if (data && data.length > 0) {
