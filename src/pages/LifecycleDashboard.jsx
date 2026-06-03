@@ -95,7 +95,7 @@ function LifecycleDashboard() {
                 <div
                   key={project.id}
                   id={idx === 0 ? 'project-card-sample' : undefined}
-                  onClick={() => navigate(`/project/${project.id}`)}
+                  onClick={() => navigate(`/project/${project.id}?tab=datos`)}
                   className="group relative bg-white border-2 border-[#1c1c19] p-8 cursor-pointer transition-all hover:-translate-y-1 hover:-translate-x-1 shadow-[8px_8px_0_0_rgba(28,28,25,0.1)] hover:shadow-[12px_12px_0_0_rgba(28,28,25,0.2)]"
                 >
                   <div className="flex justify-between items-start mb-8">

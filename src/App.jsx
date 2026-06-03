@@ -37,10 +37,10 @@ function App() {
             <Route path="/login" element={<Login />} />
 
             <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
-              <Route path="/" element={<LifecycleDashboard />} />
+              <Route path="/" element={<Navigate to="/roadmap" replace />} />
               <Route path="/roadmap" element={<Dashboard />} />
 
-              <Route path="/projects" element={<Navigate to="/" replace />} />
+              <Route path="/projects" element={<LifecycleDashboard />} />
 
               <Route path="/project/:projectId" element={<ProjectDetailView />} />
 

@@ -669,15 +669,18 @@ const Documents = () => {
 
                         <span className="absolute right-[-120px] top-[-10px] bg-red-500 text-white text-[10px] px-2 py-0.5 font-bold uppercase">PAGE_LIMIT_1</span>
                       </div>
-                      <div className="mt-1 flex flex-col md:flex-row items-start md:items-end justify-between gap-6 relative z-8">
+                      <div className="mt-1 mb-1 flex flex-row items-end justify-between gap-6 relative z-8 w-full">
                         <div className="flex flex-col gap-2">
                           <div>
                           </div>
                           <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 border-2 border-[#1c1c19] flex items-center justify-center font-black text-xl bg-[#1c1c19] text-white">R</div>
+                            <div className="w-10 h-10 border-2 border-[#1c1c19] flex items-center justify-center font-black text-xl bg-[#1c1c19] text-white shrink-0">R</div>
                             <div className="flex flex-col text-left">
                               <span style={{ fontSize: `${docFontSize * 0.8}px` }} className="font-black text-[#1c1c19] uppercase tracking-widest leading-none mb-1">REVIEW</span>
                               <span style={{ fontSize: `${docFontSize * 0.6}px` }} className="font-bold text-[#1c1c19]/60 uppercase leading-none tracking-tighter">BIM_MANAGEMENT_SYSTEM</span>
+                            </div>
+                            <div className="font-bold text-[#72777f] uppercase tracking-widest ml-2 border-l-2 border-[#1c1c19]/20 pl-4 py-1" style={{ fontSize: `${docFontSize * 0.6}px` }}>
+                              DATE: {isEditing ? editDate : (activeDoc?.doc_date || '')}
                             </div>
                           </div>
                         </div>
@@ -717,15 +720,18 @@ const Documents = () => {
                 ) : (
                   <div className="print-document bg-white mx-auto">
                     <div className="print-content bg-white min-h-[11in]" style={{ padding: `${docMargin}px` }}>
-                      <div className="mt-1 mb-8 flex flex-col md:flex-row items-start md:items-end justify-between gap-6 relative z-8">
+                      <div className="mt-1 mb-1 flex flex-row items-end justify-between gap-6 relative z-8 w-full">
                         <div className="flex flex-col gap-2">
                           <div>
                           </div>
                           <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 border-2 border-[#1c1c19] flex items-center justify-center font-black text-xl bg-[#1c1c19] text-white">R</div>
+                            <div className="w-10 h-10 border-2 border-[#1c1c19] flex items-center justify-center font-black text-xl bg-[#1c1c19] text-white shrink-0">R</div>
                             <div className="flex flex-col text-left">
                               <span style={{ fontSize: `${docFontSize * 0.8}px` }} className="font-black text-[#1c1c19] uppercase tracking-widest leading-none mb-1">REVIEW</span>
                               <span style={{ fontSize: `${docFontSize * 0.6}px` }} className="font-bold text-[#1c1c19]/60 uppercase leading-none tracking-tighter">BIM_MANAGEMENT_SYSTEM</span>
+                            </div>
+                            <div className="font-bold text-[#72777f] uppercase tracking-widest ml-2 border-l-2 border-[#1c1c19]/20 pl-4 py-1" style={{ fontSize: `${docFontSize * 0.6}px` }}>
+                              DATE: {isEditing ? editDate : (activeDoc?.doc_date || '')}
                             </div>
                           </div>
                         </div>
