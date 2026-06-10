@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, createContext, useContext } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, BookOpen, Settings, Hexagon,
@@ -14,6 +14,102 @@ import AdminModal from '../admin/AdminModal';
 import { useAuth } from '../../context/AuthContext';
 import { useRoadmap } from '../../context/RoadmapContext';
 import { startTutorial } from '../../config/tutorialConfig';
+
+const SidebarContext = createContext({});
+
+const NavItem = ({ item, depth = 0 }) => {
+  const { location, isBimManager, isCollapsed, handleNavClick } = useContext(SidebarContext);
+  let isActive = false;
+  if (item.path === '/resources') isActive = location.pathname === '/resources';
+  else if (item.path === '/materials') isActive = location.pathname === '/materials';
+  else if (item.path === '/dictionary') isActive = location.pathname === '/dictionary';
+  else if (item.path === '/') isActive = location.pathname === '/';
+  else if (item.path === '/roadmap') isActive = location.pathname === '/roadmap' && (location.hash === item.hash || (item.hash === '#phase-1' && location.hash === ''));
+  else if (item.path && (item.path.startsWith('/esquemas') || item.path.startsWith('/planner') || item.path.startsWith('/esquemaAdmin'))) {
+    const [base, query] = item.path.split('?');
+    if (query) {
+      isActive = location.pathname.startsWith(base) && location.search.includes(query);
+    } else {
+      isActive = location.pathname.startsWith(base);
+    }
+  }
+  else if (item.path && item.path.includes('?tab=')) {
+    const [base, query] = item.path.split('?');
+    isActive = location.pathname === base && location.search.includes(query);
+  }
+
+  const isDisabled = item.requiresBimManager && !isBimManager;
+
+  return (
+    <NavLink
+      id={item.id}
+      to={isDisabled ? '#' : (item.hash ? { pathname: item.path, hash: item.hash } : (item.path || '#'))}
+      onClick={(e) => {
+        if (isDisabled) {
+          e.preventDefault();
+          return;
+        }
+        handleNavClick(e, item);
+      }}
+      style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
+      className={`
+        flex items-center w-full p-2 group/item relative overflow-hidden transition-all duration-200 border-2 font-mono
+        ${isCollapsed ? 'justify-center h-10 px-0' : 'justify-start h-9'}
+        ${isDisabled ? 'opacity-40 cursor-not-allowed grayscale' : (isActive ? 'bg-[#0f4369] text-white border-[#1c1c19] shadow-[2px_2px_0_0_rgba(28,28,25,0.15)]' : 'text-[#72777f] hover:text-[#1c1c19] hover:bg-[#e5e2dd] border-transparent hover:border-[#1c1c19]')}
+      `}
+      title={isCollapsed ? item.label : (isDisabled ? 'REQUIERE_BIM_MANAGER_KEY' : '')}
+    >
+      <div className={`transition-transform duration-200 ${isActive ? 'scale-110' : 'group-hover/item:scale-105'}`}>
+        {isDisabled ? <LockIcon size={14} className="shrink-0" /> : <item.icon size={16} className="shrink-0" />}
+      </div>
+      {!isCollapsed && (
+        <span className="ml-3 text-[10px] font-bold tracking-wider whitespace-nowrap opacity-100 uppercase flex-1 truncate">
+          {item.label}
+        </span>
+      )}
+    </NavLink>
+  );
+};
+
+const NavGroup = ({ id, label, icon: Icon, children, depth = 0, path, hash }) => {
+  const { expandedSections, toggleSection, isCollapsed, handleNavClick } = useContext(SidebarContext);
+  const isExpanded = expandedSections[id];
+  return (
+    <div className="flex flex-col w-full">
+      <button
+        onClick={(e) => {
+          toggleSection(id);
+          if (path || hash) {
+            handleNavClick(e, { path, hash });
+          }
+        }}
+        style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
+        className={`
+          flex items-center w-full p-2 group/item relative transition-all duration-200 font-mono text-[#1c1c19] hover:bg-[#e5e2dd]
+          ${isCollapsed ? 'justify-center h-10 px-0' : 'justify-between h-9'}
+        `}
+        title={isCollapsed ? label : ''}
+      >
+        <div className="flex items-center gap-3 overflow-hidden">
+          <Icon size={16} className="shrink-0 text-[#0f4369]" />
+          {!isCollapsed && (
+            <span className="text-[10px] font-bold tracking-wider whitespace-nowrap uppercase truncate">
+              {label}
+            </span>
+          )}
+        </div>
+        {!isCollapsed && (
+          <ChevronDown size={14} className={`shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+        )}
+      </button>
+      {(!isCollapsed && isExpanded) && (
+        <div className="flex flex-col w-full">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default function Sidebar({ isOpen, onClose, className = "" }) {
   const location = useLocation();
@@ -104,100 +200,17 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
     }
   };
 
-  const NavItem = ({ item, depth = 0 }) => {
-    let isActive = false;
-    if (item.path === '/resources') isActive = location.pathname === '/resources';
-    else if (item.path === '/materials') isActive = location.pathname === '/materials';
-    else if (item.path === '/dictionary') isActive = location.pathname === '/dictionary';
-    else if (item.path === '/') isActive = location.pathname === '/';
-    else if (item.path === '/roadmap') isActive = location.pathname === '/roadmap' && (location.hash === item.hash || (item.hash === '#phase-1' && location.hash === ''));
-    else if (item.path && (item.path.startsWith('/esquemas') || item.path.startsWith('/planner') || item.path.startsWith('/esquemaAdmin'))) {
-      const [base, query] = item.path.split('?');
-      if (query) {
-        isActive = location.pathname.startsWith(base) && location.search.includes(query);
-      } else {
-        isActive = location.pathname.startsWith(base);
-      }
-    }
-    else if (item.path && item.path.includes('?tab=')) {
-      const [base, query] = item.path.split('?');
-      isActive = location.pathname === base && location.search.includes(query);
-    }
-
-    const isDisabled = item.requiresBimManager && !isBimManager;
-
-    return (
-      <NavLink
-        id={item.id}
-        to={isDisabled ? '#' : (item.hash ? { pathname: item.path, hash: item.hash } : (item.path || '#'))}
-        onClick={(e) => {
-          if (isDisabled) {
-            e.preventDefault();
-            return;
-          }
-          handleNavClick(e, item);
-        }}
-        style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
-        className={`
-          flex items-center w-full p-2 group/item relative overflow-hidden transition-all duration-200 border-2 font-mono
-          ${isCollapsed ? 'justify-center h-10 px-0' : 'justify-start h-9'}
-          ${isDisabled ? 'opacity-40 cursor-not-allowed grayscale' : (isActive ? 'bg-[#0f4369] text-white border-[#1c1c19] shadow-[2px_2px_0_0_rgba(28,28,25,0.15)]' : 'text-[#72777f] hover:text-[#1c1c19] hover:bg-[#e5e2dd] border-transparent hover:border-[#1c1c19]')}
-        `}
-        title={isCollapsed ? item.label : (isDisabled ? 'REQUIERE_BIM_MANAGER_KEY' : '')}
-      >
-        <div className={`transition-transform duration-200 ${isActive ? 'scale-110' : 'group-hover/item:scale-105'}`}>
-          {isDisabled ? <LockIcon size={14} className="shrink-0" /> : <item.icon size={16} className="shrink-0" />}
-        </div>
-        {!isCollapsed && (
-          <span className="ml-3 text-[10px] font-bold tracking-wider whitespace-nowrap opacity-100 uppercase flex-1 truncate">
-            {item.label}
-          </span>
-        )}
-      </NavLink>
-    );
-  };
-
-  const NavGroup = ({ id, label, icon: Icon, children, depth = 0, path, hash }) => {
-    const isExpanded = expandedSections[id];
-    return (
-      <div className="flex flex-col w-full">
-        <button
-          onClick={(e) => {
-            toggleSection(id);
-            if (path || hash) {
-              handleNavClick(e, { path, hash });
-            }
-          }}
-          style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
-          className={`
-            flex items-center w-full p-2 group/item relative transition-all duration-200 font-mono text-[#1c1c19] hover:bg-[#e5e2dd]
-            ${isCollapsed ? 'justify-center h-10 px-0' : 'justify-between h-9'}
-          `}
-          title={isCollapsed ? label : ''}
-        >
-          <div className="flex items-center gap-3 overflow-hidden">
-            <Icon size={16} className="shrink-0 text-[#0f4369]" />
-            {!isCollapsed && (
-              <span className="text-[10px] font-bold tracking-wider whitespace-nowrap uppercase truncate">
-                {label}
-              </span>
-            )}
-          </div>
-          {!isCollapsed && (
-            <ChevronDown size={14} className={`shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
-          )}
-        </button>
-        {(!isCollapsed && isExpanded) && (
-          <div className="flex flex-col w-full">
-            {children}
-          </div>
-        )}
-      </div>
-    );
+  const contextValue = {
+    location,
+    isBimManager,
+    isCollapsed,
+    handleNavClick,
+    expandedSections,
+    toggleSection
   };
 
   return (
-    <>
+    <SidebarContext.Provider value={contextValue}>
       {/* Mobile Backdrop */}
       {isOpen && (
         <div
@@ -319,6 +332,7 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
               <NavItem item={{ id: 'nav-esquema-admin', label: 'Esquema Admin', path: '/esquemaEdit', icon: Hexagon }} depth={1} />
               <NavItem item={{ id: 'nav-articulos-admin', label: 'Artículos Admin', path: '/admin/resources', icon: FileText }} depth={1} />
               <NavItem item={{ id: 'nav-materiales-admin', label: 'Materiales Global', path: '/materials', icon: Package }} depth={1} />
+              <NavItem item={{ id: 'nav-presentacion', label: 'Presentación', path: '/admin/presentation', icon: BookOpen }} depth={1} />
             </NavGroup>
           )}
 
@@ -365,6 +379,6 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
 
         <AdminModal isOpen={isAdminModalOpen} onClose={() => setIsAdminModalOpen(false)} />
       </aside>
-    </>
+    </SidebarContext.Provider>
   );
 }

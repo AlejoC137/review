@@ -11,6 +11,7 @@ import ResourceLabPage from './pages/ResourceLabPage';
 import UserCreationForm from './pages/UserCreationForm';
 import AboutUs from './pages/AboutUs';
 import Documents from './pages/Documents';
+import DocumentComposerManager from './pages/DocumentComposerManager';
 import AdminProtectedRoute from './components/auth/AdminProtectedRoute';
 
 import LifecycleDashboard from './pages/LifecycleDashboard';
@@ -27,6 +28,7 @@ import MaterialsView from './pages/MaterialsView';
 import SpacesView from './pages/SpacesView';
 import ComponentsView from './pages/ComponentsView';
 import ProtocolPrintView from './pages/ProtocolPrintView';
+import AdminPresentationCard from './pages/AdminPresentationCard';
 
 function App() {
   return (
@@ -72,9 +74,21 @@ function App() {
                 </ProtectedRoute>
               } />
 
+              <Route path="/temporal" element={
+                <ProtectedRoute>
+                  <DocumentComposerManager />
+                </ProtectedRoute>
+              } />
+
               <Route path="/admin/resources" element={
                 <AdminProtectedRoute>
                   <AdminResourceLabPage />
+                </AdminProtectedRoute>
+              } />
+
+              <Route path="/admin/presentation" element={
+                <AdminProtectedRoute>
+                  <AdminPresentationCard />
                 </AdminProtectedRoute>
               } />
 
