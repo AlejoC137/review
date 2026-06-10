@@ -1,10 +1,10 @@
-# Guía de Uso del Plugin en Revit 2025
+# Guía de Uso del Plugin en Revit 2027
 
-Este documento detalla los pasos que debes seguir para compilar, instalar y usar el plugin dentro de Revit 2025.
+Este documento detalla los pasos que debes seguir para compilar, instalar y usar el plugin dentro de Revit 2027.
 
 ## 1. Prerrequisitos
 
-*   **Revit 2025** instalado en tu computadora.
+*   **Revit 2027** instalado en tu computadora.
 *   **Visual Studio 2022** con soporte para desarrollo de escritorio con .NET.
 *   **Local Server en ejecución:** Antes de ejecutar el comando en Revit, asegúrate de que tu servidor local (Node/React/Python) esté encendido y respondiendo en la URL configurada (`http://localhost:3000/api/mcp-data`).
 
@@ -16,7 +16,7 @@ Este documento detalla los pasos que debes seguir para compilar, instalar y usar
 
 ## 3. Ejecutar el Plugin en Revit
 
-1.  Abre **Revit 2025**.
+1.  Abre **Revit 2027**.
     *   *Nota:* La primera vez que abras Revit después de compilar, puede aparecer una advertencia de seguridad indicando que se ha cargado un nuevo complemento ("Unverified Publisher"). Selecciona **Cargar siempre** (Always Load).
 2.  Abre un modelo existente o crea uno nuevo.
 3.  Dirígete a la pestaña superior llamada **Complementos** (o **Add-ins** si lo tienes en inglés).

@@ -11,11 +11,11 @@
 
   <ItemGroup>
     <Reference Include="RevitAPI">
-      <HintPath>C:\Program Files\Autodesk\Revit 2025\RevitAPI.dll</HintPath>
+      <HintPath>C:\Program Files\Autodesk\Revit 2027\RevitAPI.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="RevitAPIUI">
-      <HintPath>C:\Program Files\Autodesk\Revit 2025\RevitAPIUI.dll</HintPath>
+      <HintPath>C:\Program Files\Autodesk\Revit 2027\RevitAPIUI.dll</HintPath>
       <Private>False</Private>
     </Reference>
   </ItemGroup>
@@ -24,11 +24,11 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
 
-  <!-- Evento Post-Build para copiar automáticamente los archivos a la carpeta de Revit 2025 -->
+  <!-- Evento Post-Build para copiar automáticamente los archivos a la carpeta de Revit 2027 -->
   <Target Name="PostBuild" AfterTargets="Build">
-    <Message Text="Copiando archivos del plugin a la carpeta de Addins de Revit 2025..." Importance="high" />
-    <Exec Command="if not exist &quot;$(AppData)\Autodesk\Revit\Addins\2025&quot; mkdir &quot;$(AppData)\Autodesk\Revit\Addins\2025&quot;" />
-    <Exec Command="xcopy &quot;$(TargetDir)*.dll&quot; &quot;$(AppData)\Autodesk\Revit\Addins\2025\&quot; /Y" />
-    <Exec Command="copy &quot;$(ProjectDir)RevitToSupabasePlugin.addin&quot; &quot;$(AppData)\Autodesk\Revit\Addins\2025\&quot; /Y" />
+    <Message Text="Copiando archivos del plugin a la carpeta de Addins de Revit 2027..." Importance="high" />
+    <Exec Command="if not exist &quot;$(AppData)\Autodesk\Revit\Addins\2027&quot; mkdir &quot;$(AppData)\Autodesk\Revit\Addins\2027&quot;" />
+    <Exec Command="xcopy &quot;$(TargetDir)*.dll&quot; &quot;$(AppData)\Autodesk\Revit\Addins\2027\&quot; /Y" />
+    <Exec Command="copy &quot;$(ProjectDir)RevitToSupabasePlugin.addin&quot; &quot;$(AppData)\Autodesk\Revit\Addins\2027\&quot; /Y" />
   </Target>
 </Project>

@@ -6,7 +6,7 @@ Este documento explica cómo funciona la conexión entre el plugin de Revit y tu
 
 El flujo de información es unidireccional (Pull) en esta versión:
 
-1. **Revit 2025 (Cliente HTTP):** El plugin se ejecuta dentro de Revit y realiza una petición HTTP GET al servidor local.
+1. **Revit 2027 (Cliente HTTP):** El plugin se ejecuta dentro de Revit y realiza una petición HTTP GET al servidor local.
 2. **Local Server (MCP / Puente):** Un servidor Node.js/Python que expone un endpoint local (ej. `http://localhost:3000/api/mcp-data`). Este servidor se encarga de hablar con Supabase y tu app en React.
 3. **Supabase (Base de Datos):** Almacena y retorna los datos al Local Server.
 

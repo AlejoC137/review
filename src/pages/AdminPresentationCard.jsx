@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { Plus, Edit, Trash2, X, Image as ImageIcon, CreditCard, LayoutTemplate, QrCode, FileText, Check, Save, Move, Type, AlignLeft, AlignCenter, AlignRight, AlignJustify, Wrench, Sparkles, Zap } from 'lucide-react';
+import { Plus, Edit, Trash2, X, Image as ImageIcon, CreditCard, LayoutTemplate, QrCode, FileText, Check, Save, Move, Type, AlignLeft, AlignCenter, AlignRight, AlignJustify, Wrench, Sparkles, Zap, Lock, Unlock, ArrowUp, ArrowDown, Layers } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import AiMarketingFillModal from '../components/project/AiMarketingFillModal';
+import EvidenceUploader from '../components/common/EvidenceUploader';
 
 const TYPE_ICONS = {
   tarjeta: CreditCard,
@@ -78,16 +79,53 @@ const getTemplate = (type) => {
   return t[type];
 };
 
+const CanvasZoomWrapper = ({ item, children, zooms, setZooms }) => {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handleWheel = (e) => {
+      e.preventDefault();
+      const zoomSpeed = 0.05;
+      const direction = e.deltaY > 0 ? -1 : 1;
+      setZooms(prev => {
+        const currentZoom = prev[item.id] || 1;
+        return { ...prev, [item.id]: Math.min(Math.max(0.2, currentZoom + direction * zoomSpeed), 5) };
+      });
+    };
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [item.id, setZooms]);
+
+  const currentZoom = zooms[item.id] || 1;
+
+  return (
+    <div ref={containerRef} className="flex-1 flex justify-center items-center w-full h-full overflow-hidden relative" title="Usa el scroll para hacer zoom">
+      <div 
+        className="absolute top-2 right-2 bg-black/50 text-white text-[10px] px-2 py-1 rounded font-mono z-50 pointer-events-none"
+      >
+        Zoom: {Math.round(currentZoom * 100)}%
+      </div>
+      <div style={{ transform: `scale(${currentZoom})`, transformOrigin: 'center', transition: 'transform 0.05s ease-out' }}>
+        {children}
+      </div>
+    </div>
+  );
+};
+
 export default function AdminPresentationCard() {
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeSides, setActiveSides] = useState({}); // { [id]: 'A' | 'B' }
+  const [zooms, setZooms] = useState({}); // { [id]: number }
   
   // Inline Edit State
   const [editingId, setEditingId] = useState(null);
   const [editingData, setEditingData] = useState(null);
   const [selectedElementId, setSelectedElementId] = useState(null);
   const [draggingElement, setDraggingElement] = useState(null); // { id, startX, startY, startMouseX, startMouseY }
+  const [resizingElement, setResizingElement] = useState(null); // { id, side, startWidth, startHeight, startMouseX, startMouseY }
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const canvasRef = useRef(null);
 
@@ -235,6 +273,8 @@ export default function AdminPresentationCard() {
       x: 50,
       y: 50,
       width: 150,
+      zIndex: 10,
+      locked: false,
       ...(type === 'text' ? {
         height: 30,
         content: "Nuevo Texto",
@@ -246,7 +286,7 @@ export default function AdminPresentationCard() {
       } : {
         height: 150,
         imageUrl: "https://via.placeholder.com/150",
-        objectFit: "cover"
+        objectFit: "contain"
       })
     };
     
@@ -328,7 +368,23 @@ export default function AdminPresentationCard() {
 
   const exportNodeToJPG = async (node, filename) => {
     try {
-      const canvas = await html2canvas(node, { scale: 3, useCORS: true, backgroundColor: null });
+      const parent = node.parentElement;
+      const originalStyle = parent.style.cssText;
+      
+      // Mover a la vista (pero detrás del fondo) para que el navegador recalcule el layout perfectamente
+      parent.style.cssText = 'position: absolute; top: 0; left: 0; z-index: -9999; opacity: 1; visibility: visible; pointer-events: none;';
+      await new Promise(r => setTimeout(r, 100)); // dar tiempo al render
+
+      const target = node.firstElementChild || node;
+      const canvas = await html2canvas(target, { 
+        scale: 3, 
+        useCORS: true, 
+        backgroundColor: null
+      });
+      
+      // Restaurar
+      parent.style.cssText = originalStyle;
+
       const imgData = canvas.toDataURL('image/jpeg', 0.95);
       const link = document.createElement('a');
       link.href = imgData;
@@ -354,8 +410,20 @@ export default function AdminPresentationCard() {
     const nodeB = document.getElementById(`export-node-B-${id}`);
     if (!nodeA) return;
     
+    const parent = nodeA.parentElement;
+    const originalStyle = parent.style.cssText;
+    
     try {
-      const canvasA = await html2canvas(nodeA, { scale: 3, useCORS: true, backgroundColor: null });
+      // Mover a la vista (pero detrás del fondo) para que el navegador recalcule el layout perfectamente
+      parent.style.cssText = 'position: absolute; top: 0; left: 0; z-index: -9999; opacity: 1; visibility: visible; pointer-events: none;';
+      await new Promise(r => setTimeout(r, 100)); // dar tiempo al render
+
+      const targetA = nodeA.firstElementChild || nodeA;
+      const canvasA = await html2canvas(targetA, { 
+        scale: 3, 
+        useCORS: true, 
+        backgroundColor: null
+      });
       const imgDataA = canvasA.toDataURL('image/jpeg', 0.95);
       
       const pdf = new jsPDF({
@@ -366,7 +434,12 @@ export default function AdminPresentationCard() {
       pdf.addImage(imgDataA, 'JPEG', 0, 0, canvasA.width, canvasA.height);
       
       if (nodeB) {
-        const canvasB = await html2canvas(nodeB, { scale: 3, useCORS: true, backgroundColor: null });
+        const targetB = nodeB.firstElementChild || nodeB;
+        const canvasB = await html2canvas(targetB, { 
+          scale: 3, 
+          useCORS: true, 
+          backgroundColor: null
+        });
         const imgDataB = canvasB.toDataURL('image/jpeg', 0.95);
         pdf.addPage([canvasB.width, canvasB.height], canvasB.width > canvasB.height ? 'landscape' : 'portrait');
         pdf.addImage(imgDataB, 'JPEG', 0, 0, canvasB.width, canvasB.height);
@@ -375,6 +448,8 @@ export default function AdminPresentationCard() {
       pdf.save(`${title.replace(/\s+/g, '_')}.pdf`);
     } catch (err) {
       console.error('Error exporting PDF:', err);
+    } finally {
+      parent.style.cssText = originalStyle;
     }
   };
 
@@ -398,24 +473,47 @@ export default function AdminPresentationCard() {
     });
   };
 
+  const handleResizeMouseDown = (e, element, side) => {
+    if (!editingId) return;
+    e.stopPropagation();
+    setSelectedElementId(element.id);
+    
+    setResizingElement({
+      id: element.id,
+      side: side,
+      startWidth: element.width || 150,
+      startHeight: element.height || 30,
+      startMouseX: e.clientX,
+      startMouseY: e.clientY
+    });
+  };
+
   useEffect(() => {
     const handleMouseMove = (e) => {
-      if (!draggingElement) return;
-      
-      const dx = e.clientX - draggingElement.startMouseX;
-      const dy = e.clientY - draggingElement.startMouseY;
-      
-      updateElement(draggingElement.side, draggingElement.id, {
-        x: draggingElement.startX + dx,
-        y: draggingElement.startY + dy
-      });
+      const currentZoom = zooms[editingId] || 1;
+      if (draggingElement) {
+        const dx = (e.clientX - draggingElement.startMouseX) / currentZoom;
+        const dy = (e.clientY - draggingElement.startMouseY) / currentZoom;
+        updateElement(draggingElement.side, draggingElement.id, {
+          x: draggingElement.startX + dx,
+          y: draggingElement.startY + dy
+        });
+      } else if (resizingElement) {
+        const dx = (e.clientX - resizingElement.startMouseX) / currentZoom;
+        const dy = (e.clientY - resizingElement.startMouseY) / currentZoom;
+        updateElement(resizingElement.side, resizingElement.id, {
+          width: Math.max(20, resizingElement.startWidth + dx),
+          height: Math.max(20, resizingElement.startHeight + dy)
+        });
+      }
     };
 
     const handleMouseUp = () => {
       setDraggingElement(null);
+      setResizingElement(null);
     };
 
-    if (draggingElement) {
+    if (draggingElement || resizingElement) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
     }
@@ -423,12 +521,13 @@ export default function AdminPresentationCard() {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [draggingElement]);
+  }, [draggingElement, resizingElement, zooms, editingId]);
 
   const renderSideContent = (type, data, side, isEditing) => {
     const sideData = data.sides[side];
-    const w = data.width_cm ? `${data.width_cm}cm` : '100%';
-    const h = data.height_cm ? `${data.height_cm}cm` : 'auto';
+    // Forzamos conversión a píxeles exactos (1cm = ~37.795px) para evitar bugs de html2canvas con medidas relativas
+    const w = data.width_cm ? `${parseFloat(data.width_cm) * 37.795275591}px` : '100%';
+    const h = data.height_cm ? `${parseFloat(data.height_cm) * 37.795275591}px` : 'auto';
 
     return (
       <div 
@@ -451,17 +550,60 @@ export default function AdminPresentationCard() {
           return (
             <div
               key={el.id}
-              onMouseDown={(e) => isEditing ? handleMouseDown(e, el, side) : null}
-              onClick={(e) => e.stopPropagation()}
-              className={`absolute ${isEditing ? 'cursor-move' : ''} ${isSelected ? 'outline outline-2 outline-dashed outline-blue-500 z-50' : ''}`}
+              onMouseDown={(e) => (isEditing && !el.locked && !isSelected) ? handleMouseDown(e, el, side) : null}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!isEditing || el.locked) return;
+                setSelectedElementId(el.id);
+              }}
+              className={`absolute group ${isEditing && !el.locked && !isSelected ? 'cursor-move hover:outline hover:outline-1 hover:outline-dashed hover:outline-gray-400' : ''} ${isSelected ? 'outline outline-2 outline-blue-500' : ''}`}
               style={{
                 left: el.x,
                 top: el.y,
                 width: el.width,
                 minHeight: el.height,
-                zIndex: el.zIndex || 10
+                height: el.type === 'image' ? el.height : undefined,
+                overflow: el.type === 'image' ? 'hidden' : 'visible',
+                zIndex: isSelected ? 9999 : (el.zIndex || 10),
+                pointerEvents: (isEditing && el.locked && !isSelected) ? 'none' : 'auto'
               }}
             >
+              {isSelected && !el.locked && (
+                <>
+                  {/* Drag Handle (Top-Left) */}
+                  <div 
+                    className="absolute -top-3 -left-3 w-6 h-6 bg-blue-500 text-white flex items-center justify-center rounded-full cursor-move shadow z-[10000]"
+                    onMouseDown={(e) => handleMouseDown(e, el, side)}
+                    title="Arrastrar"
+                  >
+                    <Move size={12} />
+                  </div>
+                  {/* Delete Handle (Top-Right) */}
+                  <div 
+                    className="absolute -top-3 -right-3 w-6 h-6 bg-red-500 text-white flex items-center justify-center rounded-full cursor-pointer shadow z-[10000]"
+                    onClick={(e) => { e.stopPropagation(); removeElement(side, el.id); }}
+                    title="Eliminar"
+                  >
+                    <Trash2 size={12} />
+                  </div>
+                  {/* Resize Handle (Bottom-Right) */}
+                  <div 
+                    className="absolute -bottom-3 -right-3 w-6 h-6 bg-green-500 text-white flex items-center justify-center rounded-full cursor-se-resize shadow z-[10000]"
+                    onMouseDown={(e) => handleResizeMouseDown(e, el, side)}
+                    title="Redimensionar"
+                  >
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                  </div>
+                  {/* Lock Handle (Bottom-Left) */}
+                  <div 
+                    className="absolute -bottom-3 -left-3 w-6 h-6 bg-yellow-500 text-white flex items-center justify-center rounded-full cursor-pointer shadow z-[10000]"
+                    onClick={(e) => { e.stopPropagation(); updateElement(side, el.id, { locked: true }); }}
+                    title="Bloquear Elemento"
+                  >
+                    <Lock size={12} />
+                  </div>
+                </>
+              )}
               {el.type === 'text' ? (
                 <div
                   contentEditable={isEditing && isSelected}
@@ -472,9 +614,10 @@ export default function AdminPresentationCard() {
                     fontWeight: el.fontWeight,
                     color: el.color,
                     textAlign: el.textAlign,
-                    fontFamily: el.fontFamily,
+                    fontFamily: el.fontFamily || 'sans-serif',
+                    lineHeight: 'normal',
                     width: '100%',
-                    height: '100%',
+                    minHeight: '100%',
                     whiteSpace: 'pre-wrap',
                     outline: 'none',
                     wordBreak: 'break-word'
@@ -487,13 +630,14 @@ export default function AdminPresentationCard() {
                   {el.content}
                 </div>
               ) : el.type === 'image' ? (
-                <img 
-                  src={el.imageUrl || 'https://via.placeholder.com/150'} 
-                  alt="Elemento" 
+                <div 
                   style={{
                     width: '100%',
                     height: '100%',
-                    objectFit: el.objectFit || 'cover',
+                    backgroundImage: `url("${el.imageUrl || 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='}")`,
+                    backgroundSize: el.objectFit === 'fill' ? '100% 100%' : (el.objectFit || 'contain'),
+                    backgroundPosition: 'center',
+                    backgroundRepeat: 'no-repeat',
                     pointerEvents: 'none'
                   }} 
                 />
@@ -641,9 +785,9 @@ export default function AdminPresentationCard() {
                       {/* Live Editable Canvas & Editor Panel */}
                       <div className="w-full flex flex-col md:flex-row justify-center items-start min-h-[400px] overflow-auto custom-scrollbar border-2 border-dashed border-[#72777f] bg-[#fcf9f4] p-4 md:p-8 shadow-inner gap-8 relative">
                         {/* Canvas */}
-                        <div className="flex-1 flex justify-center w-full">
+                        <CanvasZoomWrapper item={item} zooms={zooms} setZooms={setZooms}>
                           {renderSideContent(item.type, currentData, activeSide, isEditing)}
-                        </div>
+                        </CanvasZoomWrapper>
 
                         {/* Editor Panel inside Canvas Area */}
                         {isEditing && (
@@ -670,6 +814,36 @@ export default function AdminPresentationCard() {
                                 </div>
                               </div>
 
+                              {/* Layers List */}
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-1 border-b border-gray-200 pb-1">
+                                  <Layers size={12} className="text-[#0f4369]" />
+                                  <h4 className="font-bold text-[10px] uppercase text-[#0f4369]">Capas (Z-Index)</h4>
+                                </div>
+                                <div className="max-h-32 overflow-y-auto custom-scrollbar border-2 border-[#1c1c19] bg-[#f6f3ee]">
+                                  {sideData.elements.slice().sort((a, b) => (b.zIndex || 10) - (a.zIndex || 10)).map(el => (
+                                    <div 
+                                      key={el.id} 
+                                      onClick={() => setSelectedElementId(el.id)}
+                                      className={`flex items-center justify-between p-1.5 border-b border-[#1c1c19]/20 text-[9px] cursor-pointer ${selectedElementId === el.id ? 'bg-[#1c1c19] text-white' : 'hover:bg-[#e5e2dd]'}`}
+                                    >
+                                      <span className="truncate flex-1 font-mono">{el.type === 'text' ? el.content.substring(0, 15) || 'Texto vacío' : 'Imagen'}</span>
+                                      <span className="font-mono text-[8px] opacity-70 w-8 text-right mr-2">Z:{el.zIndex || 10}</span>
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); updateElement(activeSide, el.id, { locked: !el.locked }); }}
+                                        className={`p-1 hover:bg-white/20 rounded ${el.locked ? 'text-red-400' : ''}`}
+                                        title={el.locked ? "Desbloquear" : "Bloquear"}
+                                      >
+                                        {el.locked ? <Lock size={10} /> : <Unlock size={10} />}
+                                      </button>
+                                    </div>
+                                  ))}
+                                  {sideData.elements.length === 0 && (
+                                    <div className="p-2 text-center text-[9px] text-[#72777f] font-mono">Sin elementos</div>
+                                  )}
+                                </div>
+                              </div>
+
                               {/* Background Settings */}
                               <div className="space-y-2">
                                 <h4 className="font-bold text-[10px] uppercase border-b border-gray-200 pb-1 text-[#0f4369]">Fondo (Lado {activeSide})</h4>
@@ -681,9 +855,14 @@ export default function AdminPresentationCard() {
                                   <span className="font-mono text-[10px]">{sideData.bg_color || '#ffffff'}</span>
                                 </div>
 
-                                <div>
-                                  <label className="text-[9px] font-black uppercase tracking-widest text-[#72777f] block mb-1">Imagen URL (Opcional)</label>
-                                  <input type="text" placeholder="https://..." value={sideData.bg_image || ''} onChange={e => updateSideData(activeSide, 'bg_image', e.target.value)} className="w-full border-2 border-[#1c1c19] p-1.5 font-mono text-xs" />
+                                <div className="mt-2">
+                                  <EvidenceUploader 
+                                    currentUrl={sideData.bg_image || ''} 
+                                    onUpload={(url) => updateSideData(activeSide, 'bg_image', url)} 
+                                    pathPrefix="marketing_bg" 
+                                    bucketName="images"
+                                    label="Fondo de Tarjeta" 
+                                  />
                                 </div>
                                 
                                 {sideData.bg_image && (
@@ -717,6 +896,24 @@ export default function AdminPresentationCard() {
                                 ) : (
                                   <div className="space-y-3 bg-[#f6f3ee] p-3 border border-[#1c1c19]/20 shadow-[2px_2px_0_0_rgba(28,28,25,1)]">
                                     
+                                    {/* Action Buttons: Up, Down */}
+                                    <div className="flex gap-1 mb-2">
+                                      <button 
+                                        onClick={() => updateElement(activeSide, selectedElement.id, { zIndex: (selectedElement.zIndex || 10) + 1 })}
+                                        className="flex-1 flex flex-col items-center justify-center gap-1 border-2 border-[#1c1c19] p-1 text-[8px] font-black uppercase tracking-widest bg-white hover:bg-gray-100 text-[#1c1c19]"
+                                        title="Traer Adelante"
+                                      >
+                                        <ArrowUp size={12} /> Adelante
+                                      </button>
+                                      <button 
+                                        onClick={() => updateElement(activeSide, selectedElement.id, { zIndex: Math.max(1, (selectedElement.zIndex || 10) - 1) })}
+                                        className="flex-1 flex flex-col items-center justify-center gap-1 border-2 border-[#1c1c19] p-1 text-[8px] font-black uppercase tracking-widest bg-white hover:bg-gray-100 text-[#1c1c19]"
+                                        title="Llevar Atrás"
+                                      >
+                                        <ArrowDown size={12} /> Atrás
+                                      </button>
+                                    </div>
+
                                     {/* Positioning */}
                                     <div className="flex gap-2">
                                       <div className="flex-1">
@@ -739,9 +936,25 @@ export default function AdminPresentationCard() {
                                       </div>
                                     </div>
 
-                                    {el.type === 'text' ? (
+                                    {selectedElement.type === 'text' ? (
                                       <>
                                         {/* Typography */}
+                                        <div>
+                                          <label className="text-[9px] font-black uppercase tracking-widest text-[#72777f] block mb-1">Fuente (Font)</label>
+                                          <select value={selectedElement.fontFamily || 'sans-serif'} onChange={e => updateElement(activeSide, selectedElement.id, { fontFamily: e.target.value })} className="w-full border-2 border-[#1c1c19] p-1 font-bold text-[10px] uppercase">
+                                            <option value="sans-serif">Sans-serif</option>
+                                            <option value="serif">Serif</option>
+                                            <option value="monospace">Monospace</option>
+                                            <option value="Arial, sans-serif">Arial</option>
+                                            <option value="'Times New Roman', serif">Times New Roman</option>
+                                            <option value="'Courier New', monospace">Courier New</option>
+                                            <option value="'Inter', sans-serif">Inter</option>
+                                            <option value="'Roboto', sans-serif">Roboto</option>
+                                            <option value="'Outfit', sans-serif">Outfit</option>
+                                            <option value="'Comic Sans MS', cursive">Comic Sans</option>
+                                          </select>
+                                        </div>
+
                                         <div>
                                           <label className="text-[9px] font-black uppercase tracking-widest text-[#72777f] block mb-1">Tamaño Fuente (px)</label>
                                           <input type="number" value={selectedElement.fontSize || 12} onChange={e => updateElement(activeSide, selectedElement.id, { fontSize: parseInt(e.target.value) })} className="w-full border-2 border-[#1c1c19] p-1 font-mono text-[10px]" />
@@ -785,13 +998,18 @@ export default function AdminPresentationCard() {
                                     ) : (
                                       <>
                                         {/* Image specific options */}
-                                        <div>
-                                          <label className="text-[9px] font-black uppercase tracking-widest text-[#72777f] block mb-1">URL de la Imagen</label>
-                                          <input type="text" value={selectedElement.imageUrl || ''} placeholder="https://..." onChange={e => updateElement(activeSide, selectedElement.id, { imageUrl: e.target.value })} className="w-full border-2 border-[#1c1c19] p-1 font-mono text-[10px]" />
+                                        <div className="mb-2">
+                                          <EvidenceUploader 
+                                            currentUrl={selectedElement.imageUrl || ''} 
+                                            onUpload={(url) => updateElement(activeSide, selectedElement.id, { imageUrl: url })} 
+                                            pathPrefix="marketing_el" 
+                                            bucketName="images"
+                                            label="Imagen del Elemento" 
+                                          />
                                         </div>
                                         <div>
                                           <label className="text-[9px] font-black uppercase tracking-widest text-[#72777f] block mb-1">Ajuste de Imagen</label>
-                                          <select value={selectedElement.objectFit || 'cover'} onChange={e => updateElement(activeSide, selectedElement.id, { objectFit: e.target.value })} className="w-full border-2 border-[#1c1c19] p-1 font-bold text-[10px] uppercase">
+                                          <select value={selectedElement.objectFit || 'contain'} onChange={e => updateElement(activeSide, selectedElement.id, { objectFit: e.target.value })} className="w-full border-2 border-[#1c1c19] p-1 font-bold text-[10px] uppercase">
                                             <option value="cover">Llenar (Cover)</option>
                                             <option value="contain">Ajustar (Contain)</option>
                                             <option value="fill">Estirar (Fill)</option>

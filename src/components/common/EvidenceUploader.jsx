@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ImageIcon, X, UploadCloud, Loader2, CheckCircle } from 'lucide-react';
 import { supabase } from '../../services/supabaseClient';
 
-export default function EvidenceUploader({ currentUrl, onUpload, pathPrefix = 'tasks', label = 'Evidencia' }) {
+export default function EvidenceUploader({ currentUrl, onUpload, pathPrefix = 'tasks', label = 'Evidencia', bucketName = 'evidence' }) {
   const [uploading, setUploading] = useState(false);
 
   const handleUpload = async (e) => {
@@ -16,13 +16,13 @@ export default function EvidenceUploader({ currentUrl, onUpload, pathPrefix = 't
       const filePath = `${pathPrefix}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('evidence')
+        .from(bucketName)
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage
-        .from('evidence')
+        .from(bucketName)
         .getPublicUrl(filePath);
 
       onUpload(publicUrl);
