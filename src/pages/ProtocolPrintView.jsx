@@ -32,7 +32,7 @@ export default function ProtocolPrintView() {
         // 3. Helper to fetch blocks
         const fetchBlocks = async (resource) => {
           const { data: blocks } = await supabase
-            .from('resource_blocks')
+            .from('resource_content_blocks')
             .select('*')
             .eq('resource_id', resource.id)
             .order('sort_order', { ascending: true });

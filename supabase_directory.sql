@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS public.directory_contacts (
     project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     role TEXT,
+    discipline TEXT,
     enterprise TEXT,
     phone TEXT,
     email TEXT,

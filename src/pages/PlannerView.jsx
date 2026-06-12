@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     X, ClipboardList, Plus, Database, Trash2,
-    Link as LinkIcon, AlertCircle, Folder, Table, Zap
+    Link as LinkIcon, AlertCircle, Folder, Table, Zap, FileText
 } from 'lucide-react';
 
 // Layout & Context
@@ -15,6 +15,7 @@ import BimImplementationPlanner from '../components/BIM/BimImplementationPlanner
 import BimFolderExplorer from '../components/BIM/BimFolderExplorer';
 import BimFolderAssistant from '../components/BIM/BimFolderAssistant';
 import { generateImplementationBat, generateCloudReport } from '../utils/batGenerator';
+import { useSearchParams } from 'react-router-dom';
 
 
 
@@ -23,6 +24,8 @@ export default function PlannerView() {
     const { t } = useTranslation();
     const { isAdmin, isBimManager } = useAuth();
     const { schemaId } = useParams(); // URL uses schemaId but here it will be planId
+    const [searchParams] = useSearchParams();
+    const projectId = searchParams.get('projectId');
     const navigate = useNavigate();
 
     const { state, handlers } = usePlannerLogic(schemaId, isAdmin);
@@ -74,15 +77,26 @@ export default function PlannerView() {
                             </div>
                         </div>
 
-                        {isBimManager && (
-                            <button
-                                onClick={() => setIsNewPlanModalOpen(true)}
-                                className="flex items-center gap-2 bg-[#1c1c19] text-[#fcf9f4] border-2 border-[#1c1c19] px-8 py-3 font-black tracking-widest uppercase shadow-[4px_4px_0_0_rgba(15,67,105,1)] hover:translate-y-1 hover:shadow-none transition-all"
-                            >
-                                <Plus size={20} />
-                                NUEVO PLAN
-                            </button>
-                        )}
+                        <div className="flex items-center gap-4">
+                            {projectId && (
+                                <button
+                                    onClick={() => navigate(`/pre-bep?projectId=${projectId}`)}
+                                    className="flex items-center gap-2 bg-amber-400 text-[#1c1c19] border-2 border-[#1c1c19] px-8 py-3 font-black tracking-widest uppercase shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:translate-y-1 hover:shadow-none transition-all"
+                                >
+                                    <FileText size={20} />
+                                    PRE BEP
+                                </button>
+                            )}
+                            {isBimManager && (
+                                <button
+                                    onClick={() => setIsNewPlanModalOpen(true)}
+                                    className="flex items-center gap-2 bg-[#1c1c19] text-[#fcf9f4] border-2 border-[#1c1c19] px-8 py-3 font-black tracking-widest uppercase shadow-[4px_4px_0_0_rgba(15,67,105,1)] hover:translate-y-1 hover:shadow-none transition-all"
+                                >
+                                    <Plus size={20} />
+                                    NUEVO PLAN
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     {isLoading ? (
@@ -196,6 +210,15 @@ export default function PlannerView() {
                                 >
                                     <Zap size={14} fill="currentColor" className="group-hover:animate-pulse" />
                                     ASISTENTE DE CREACIÓN
+                                </button>
+                            )}
+                            {projectId && (
+                                <button
+                                    onClick={() => navigate(`/pre-bep?projectId=${projectId}`)}
+                                    className="px-4 py-2 bg-amber-400 text-[#1c1c19] border-2 border-[#1c1c19] text-[10px] font-black uppercase tracking-widest shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:translate-y-1 hover:shadow-none transition-all flex items-center gap-2 group"
+                                >
+                                    <FileText size={14} />
+                                    PRE BEP
                                 </button>
                             )}
                         </div>

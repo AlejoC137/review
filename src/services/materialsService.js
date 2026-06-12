@@ -76,12 +76,16 @@ export const updateMaterial = async (materialId, updates) => {
         ultima_actualizacion: new Date().toISOString()
     };
 
-    const { data, error } = await supabase
-        .from('Materiales')
-        .update(payload)
-        .eq('id', materialId)
-        .select()
-        .single();
+    const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(materialId);
+    let query = supabase.from('Materiales').update(payload);
+    
+    if (isUuid) {
+        query = query.eq('id', materialId);
+    } else {
+        query = query.eq('Nombre', updates.Nombre || materialId);
+    }
+
+    const { data, error } = await query.select().single();
 
     if (error) {
         console.error('Error updating material:', error);
@@ -116,10 +120,16 @@ export const createMaterial = async (materialData) => {
  * Elimina un material
  */
 export const deleteMaterial = async (materialId) => {
-    const { error } = await supabase
-        .from('Materiales')
-        .delete()
-        .eq('id', materialId);
+    const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(materialId);
+    let query = supabase.from('Materiales').delete();
+    
+    if (isUuid) {
+        query = query.eq('id', materialId);
+    } else {
+        query = query.eq('Nombre', materialId);
+    }
+
+    const { error } = await query;
 
     if (error) {
         throw error;
@@ -127,7 +137,29 @@ export const deleteMaterial = async (materialId) => {
     return true;
 };
 
+/**
+ * Crea varios materiales en lote (batch)
+ */
+export const createMaterialsBatch = async (materialsList) => {
+    const payload = materialsList.map(m => ({
+        ...m,
+        ultima_actualizacion: new Date().toISOString()
+    }));
+
+    const { data, error } = await supabase
+        .from('Materiales')
+        .insert(payload)
+        .select();
+
+    if (error) {
+        console.error('Error creating materials batch:', error);
+        throw error;
+    }
+    return data;
+};
+
 export const getMaterialCategories = async () => {
     const { data } = await supabase.from('Materiales').select('categoria').not('categoria', 'is', null);
     return [...new Set((data || []).map(m => m.categoria))].sort();
 };
+

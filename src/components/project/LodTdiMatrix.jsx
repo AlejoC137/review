@@ -72,11 +72,18 @@ const TDI_MAPPING = {
 
 function PhaseCell({ data, onChange, disciplineColor }) {
   return (
-    <div className={`flex w-full h-full min-h-[32px] border border-[#1c1c19]/10 overflow-hidden group focus-within:border-[#0f4369] focus-within:ring-1 focus-within:ring-[#0f4369] transition-colors ${disciplineColor}`}>
+    <div className={`flex flex-col w-full h-full border border-[#1c1c19]/10 overflow-hidden group focus-within:border-[#0f4369] focus-within:ring-1 focus-within:ring-[#0f4369] transition-colors ${disciplineColor}`}>
+      <input
+        type="text"
+        value={data.aem || ''}
+        onChange={e => onChange({ ...data, aem: e.target.value })}
+        placeholder="AEM"
+        className="w-full px-1.5 pt-1 pb-0.5 text-[9px] font-bold border-none border-b border-[#1c1c19]/10 focus:ring-0 focus:outline-none bg-transparent text-[#1c1c19] placeholder:text-gray-300 placeholder:italic"
+      />
       <select 
         value={data.lod} 
         onChange={e => onChange({ ...data, lod: e.target.value === '' ? '' : parseInt(e.target.value, 10) })}
-        className={`w-full p-1.5 text-[11px] font-mono font-black border-none focus:ring-0 focus:outline-none cursor-pointer appearance-none text-center bg-transparent ${data.lod ? 'text-[#0f4369]' : 'text-gray-400'}`}
+        className={`w-full px-1.5 pb-1 text-[11px] font-mono font-black border-none focus:ring-0 focus:outline-none cursor-pointer appearance-none text-center bg-transparent ${data.lod ? 'text-[#0f4369]' : 'text-gray-400'}`}
       >
         {LOD_OPTIONS.map(opt => (
           <option key={opt.val} value={opt.val}>{opt.label}</option>
@@ -246,15 +253,18 @@ export default function LodTdiMatrix({ projectId }) {
     let updatedParsed = { ...currentData.parsed };
     if (field === 'text') {
       updatedParsed.text = value;
+    } else if (subfield === null) {
+      // PhaseCell passes the whole phase object (e.g. { aem, lod }) — replace directly
+      updatedParsed[field] = { ...(updatedParsed[field] || {}), ...value };
     } else {
-      updatedParsed[field] = { ...updatedParsed[field], [subfield]: value };
+      updatedParsed[field] = { ...(updatedParsed[field] || {}), [subfield]: value };
     }
 
     // Determine max LOD for the legacy 'lod' column just for DB consistency
     const maxLod = Math.max(
-      updatedParsed.esquema.lod || 0,
-      updatedParsed.anteproyecto.lod || 0,
-      updatedParsed.finales.lod || 0
+      updatedParsed.esquema?.lod || 0,
+      updatedParsed.anteproyecto?.lod || 0,
+      updatedParsed.finales?.lod || 0
     );
     const finalLod = maxLod === 0 ? 100 : maxLod;
 
@@ -278,7 +288,8 @@ export default function LodTdiMatrix({ projectId }) {
         serializeNotes(updatedParsed)
       );
       setSavingState('saved');
-    } catch { 
+    } catch (err) { 
+      console.warn('LOD save error:', err);
       setSavingState('local'); 
     }
   };
@@ -389,6 +400,14 @@ export default function LodTdiMatrix({ projectId }) {
                 <th className="p-3 w-[18%] border-r border-white/20 text-center">Anteproyecto</th>
                 <th className="p-3 w-[18%] border-r-2 border-white/20 text-center">Proy/Finales</th>
                 <th className="p-3 w-[19%]">Notas</th>
+              </tr>
+              <tr className="bg-[#2c2c29] text-white/50 font-mono text-[8px] tracking-widest uppercase">
+                <th className="px-3 pb-1.5 border-r border-white/10" />
+                <th className="px-3 pb-1.5 border-r-2 border-white/10" />
+                <th className="px-3 pb-1.5 border-r border-white/10 text-center">AEM &bull; LOD</th>
+                <th className="px-3 pb-1.5 border-r border-white/10 text-center">AEM &bull; LOD</th>
+                <th className="px-3 pb-1.5 border-r-2 border-white/10 text-center">AEM &bull; LOD</th>
+                <th className="px-3 pb-1.5" />
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1c1c19]/15">

@@ -172,6 +172,7 @@ export default function ProjectDeliveryScheduleTab({ project }) {
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [deletedIds, setDeletedIds] = useState([]);
+  const [saveMessage, setSaveMessage] = useState(null); // { type: 'success'|'error', text: string }
 
   // AI Importer state
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
@@ -303,13 +304,15 @@ export default function ProjectDeliveryScheduleTab({ project }) {
         }
       }
 
-      alert("Cronograma guardado exitosamente.");
+      setSaveMessage({ type: 'success', text: 'Cronograma guardado exitosamente.' });
+      setTimeout(() => setSaveMessage(null), 4000);
       setIsEditing(false);
       setDeletedIds([]);
       fetchData(); 
     } catch (err) {
       console.error("Error saving schedule:", err);
-      alert("Error al guardar en Supabase.");
+      setSaveMessage({ type: 'error', text: 'Error al guardar en Supabase: ' + err.message });
+      setTimeout(() => setSaveMessage(null), 5000);
     } finally {
       setLoading(false);
     }
@@ -387,10 +390,12 @@ export default function ProjectDeliveryScheduleTab({ project }) {
       setSchedule([]);
       setDeletedIds([]);
       setIsEditing(false);
-      alert("Todos los entregables han sido borrados exitosamente.");
+      setSaveMessage({ type: 'success', text: 'Todos los entregables han sido borrados.' });
+      setTimeout(() => setSaveMessage(null), 4000);
     } catch (err) {
       console.error("Error clearing schedule:", err);
-      alert("Error al borrar el cronograma en Supabase.");
+      setSaveMessage({ type: 'error', text: 'Error al borrar el cronograma en Supabase.' });
+      setTimeout(() => setSaveMessage(null), 5000);
     } finally {
       setLoading(false);
     }
@@ -411,9 +416,11 @@ export default function ProjectDeliveryScheduleTab({ project }) {
 
       setSchedule(prev => [...prev, ...newItems]);
       setIsEditing(true);
-      alert("Entregables importados correctamente. Revisa la tabla y presiona 'Guardar' para confirmar.");
+      setSaveMessage({ type: 'success', text: `${newItems.length} entregables importados. Revisa y presiona Guardar.` });
+      setTimeout(() => setSaveMessage(null), 5000);
     } catch (err) {
-      alert("Error al procesar JSON: " + err.message);
+      setSaveMessage({ type: 'error', text: 'Error al procesar JSON: ' + err.message });
+      setTimeout(() => setSaveMessage(null), 5000);
     }
   };
 
@@ -462,24 +469,46 @@ export default function ProjectDeliveryScheduleTab({ project }) {
             </>
           )}
 
-          {!isEditing ? (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#1c1c19] border-2 border-[#1c1c19] font-black text-[9px] uppercase shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
-            >
-              <Edit2 size={12} /> Editar
-            </button>
-          ) : (
-            <button
-              onClick={handleSave}
-              disabled={loading}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0f4369] text-white border-2 border-[#1c1c19] font-black text-[9px] uppercase shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all disabled:opacity-50"
-            >
-              {loading ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Guardar
-            </button>
+          {canEdit && (
+            !isEditing ? (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#1c1c19] border-2 border-[#1c1c19] font-black text-[9px] uppercase shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
+              >
+                <Edit2 size={12} /> Editar
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { setIsEditing(false); setDeletedIds([]); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#1c1c19] border-2 border-[#1c1c19] font-black text-[9px] uppercase shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
+                >
+                  <X size={12} /> Cancelar
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={loading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0f4369] text-white border-2 border-[#1c1c19] font-black text-[9px] uppercase shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all disabled:opacity-50"
+                >
+                  {loading ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Guardar
+                </button>
+              </div>
+            )
           )}
         </div>
       </div>
+
+      {/* Save message banner */}
+      {saveMessage && (
+        <div className={`flex items-center gap-2 px-4 py-2.5 border-2 border-[#1c1c19] text-[10px] font-black uppercase mb-4 ${
+          saveMessage.type === 'success'
+            ? 'bg-green-100 text-green-800 border-green-400'
+            : 'bg-red-100 text-red-800 border-red-400'
+        }`}>
+          {saveMessage.type === 'success' ? <Check size={14} /> : <X size={14} />}
+          {saveMessage.text}
+        </div>
+      )}
 
       <div className="overflow-x-auto border-2 border-[#1c1c19] shadow-[4px_4px_0_0_rgba(28,28,25,1)] mb-6">
         <table className="w-full text-left border-collapse min-w-[900px]">

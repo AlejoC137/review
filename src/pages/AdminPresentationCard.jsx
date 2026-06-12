@@ -561,8 +561,8 @@ export default function AdminPresentationCard() {
                 left: el.x,
                 top: el.y,
                 width: el.width,
-                minHeight: el.height,
-                height: el.type === 'image' ? el.height : undefined,
+                minHeight: el.type === 'image' ? el.height : undefined,
+                height: el.type === 'image' ? el.height : 'auto',
                 overflow: el.type === 'image' ? 'hidden' : 'visible',
                 zIndex: isSelected ? 9999 : (el.zIndex || 10),
                 pointerEvents: (isEditing && el.locked && !isSelected) ? 'none' : 'auto'
@@ -617,7 +617,7 @@ export default function AdminPresentationCard() {
                     fontFamily: el.fontFamily || 'sans-serif',
                     lineHeight: 'normal',
                     width: '100%',
-                    minHeight: '100%',
+                    height: 'auto',
                     whiteSpace: 'pre-wrap',
                     outline: 'none',
                     wordBreak: 'break-word'

@@ -29,6 +29,7 @@ import SpacesView from './pages/SpacesView';
 import ComponentsView from './pages/ComponentsView';
 import ProtocolPrintView from './pages/ProtocolPrintView';
 import AdminPresentationCard from './pages/AdminPresentationCard';
+import PreBEPView from './pages/PreBEPView';
 
 function App() {
   return (
@@ -67,6 +68,8 @@ function App() {
               <Route path="/planner" element={<PlannerView />} />
 
               <Route path="/planner/:schemaId" element={<PlannerView />} />
+
+              <Route path="/pre-bep" element={<PreBEPView />} />
 
               <Route path="/documents" element={
                 <ProtectedRoute>

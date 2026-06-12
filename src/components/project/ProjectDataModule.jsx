@@ -8,6 +8,7 @@ import {
 import { lifecycleService } from '../../services/lifecycleService';
 import { projectService } from '../../services/projectService';
 import { supabase } from '../../services/supabaseClient';
+import { useAuth } from '../../context/AuthContext';
 import LodTdiMatrix from './LodTdiMatrix';
 import ProjectUnitsTab from './ProjectUnitsTab';
 import ProjectObjectivesModule from './ProjectObjectivesModule';
@@ -37,6 +38,8 @@ const defaultPebInfo = {
 };
 
 export default function ProjectDataModule({ project, onTabChange }) {
+  const { isAdmin, isBimManager } = useAuth();
+  const canEdit = isAdmin || isBimManager;
   const [searchParams, setSearchParams] = useSearchParams();
   const [projectData, setProjectData] = useState(project);
   const [loading, setLoading] = useState(false);
@@ -115,6 +118,7 @@ export default function ProjectDataModule({ project, onTabChange }) {
     sales_area: 0,
     built_area: 0,
     circulation_area: 0,
+    occupied_area: 0,
     additional_info: '',
     tdi_correlation: '',
     oir_pir_compliance: '',
@@ -343,13 +347,40 @@ export default function ProjectDataModule({ project, onTabChange }) {
   };
 
   const openAddSoftware = () => {
-    setSoftwareForm({ id: null, software_principal: '', version_software: '', uso_del_modelo: '', entorno_comun_de_datos_cde: '', formatos: '', politica_version: '', es_software_primario: false });
+    setSoftwareForm({ 
+      id: null, 
+      software_principal: '', 
+      version_software: '', 
+      uso_del_modelo: '', 
+      entorno_comun_de_datos_cde: '', 
+      formatos: '', 
+      politica_version: '', 
+      es_software_primario: false 
+    });
     setEditingSoftwareId('new');
+    setTimeout(() => {
+      const el = document.getElementById('software-form-container');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
   };
 
   const openEditSoftware = (sw) => {
-    setSoftwareForm({ ...sw });
+    setSoftwareForm({
+      id: sw.id || null,
+      software_principal: sw.software_principal || '',
+      version_software: sw.version_software || '',
+      uso_del_modelo: sw.uso_del_modelo || '',
+      entorno_comun_de_datos_cde: sw.entorno_comun_de_datos_cde || '',
+      formatos: sw.formatos || '',
+      politica_version: sw.politica_version || '',
+      es_software_primario: !!sw.es_software_primario,
+      orden: sw.orden ?? 0
+    });
     setEditingSoftwareId(sw.id);
+    setTimeout(() => {
+      const el = document.getElementById('software-form-container');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
   };
 
   const cancelSoftwareEdit = () => {
@@ -448,6 +479,7 @@ export default function ProjectDataModule({ project, onTabChange }) {
       sales_area: pebInfo.sales_area || 0,
       built_area: pebInfo.built_area || 0,
       circulation_area: pebInfo.circulation_area || 0,
+      occupied_area: pebInfo.occupied_area || 0,
       additional_info: pebInfo.additional_info || '',
       tdi_correlation: pebInfo.tdi_correlation || '',
       oir_pir_compliance: pebInfo.oir_pir_compliance || '',
@@ -758,12 +790,14 @@ export default function ProjectDataModule({ project, onTabChange }) {
                       </h3>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={startEdit}
-                        className="flex items-center gap-1.5 px-3 py-1 bg-white text-[#1c1c19] border-2 border-[#1c1c19] font-black text-[9px] uppercase shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
-                      >
-                        <Edit2 size={10} /> Editar
-                      </button>
+                      {canEdit && (
+                        <button
+                          onClick={startEdit}
+                          className="flex items-center gap-1.5 px-3 py-1 bg-white text-[#1c1c19] border-2 border-[#1c1c19] font-black text-[9px] uppercase shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
+                        >
+                          <Edit2 size={10} /> Editar
+                        </button>
+                      )}
                       {getStatusBadge(projectData.finished)}
                     </div>
                   </div>
@@ -1043,7 +1077,7 @@ export default function ProjectDataModule({ project, onTabChange }) {
                 {/* 4. ÁREAS DEL PROYECTO */}
                 <div className="p-5 bg-white border-2 border-[#1c1c19] space-y-4 md:col-span-2">
                   <h4 className="text-xs font-black uppercase border-b-2 border-[#1c1c19]/10 pb-2">4. ÁREAS DEL PROYECTO</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div>
                       <label className="text-[9px] font-black uppercase text-[#72777f]">Área del lote (m²)</label>
                       <input 
@@ -1085,6 +1119,16 @@ export default function ProjectDataModule({ project, onTabChange }) {
                       />
                     </div>
                     <div>
+                      <label className="text-[9px] font-black uppercase text-[#72777f]">Área Ocupada Piso 1 (m²)</label>
+                      <input 
+                        type="number" 
+                        step="0.01"
+                        value={pebForm.occupied_area} 
+                        onChange={e => setPebForm({...pebForm, occupied_area: parseFloat(e.target.value) || 0})}
+                        className="w-full p-2 border-2 border-[#1c1c19] font-mono text-xs font-bold" 
+                      />
+                    </div>
+                    <div>
                       <label className="text-[9px] font-black uppercase text-[#72777f]">Total (m² - Calculado)</label>
                       <input 
                         type="text" 
@@ -1092,6 +1136,22 @@ export default function ProjectDataModule({ project, onTabChange }) {
                         value={((parseFloat(pebForm.sales_area) || 0) + (parseFloat(pebForm.built_area) || 0) + (parseFloat(pebForm.circulation_area) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         className="w-full p-2 border-2 border-[#1c1c19]/30 bg-gray-50 font-mono text-xs font-black text-[#0f4369] cursor-not-allowed" 
                       />
+                    </div>
+                  </div>
+
+                  {/* Índices Calculados */}
+                  <div className="bg-[#f0f4f8] p-3 border-2 border-[#1c1c19]/10 rounded-sm mt-3 font-mono">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[10px] font-black uppercase text-[#003366]">Índice de Construcción (IC):</span>
+                      <span className="text-xs font-bold text-[#003366]">
+                        {parseFloat(pebForm.lot_area) > 0 ? (parseFloat(pebForm.built_area) / parseFloat(pebForm.lot_area)).toFixed(2) : '0.00'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-black uppercase text-[#003366]">Índice de Ocupación (IO):</span>
+                      <span className="text-xs font-bold text-[#003366]">
+                        {parseFloat(pebForm.lot_area) > 0 ? (parseFloat(pebForm.occupied_area) / parseFloat(pebForm.lot_area)).toFixed(2) : '0.00'}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1159,12 +1219,14 @@ export default function ProjectDataModule({ project, onTabChange }) {
                   <Award size={20} className="text-[#0f4369]" />
                   <h3 className="text-xl font-black uppercase tracking-tight italic">Ficha de Información General del Proyecto (PEB)</h3>
                 </div>
+                {canEdit && (
                 <button
                   onClick={startEditPeb}
                   className="flex items-center gap-2 px-4 py-2 bg-white text-[#1c1c19] border-2 border-[#1c1c19] font-black text-[10px] uppercase shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
                 >
                   <Edit2 size={14} strokeWidth={2.5} /> Editar Ficha PEB
                 </button>
+              )}
               </div>
 
               {/* Grid 4 Categorías de Información */}
@@ -1277,9 +1339,29 @@ export default function ProjectDataModule({ project, onTabChange }) {
                       <span className="text-[9px] font-black text-[#72777f] uppercase tracking-tighter">Circulaciones:</span>
                       <span className="font-bold text-[#1c1c19]">{parseFloat(pebInfo.circulation_area || 0).toLocaleString()} m²</span>
                     </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-[9px] font-black text-[#72777f] uppercase tracking-tighter">Ocupación Piso 1:</span>
+                      <span className="font-bold text-[#1c1c19]">{parseFloat(pebInfo.occupied_area || 0).toLocaleString()} m²</span>
+                    </div>
                     <div className="border-t border-[#1c1c19]/10 pt-1.5 flex justify-between items-center text-xs font-black">
                       <span className="text-[9px] tracking-tighter text-[#1c1c19]">Total:</span>
                       <span className="text-[#0f4369]">{(parseFloat(pebInfo.sales_area || 0) + parseFloat(pebInfo.built_area || 0) + parseFloat(pebInfo.circulation_area || 0)).toLocaleString()} m²</span>
+                    </div>
+                  </div>
+                  
+                  {/* Índices Calculados */}
+                  <div className="bg-[#f0f4f8] p-3 border-2 border-[#1c1c19]/10 rounded-sm mt-3 font-mono">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[10px] font-black uppercase text-[#003366]">Índice de Construcción (IC):</span>
+                      <span className="text-xs font-bold text-[#003366]">
+                        {parseFloat(pebInfo.lot_area || 0) > 0 ? (parseFloat(pebInfo.built_area || 0) / parseFloat(pebInfo.lot_area || 0)).toFixed(2) : '0.00'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-black uppercase text-[#003366]">Índice de Ocupación (IO):</span>
+                      <span className="text-xs font-bold text-[#003366]">
+                        {parseFloat(pebInfo.lot_area || 0) > 0 ? (parseFloat(pebInfo.occupied_area || 0) / parseFloat(pebInfo.lot_area || 0)).toFixed(2) : '0.00'}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1357,17 +1439,19 @@ export default function ProjectDataModule({ project, onTabChange }) {
                   <h3 className="text-xl font-black uppercase tracking-tight italic">Software y Plataformas</h3>
                 </div>
               </div>
-              <button
-                onClick={openAddSoftware}
-                className="flex items-center gap-2 px-4 py-2 bg-[#0f4369] text-white border-2 border-[#1c1c19] font-black text-[10px] uppercase shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
-              >
-                <Plus size={14} /> Agregar Software
-              </button>
+              {canEdit && (
+                <button
+                  onClick={openAddSoftware}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#0f4369] text-white border-2 border-[#1c1c19] font-black text-[10px] uppercase shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
+                >
+                  <Plus size={14} /> Agregar Software
+                </button>
+              )}
             </div>
 
             {/* Inline Add/Edit Form */}
             {editingSoftwareId !== null && (
-              <div className="bg-[#fcf9f4] border-2 border-[#0f4369] p-6 shadow-[6px_6px_0_0_rgba(15,67,105,0.3)] space-y-4">
+              <div id="software-form-container" className="bg-[#fcf9f4] border-2 border-[#0f4369] p-6 shadow-[6px_6px_0_0_rgba(15,67,105,0.3)] space-y-4">
                 <div className="flex justify-between items-center">
                   <h4 className="text-sm font-black uppercase flex items-center gap-2">
                     <Cpu size={14} className="text-[#0f4369]" />
@@ -1545,29 +1629,31 @@ export default function ProjectDataModule({ project, onTabChange }) {
                         )}
                       </div>
 
-                      {/* Action buttons */}
-                      <div className="flex gap-2 mt-4 pt-3 border-t border-[#1c1c19]/10">
-                        <button
-                          onClick={() => openEditSoftware(sw)}
-                          className="flex items-center gap-1 px-2.5 py-1 bg-white border-2 border-[#1c1c19] text-[9px] font-black uppercase hover:bg-[#f6f3ee] shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
-                        >
-                          <Edit2 size={10} /> Editar
-                        </button>
-                        {!sw.es_software_primario && (
+                      {/* Action buttons — only for Admin / BIM Manager */}
+                      {canEdit && (
+                        <div className="flex gap-2 mt-4 pt-3 border-t border-[#1c1c19]/10">
                           <button
-                            onClick={() => handleMarkPrimary(sw.id)}
-                            className="flex items-center gap-1 px-2.5 py-1 bg-[#f5a623] border-2 border-[#1c1c19] text-[9px] font-black uppercase hover:bg-[#e8922a] shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
+                            onClick={() => openEditSoftware(sw)}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-white border-2 border-[#1c1c19] text-[9px] font-black uppercase hover:bg-[#f6f3ee] shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
                           >
-                            <Star size={10} /> Principal
+                            <Edit2 size={10} /> Editar
                           </button>
-                        )}
-                        <button
-                          onClick={() => handleDeleteSoftware(sw.id)}
-                          className="ml-auto flex items-center gap-1 px-2.5 py-1 bg-white border-2 border-red-400 text-red-600 text-[9px] font-black uppercase hover:bg-red-50 shadow-[2px_2px_0_0_rgba(220,38,38,0.3)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
-                        >
-                          <Trash2 size={10} /> Eliminar
-                        </button>
-                      </div>
+                          {!sw.es_software_primario && (
+                            <button
+                              onClick={() => handleMarkPrimary(sw.id)}
+                              className="flex items-center gap-1 px-2.5 py-1 bg-[#f5a623] border-2 border-[#1c1c19] text-[9px] font-black uppercase hover:bg-[#e8922a] shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
+                            >
+                              <Star size={10} /> Principal
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDeleteSoftware(sw.id)}
+                            className="ml-auto flex items-center gap-1 px-2.5 py-1 bg-white border-2 border-red-400 text-red-600 text-[9px] font-black uppercase hover:bg-red-50 shadow-[2px_2px_0_0_rgba(220,38,38,0.3)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
+                          >
+                            <Trash2 size={10} /> Eliminar
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS public.project_software (
     version_software TEXT NOT NULL DEFAULT '2025',
     uso_del_modelo TEXT NOT NULL DEFAULT 'Coordinación 3D',
     entorno_comun_de_datos_cde TEXT NOT NULL DEFAULT 'Autodesk Construction Cloud',
+    formatos TEXT,
+    politica_version TEXT,
     es_software_primario BOOLEAN DEFAULT false,
     orden INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -53,12 +55,12 @@ BEGIN
 
     IF v_project_id IS NOT NULL THEN
         INSERT INTO public.project_software
-            (project_id, software_principal, version_software, uso_del_modelo, entorno_comun_de_datos_cde, es_software_primario, orden)
+            (project_id, software_principal, version_software, uso_del_modelo, entorno_comun_de_datos_cde, formatos, politica_version, es_software_primario, orden)
         VALUES
-            (v_project_id, 'Revit', '2025', 'Coordinación 3D, Extracción de cantidades, Modelado BIM', 'Autodesk Construction Cloud', true, 0),
-            (v_project_id, 'Navisworks Manage', '2025', 'Detección de conflictos (Clash Detection), Coordinación multidisciplinar', 'Autodesk Construction Cloud', false, 1),
-            (v_project_id, 'AutoCAD', '2025', 'Producción de planos técnicos 2D, detalles constructivos', 'Autodesk Construction Cloud', false, 2),
-            (v_project_id, 'Dynamo', '2.18', 'Automatización de modelado, scripting paramétrico', 'N/A', false, 3)
+            (v_project_id, 'Revit', '2025', 'Coordinación 3D, Extracción de cantidades, Modelado BIM', 'Autodesk Construction Cloud', '.RVT', 'Versión previa a la actualmente vigente. El equipo técnico define el periodo anual de actualización.', true, 0),
+            (v_project_id, 'Navisworks Manage', '2025', 'Detección de conflictos (Clash Detection), Coordinación multidisciplinar', 'Autodesk Construction Cloud', '.NWC / .NWF / .NWD', 'Versión previa a la actualmente vigente.', false, 1),
+            (v_project_id, 'AutoCAD', '2025', 'Producción de planos técnicos 2D, detalles constructivos', 'Autodesk Construction Cloud', '.DWG', 'Versión libre.', false, 2),
+            (v_project_id, 'Dynamo', '2.18', 'Automatización de modelado, scripting paramétrico', 'N/A', '.DYN', 'Según versión de Revit.', false, 3)
         ON CONFLICT DO NOTHING;
     END IF;
 END $$;

@@ -444,6 +444,16 @@ export const projectService = {
     return data;
   },
 
+  async getProjectById(projectId) {
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', projectId)
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
   // --- MATRIZ LOD Y TDI ---
   async getLodTdiMatrix(projectId) {
     const { data, error } = await supabase

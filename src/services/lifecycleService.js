@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { databaseReportService } from './databaseReportService';
 
 export const lifecycleService = {
   // Obtener todos los ciclos de vida
@@ -92,6 +93,11 @@ export const lifecycleService = {
 
   // Obtener actividades de un proyecto
   getActivities: async (projectId) => {
+    const available = await databaseReportService.getAvailableTables().catch(() => []);
+    if (!available.includes('activities')) {
+      console.warn("Table 'activities' is not available in Supabase. Returning empty array.");
+      return [];
+    }
     const { data, error } = await supabase
       .from('activities')
       .select('*')
@@ -102,6 +108,11 @@ export const lifecycleService = {
 
   // Crear una nueva actividad
   createActivity: async (activity) => {
+    const available = await databaseReportService.getAvailableTables().catch(() => []);
+    if (!available.includes('activities')) {
+      console.warn("Table 'activities' is not available. Skipping insertion.");
+      return null;
+    }
     const { data, error } = await supabase
       .from('activities')
       .insert([{
@@ -115,6 +126,11 @@ export const lifecycleService = {
 
   // Actualizar una actividad (ej: mover o redimensionar suavemente)
   updateActivity: async (id, updates) => {
+    const available = await databaseReportService.getAvailableTables().catch(() => []);
+    if (!available.includes('activities')) {
+      console.warn("Table 'activities' is not available. Skipping update.");
+      return null;
+    }
     const { data, error } = await supabase
       .from('activities')
       .update(updates)
@@ -145,6 +161,10 @@ export const lifecycleService = {
 
   // Actualizar múltiples actividades a la vez (Batch Update)
   updateActivitiesBatch: async (activities) => {
+    const available = await databaseReportService.getAvailableTables().catch(() => []);
+    if (!available.includes('activities') || activities.length === 0) {
+      return [];
+    }
     const { data, error } = await supabase
       .from('activities')
       .upsert(activities)
@@ -166,6 +186,10 @@ export const lifecycleService = {
 
   // Eliminar una actividad
   deleteActivity: async (id) => {
+    const available = await databaseReportService.getAvailableTables().catch(() => []);
+    if (!available.includes('activities')) {
+      return;
+    }
     const { error } = await supabase
       .from('activities')
       .delete()

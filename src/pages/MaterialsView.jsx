@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import {
   Package, Search, DollarSign, Building2, Edit,
   Loader2, X, Save, AlertCircle, Plus, Filter, ChevronRight, ArrowUpDown,
-  Ruler, Weight, Tag, Clock, Trash2, Camera, ExternalLink, Info, Database, Eye, Edit3, Settings, Check, Download
+  Ruler, Weight, Tag, Clock, Trash2, Camera, ExternalLink, Info, Database, Eye, Edit3, Settings, Check, Download,
+  Sparkles, Copy
 } from 'lucide-react';
-import { getMaterials, getMaterialCategories, updateMaterial, createMaterial, deleteMaterial } from '../services/materialsService';
+import { getMaterials, getMaterialCategories, updateMaterial, createMaterial, deleteMaterial, createMaterialsBatch } from '../services/materialsService';
+import { useAuth } from '../context/AuthContext';
 
 
 
@@ -40,10 +42,13 @@ const formatCurrency = (val) => {
 };
 
 const isPriceField = (id) => ['precio_COP', 'precio_por_m2', 'precio_por_m_lineal'].includes(id);
-
 // --- SUB-COMPONENT: EDIT/CREATE MODAL ---
 const MaterialModal = ({ material, isOpen, onClose, onSave }) => {
+  const { isBimManager, isAdmin } = useAuth();
+  const canImport = isBimManager || isAdmin;
+
   const [loading, setLoading] = useState(false);
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     Nombre: '', categoria: '', tipo: '', unidad: 'UND', stock: '', proveedor: '',
     precio_COP: '', precio_por_m2: '', precio_por_m_lineal: '',
@@ -106,14 +111,54 @@ const MaterialModal = ({ material, isOpen, onClose, onSave }) => {
     }
   };
 
+  const handleAiFill = (data) => {
+    if (data && data.length > 0) {
+      const item = data[0];
+      setFormData({
+        Nombre: item.Nombre || '',
+        categoria: item.categoria || '',
+        tipo: item.tipo || '',
+        unidad: item.unidad || 'UND',
+        stock: item.stock !== undefined && item.stock !== null ? item.stock.toString() : '0',
+        proveedor: item.proveedor || '',
+        precio_COP: item.precio_COP !== undefined && item.precio_COP !== null ? item.precio_COP.toString() : '',
+        precio_por_m2: item.precio_por_m2 !== undefined && item.precio_por_m2 !== null ? item.precio_por_m2.toString() : '',
+        precio_por_m_lineal: item.precio_por_m_lineal !== undefined && item.precio_por_m_lineal !== null ? item.precio_por_m_lineal.toString() : '',
+        alto_mm: item.alto_mm !== undefined && item.alto_mm !== null ? item.alto_mm.toString() : '',
+        ancho_mm: item.ancho_mm !== undefined && item.ancho_mm !== null ? item.ancho_mm.toString() : '',
+        espesor_mm: item.espesor_mm !== undefined && item.espesor_mm !== null ? item.espesor_mm.toString() : '',
+        largo_m: item.largo_m !== undefined && item.largo_m !== null ? item.largo_m.toString() : '',
+        area_mm2: item.area_mm2 !== undefined && item.area_mm2 !== null ? item.area_mm2.toString() : '',
+        peso_kg_m: item.peso_kg_m !== undefined && item.peso_kg_m !== null ? item.peso_kg_m.toString() : '',
+        acabado: item.acabado || '',
+        grado: item.grado || '',
+        uso_recomendado: item.uso_recomendado || '',
+        observaciones_tecnicas: item.observaciones_tecnicas || '',
+        notas: item.notas || '',
+        foto_url: item.foto_url || ''
+      });
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 bg-[#1c1c19]/90 backdrop-blur-sm">
       <div className="bg-white border-4 border-[#1c1c19] w-full max-w-5xl shadow-[20px_20px_0_0_rgba(28,28,25,1)] flex flex-col max-h-[95vh]">
         <div className="flex justify-between items-center p-4 border-b-4 border-[#1c1c19] bg-[#f6f3ee]">
           <h3 className="text-sm font-black italic uppercase tracking-tighter">{material ? 'EDITAR_MATERIAL' : 'NUEVO_MATERIAL'}</h3>
-          <button onClick={onClose} className="p-1 hover:bg-[#1c1c19] hover:text-white border-2 border-transparent hover:border-[#1c1c19]">
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            {canImport && (
+              <button 
+                onClick={() => setIsAiModalOpen(true)} 
+                className="p-1 hover:bg-[#1c1c19] hover:text-white border-2 border-[#1c1c19] bg-white text-[#0f4369] flex items-center justify-center transition-all" 
+                title="Autocompletar con IA"
+              >
+                <Sparkles size={16} className="text-yellow-500" fill="currentColor" />
+              </button>
+            )}
+            <button onClick={onClose} className="p-1 hover:bg-[#1c1c19] hover:text-white border-2 border-transparent hover:border-[#1c1c19]">
+              <X size={20} />
+            </button>
+          </div>
         </div>
         <div className="p-6 overflow-y-auto space-y-4 custom-scrollbar">
           <div className="grid grid-cols-4 gap-3">
@@ -138,6 +183,7 @@ const MaterialModal = ({ material, isOpen, onClose, onSave }) => {
           </button>
         </div>
       </div>
+      <AiMaterialImportModal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} onImport={handleAiFill} singleMode={true} />
     </div>
   );
 };
@@ -404,8 +450,220 @@ const KeynotesModal = ({ isOpen, onClose, materials }) => {
   );
 };
 
+// --- SUB-COMPONENT: AI MATERIAL IMPORT MODAL ---
+// --- SUB-COMPONENT: AI MATERIAL IMPORT MODAL ---
+function AiMaterialImportModal({ isOpen, onClose, onImport, singleMode = false }) {
+  const [jsonInput, setJsonInput] = useState('');
+  const [previewData, setPreviewData] = useState(null);
+  const [error, setError] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleCopyPrompt = () => {
+    const masterPrompt = singleMode 
+      ? `Actúa como un experto en presupuestos y bases de datos de materiales de construcción. Genera un ÚNICO material de construcción estándar y realista.
+
+ESTRUCTURA DEL OBJETO JSON (debes retornar un Arreglo con este único objeto y usar estos nombres de campos exactos):
+- Nombre: (String, requerido) Nombre del material.
+- categoria: (String) Categoría general (ej. "MAMPUESTERÍA", "PISOS Y ENCHAPES", "CEMENTOS Y AGREGADOS").
+- tipo: (String) Tipo específico del material.
+- unidad: (String) Unidad de medida, DEBE ser una de: "UND", "M2", "ML", "M3", "KG", "TON", "GL", "CJ", "BL", "PAQ", "PLN", "RLL".
+- stock: (Number) Cantidad en stock.
+- proveedor: (String) Nombre del proveedor recomendado.
+- precio_COP: (Number) Precio unitario estimado en pesos colombianos (COP).
+- precio_por_m2: (Number) Precio estimado por metro cuadrado (si aplica).
+- precio_por_m_lineal: (Number) Precio estimado por metro lineal (si aplica).
+- alto_mm: (Number) Alto en milímetros (si aplica).
+- ancho_mm: (Number) Ancho en milímetros (si aplica).
+- espesor_mm: (Number) Espesor en milímetros (si aplica).
+- largo_m: (Number) Largo en metros (si aplica).
+- area_mm2: (Number) Área en milímetros cuadrados (si aplica).
+- peso_kg_m: (Number) Peso en kg/m (si aplica).
+- acabado: (String) Acabado superficial (ej. "MATE", "PULIDO", "RÚSTICO").
+- grado: (String) Grado o calidad (ej. "Grado A", "Grado 50").
+- uso_recomendado: (String) Uso recomendado en obra.
+- observaciones_tecnicas: (String) Especificaciones o detalles técnicos.
+- notas: (String) Notas adicionales.
+- foto_url: (String) URL de imagen ficticia u opcional.
+
+REGLAS CRÍTICAS:
+1. El output debe ser ÚNICAMENTE el JSON Array con 1 objeto adentro, sin texto adicional ni bloques de markdown (como \`\`\`json). Ejemplo: [{"Nombre":"Bloque de concreto","categoria":"MAMPUESTERÍA","unidad":"UND","stock":500,"precio_COP":2500}]`
+      : `Actúa como un experto en presupuestos y bases de datos de materiales de construcción. Genera un conjunto variado y realista de materiales de construcción estándar (genera al menos 15 materiales diferentes que cubran categorías como agregados, mampostería, acabados, aceros, etc.).
+
+ESTRUCTURA DE CADA OBJETO JSON (debes usar estos nombres de campos exactos):
+- Nombre: (String, requerido) Nombre del material.
+- categoria: (String) Categoría general (ej. "MAMPUESTERÍA", "PISOS Y ENCHAPES", "CEMENTOS Y AGREGADOS").
+- tipo: (String) Tipo específico del material.
+- unidad: (String) Unidad de medida, DEBE ser una de: "UND", "M2", "ML", "M3", "KG", "TON", "GL", "CJ", "BL", "PAQ", "PLN", "RLL".
+- stock: (Number) Cantidad en stock.
+- proveedor: (String) Nombre del proveedor recomendado.
+- precio_COP: (Number) Precio unitario estimado en pesos colombianos (COP).
+- precio_por_m2: (Number) Precio estimado por metro cuadrado (si aplica).
+- precio_por_m_lineal: (Number) Precio estimado por metro lineal (si aplica).
+- alto_mm: (Number) Alto en milímetros (si aplica).
+- ancho_mm: (Number) Ancho en milímetros (si aplica).
+- espesor_mm: (Number) Espesor en milímetros (si aplica).
+- largo_m: (Number) Largo en metros (si aplica).
+- area_mm2: (Number) Área en milímetros cuadrados (si aplica).
+- peso_kg_m: (Number) Peso en kg/m (si aplica).
+- acabado: (String) Acabado superficial (ej. "MATE", "PULIDO", "RÚSTICO").
+- grado: (String) Grado o calidad (ej. "Grado A", "Grado 50").
+- uso_recomendado: (String) Uso recomendado en obra.
+- observaciones_tecnicas: (String) Especificaciones o detalles técnicos.
+- notas: (String) Notas adicionales.
+- foto_url: (String) URL de imagen ficticia u opcional.
+
+REGLAS CRÍTICAS:
+1. El output debe ser ÚNICAMENTE el JSON Array, sin texto adicional ni bloques de markdown (como \`\`\`json). Ejemplo: [{"Nombre":"Bloque de concreto","categoria":"MAMPUESTERÍA","unidad":"UND","stock":500,"precio_COP":2500}]`;
+
+    navigator.clipboard.writeText(masterPrompt).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const handleValidate = () => {
+    setError(null);
+    setPreviewData(null);
+    try {
+      let cleanJson = jsonInput.trim();
+      if (cleanJson.startsWith('```json')) cleanJson = cleanJson.replace(/```json/g, '').trim();
+      if (cleanJson.endsWith('```')) cleanJson = cleanJson.replace(/```/g, '').trim();
+      
+      const parsed = JSON.parse(cleanJson);
+      
+      if (!Array.isArray(parsed)) {
+        throw new Error("El JSON debe ser un Arreglo (Array) de objetos.");
+      }
+      
+      parsed.forEach((item, index) => {
+        if (!item.Nombre) {
+          throw new Error(`El elemento en el índice ${index} no contiene el campo 'Nombre'.`);
+        }
+      });
+      
+      setPreviewData(parsed);
+    } catch (err) {
+      setError("Error al parsear JSON. Detalles: " + err.message);
+    }
+  };
+
+  const handleCreate = async () => {
+    setIsImporting(true);
+    try {
+      await onImport(previewData);
+      onClose();
+    } catch (err) {
+      setError("Error al importar: " + err.message);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-[#1c1c19]/90 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-white border-4 border-[#1c1c19] shadow-[20px_20px_0_0_rgba(28,28,25,1)] w-full max-w-3xl my-8 flex flex-col max-h-[90vh]">
+        <div className="p-6 border-b-4 border-[#1c1c19] bg-[#0f4369] text-white flex justify-between items-center flex-none">
+          <div className="flex items-center gap-3">
+            <Sparkles size={24} className="text-yellow-400" />
+            <h3 className="text-xl font-black italic uppercase tracking-tighter">{singleMode ? 'ASISTENTE_MATERIAL_IA' : 'IMPORTADOR_MATERIALES_IA'}</h3>
+          </div>
+          <button onClick={onClose} className="text-white hover:rotate-90 transition-transform"><X size={24} /></button>
+        </div>
+        
+        <div className="p-8 flex-1 overflow-y-auto custom-scrollbar space-y-8 bg-white">
+          <div className="space-y-4">
+             <div className="flex items-center gap-2 border-b-2 border-[#1c1c19] pb-2">
+                <span className="bg-[#1c1c19] text-white font-black text-xs px-2 py-1">PASO 1</span>
+                <h4 className="text-sm font-black uppercase tracking-widest text-[#1c1c19]">Copiar Prompt de Estructura</h4>
+             </div>
+             
+             <button 
+                onClick={handleCopyPrompt}
+                className={`w-full py-3 border-2 font-display font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${copied ? 'bg-green-600 text-white border-green-800' : 'bg-[#1c1c19] text-white border-[#1c1c19] shadow-[4px_4px_0_0_rgba(28,28,25,0.2)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]'}`}
+             >
+                {copied ? <Check size={16} /> : <Copy size={16} />}
+                {copied ? 'PROMPT COPIADO AL PORTAPAPELES' : 'COPIAR PROMPT DE ESTRUCTURA A IA'}
+             </button>
+          </div>
+
+          <div className="space-y-4">
+             <div className="flex items-center gap-2 border-b-2 border-[#1c1c19] pb-2">
+                <span className="bg-[#1c1c19] text-white font-black text-xs px-2 py-1">PASO 2</span>
+                <h4 className="text-sm font-black uppercase tracking-widest text-[#1c1c19]">Pegar y Validar Resultado</h4>
+             </div>
+             
+             <div className="space-y-2">
+                <label className="block text-[10px] font-black uppercase tracking-widest text-[#72777f]">Pega el JSON generado por la IA aquí:</label>
+                <textarea 
+                  value={jsonInput}
+                  onChange={e => { setJsonInput(e.target.value); setPreviewData(null); setError(null); }}
+                  placeholder="[ { ... } ]"
+                  className="w-full bg-[#1c1c19] text-green-400 font-mono border-2 border-[#1c1c19] p-4 text-[10px] focus:outline-none min-h-[150px] custom-scrollbar"
+                />
+             </div>
+
+             {error && <div className="p-3 bg-red-100 text-red-700 text-xs font-bold uppercase border-l-4 border-red-500">{error}</div>}
+
+             {!previewData ? (
+                <button 
+                  onClick={handleValidate}
+                  disabled={!jsonInput.trim()}
+                  className="w-full py-3 bg-[#f6f3ee] text-[#1c1c19] border-2 border-[#1c1c19] font-display font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#e5e2dd] disabled:opacity-50"
+                >
+                  <Check size={16} /> VALIDAR JSON
+                </button>
+             ) : (
+                <div className="bg-[#f6f3ee] border-2 border-[#1c1c19] p-4 space-y-3">
+                   <h5 className="text-[10px] font-black uppercase bg-[#1c1c19] text-white px-2 py-1 inline-block mb-2">VISTA_PREVIA ({previewData.length} {singleMode ? 'MATERIAL' : 'MATERIALES'})</h5>
+                   
+                   <div className="max-h-60 overflow-y-auto border border-[#1c1c19]/20 bg-white">
+                      <table className="w-full text-left text-[9px] border-collapse">
+                         <thead>
+                            <tr className="bg-[#1c1c19] text-white">
+                               <th className="p-1.5 border border-white/20">NOMBRE</th>
+                               <th className="p-1.5 border border-white/20">CATEGORÍA</th>
+                               <th className="p-1.5 border border-white/20">UNIDAD</th>
+                               <th className="p-1.5 border border-white/20">PRECIO</th>
+                            </tr>
+                         </thead>
+                         <tbody>
+                            {previewData.map((m, i) => (
+                               <tr key={i} className="border-b border-[#1c1c19]/10">
+                                  <td className="p-1.5 font-bold">{m.Nombre}</td>
+                                  <td className="p-1.5">{m.categoria || '---'}</td>
+                                  <td className="p-1.5 font-mono">{m.unidad || 'UND'}</td>
+                                  <td className="p-1.5">{m.precio_COP ? `$${Number(m.precio_COP).toLocaleString('es-CO')}` : '---'}</td>
+                               </tr>
+                            ))}
+                         </tbody>
+                      </table>
+                   </div>
+
+                   <button 
+                     onClick={handleCreate}
+                     disabled={isImporting}
+                     className="w-full mt-4 py-3 bg-[#0f4369] text-white border-2 border-[#1c1c19] font-display font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#1c1c19] transition-colors disabled:opacity-50"
+                   >
+                     {isImporting ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} 
+                     {isImporting ? 'PROCESANDO...' : singleMode ? 'CONFIRMAR Y LLENAR FORMULARIO' : 'CONFIRMAR E IMPORTAR MATERIALES'}
+                   </button>
+                </div>
+             )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --- MAIN VIEW ---
 const MaterialsView = () => {
+  const { isBimManager, isAdmin } = useAuth();
+  const canImport = isBimManager || isAdmin;
+
   const [materials, setMaterials] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -419,6 +677,9 @@ const MaterialsView = () => {
   const [sortConfig, setSortConfig] = useState({ key: 'Nombre', direction: 'desc' });
   const [showColSettings, setShowColSettings] = useState(false);
   const [isKeynotesModalOpen, setIsKeynotesModalOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isAiImportModalOpen, setIsAiImportModalOpen] = useState(false);
 
   // REORDERED COLUMNS BASED ON USER REQUEST
   const allColumns = [
@@ -453,6 +714,7 @@ const MaterialsView = () => {
       setMaterials(m || []);
       setLocalMaterials(m || []);
       setCategories(c || []);
+      setSelectedIds(new Set());
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
@@ -471,17 +733,17 @@ const MaterialsView = () => {
   };
 
   const handleInputChange = (id, field, value) => {
-    setLocalMaterials(prev => prev.map(m => m.id === id ? { ...m, [field]: value } : m));
+    setLocalMaterials(prev => prev.map(m => (m.id || m.Nombre) === id ? { ...m, [field]: value } : m));
   };
 
   const handleSaveChanges = async () => {
     setIsSaving(true);
     try {
       const changed = localMaterials.filter(local => {
-        const original = materials.find(m => m.id === local.id);
+        const original = materials.find(m => (m.id || m.Nombre) === (local.id || local.Nombre));
         return JSON.stringify(local) !== JSON.stringify(original);
       });
-      await Promise.all(changed.map(m => updateMaterial(m.id, m)));
+      await Promise.all(changed.map(m => updateMaterial(m.id || m.Nombre, m)));
       setMaterials([...localMaterials]);
       setIsEditMode(false);
       alert("Cambios guardados.");
@@ -507,6 +769,71 @@ const MaterialsView = () => {
       if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
     });
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllToggle = () => {
+    const allProcessedIds = processedMaterials.map(m => m.id || m.Nombre);
+    const areAllSelected = allProcessedIds.length > 0 && allProcessedIds.every(id => selectedIds.has(id));
+    
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (areAllSelected) {
+        allProcessedIds.forEach(id => next.delete(id));
+      } else {
+        allProcessedIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+
+    const key = window.prompt("Ingrese la clave de BIM Manager para confirmar la eliminación:");
+    if (key !== "123123") {
+      alert("Clave incorrecta. No tiene permisos para eliminar materiales.");
+      return;
+    }
+
+    if (window.confirm(`¿Estás seguro de que deseas eliminar ${selectedIds.size} material(es)?`)) {
+      setIsDeleting(true);
+      try {
+        await Promise.all(Array.from(selectedIds).map(id => deleteMaterial(id)));
+        setSelectedIds(new Set());
+        await loadData();
+        alert("Materiales eliminados correctamente.");
+      } catch (err) {
+        alert("Error al eliminar los materiales.");
+        console.error(err);
+      } finally {
+        setIsDeleting(false);
+      }
+    }
+  };
+
+  const handleAiImport = async (data) => {
+    if (!data || !Array.isArray(data)) return;
+    try {
+      await createMaterialsBatch(data);
+      alert("Materiales importados con éxito.");
+      await loadData();
+    } catch (err) {
+      alert("Error al importar los materiales.");
+      console.error(err);
+      throw err;
+    }
+  };
 
   const Th = ({ label, field, align = 'left' }) => (
     <th onClick={() => field && handleSort(field)} className={`p-2 text-${align} text-[7px] font-black uppercase tracking-widest border border-white/20 bg-[#1c1c19] text-white whitespace-nowrap sticky top-0 z-20 ${field ? 'cursor-pointer hover:bg-[#0f4369]' : ''}`}>
@@ -542,6 +869,16 @@ const MaterialsView = () => {
         </div>
 
         <div className="flex gap-2 items-center">
+          {selectedIds.size > 0 && (
+            <button
+              onClick={handleDeleteSelected}
+              disabled={isDeleting}
+              className="px-5 py-1.5 bg-[#ba1a1a] text-white font-black text-[9px] uppercase italic border-2 border-[#1c1c19] hover:bg-[#93000a] transition-all flex items-center gap-2 shadow-[3px_3px_0_0_rgba(28,28,25,1)] hover:shadow-none translate-x-[-2px] translate-y-[-2px] hover:translate-x-0 hover:translate-y-0"
+            >
+              {isDeleting ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
+              ELIMINAR ({selectedIds.size})
+            </button>
+          )}
           <button onClick={() => { if (isEditMode) handleSaveChanges(); else setIsEditMode(true); }} disabled={isSaving} className={`px-6 py-1.5 font-black text-[10px] uppercase italic border-4 transition-all flex items-center gap-2 ${isEditMode ? 'bg-red-600 text-white border-red-800 animate-pulse' : 'bg-white text-red-600 border-red-600 shadow-[4px_4px_0_0_rgba(220,38,38,1)] hover:shadow-none'}`}>
             {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Edit3 size={12} />}
             {isEditMode ? 'GUARDAR_CAMBIOS' : 'EDIT TABLE'}
@@ -553,6 +890,14 @@ const MaterialsView = () => {
             <option value="all">CATEGORIAS</option>
             {categories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
+          {canImport && (
+            <button 
+              onClick={() => setIsAiImportModalOpen(true)}
+              className="px-5 py-1.5 bg-[#0f4369] text-white font-black text-[9px] uppercase italic border-2 border-[#1c1c19] hover:bg-[#1c1c19] transition-all flex items-center gap-2 shadow-[3px_3px_0_0_rgba(28,28,25,1)] hover:shadow-none translate-x-[-2px] translate-y-[-2px] hover:translate-x-0 hover:translate-y-0"
+            >
+              <Sparkles size={10} className="text-yellow-400" /> IMPORTADOR IA
+            </button>
+          )}
           <button onClick={() => setIsKeynotesModalOpen(true)} className="px-5 py-1.5 bg-[#f6f3ee] text-[#1c1c19] font-black text-[9px] uppercase italic border-2 border-[#1c1c19] hover:bg-[#e5e2dd] transition-all flex items-center gap-2">
             <Download size={10} /> KEYNOTES
           </button>
@@ -565,6 +910,16 @@ const MaterialsView = () => {
         <table className="w-full border-collapse">
           <thead>
             <tr>
+              <th className="p-2 border border-white/20 bg-[#1c1c19] text-white w-10 text-center sticky top-0 z-20">
+                <div className="flex items-center justify-center">
+                  <input
+                    type="checkbox"
+                    checked={processedMaterials.length > 0 && processedMaterials.every(m => selectedIds.has(m.id || m.Nombre))}
+                    onChange={handleSelectAllToggle}
+                    className="w-3.5 h-3.5 cursor-pointer accent-[#1c1c19]"
+                  />
+                </div>
+              </th>
               {allColumns.filter(c => visibleColumns.has(c.id)).map(col => (
                 <Th key={col.id} label={col.label} field={col.id} align={isPriceField(col.id) ? 'right' : 'left'} />
               ))}
@@ -573,16 +928,26 @@ const MaterialsView = () => {
           </thead>
           <tbody>
             {processedMaterials.map((m) => (
-              <tr key={m.id} className="hover:bg-[#0f4369]/5 bg-white border-b border-[#1c1c19]/10 group">
+              <tr key={m.id || m.Nombre} className="hover:bg-[#0f4369]/5 bg-white border-b border-[#1c1c19]/10 group">
+                <td className="p-1 text-center border border-[#1c1c19]/10 w-10">
+                  <div className="flex items-center justify-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(m.id || m.Nombre)}
+                      onChange={() => toggleSelect(m.id || m.Nombre)}
+                      className="w-3.5 h-3.5 cursor-pointer accent-[#1c1c19]"
+                    />
+                  </div>
+                </td>
                 {allColumns.filter(c => visibleColumns.has(c.id)).map(col => (
                   <td key={col.id} className={`p-1 border border-[#1c1c19]/10 ${isEditMode ? 'bg-[#fcf9f4]' : ''}`}>
                     {isEditMode ? (
                       col.id === 'unidad' ? (
-                        <select value={m[col.id] || 'UND'} onChange={(e) => handleInputChange(m.id, col.id, e.target.value)} className="w-full bg-transparent p-1 text-[8px] font-black outline-none border border-[#1c1c19]/30 focus:border-[#0f4369]">
+                        <select value={m[col.id] || 'UND'} onChange={(e) => handleInputChange(m.id || m.Nombre, col.id, e.target.value)} className="w-full bg-transparent p-1 text-[8px] font-black outline-none border border-[#1c1c19]/30 focus:border-[#0f4369]">
                           {CONSTRUCTION_UNITS.map(u => <option key={u} value={u}>{UNIT_LABELS[u]}</option>)}
                         </select>
                       ) : (
-                        <input type="text" value={m[col.id] || ''} onChange={(e) => handleInputChange(m.id, col.id, e.target.value)} className="w-full bg-transparent p-1 text-[8px] font-black outline-none border border-transparent focus:border-[#0f4369]" />
+                        <input type="text" value={m[col.id] || ''} onChange={(e) => handleInputChange(m.id || m.Nombre, col.id, e.target.value)} className="w-full bg-transparent p-1 text-[8px] font-black outline-none border border-transparent focus:border-[#0f4369]" />
                       )
                     ) : (
                       <span title={col.id === 'unidad' ? UNIT_LABELS[m[col.id]] : undefined} className={`block p-1 text-[8px] relative ${col.id === 'Nombre' ? 'font-black' : 'font-bold'} ${isPriceField(col.id) ? 'text-right text-[#0f4369]' : ''}`}>
@@ -608,6 +973,7 @@ const MaterialsView = () => {
       </div>
       <MaterialModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} material={selectedMaterial} onSave={() => loadData()} />
       <KeynotesModal isOpen={isKeynotesModalOpen} onClose={() => setIsKeynotesModalOpen(false)} materials={processedMaterials} />
+      <AiMaterialImportModal isOpen={isAiImportModalOpen} onClose={() => setIsAiImportModalOpen(false)} onImport={handleAiImport} />
     </div>
   );
 };

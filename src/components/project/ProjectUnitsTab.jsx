@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
-import { Save, Edit2, Loader2, Info, LayoutGrid, TableProperties } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { Save, Edit2, Loader2, Info, LayoutGrid, TableProperties, X } from 'lucide-react';
 
 const defaultUnits = {
   length_unit: 'Metros (m)',
@@ -17,7 +18,11 @@ const defaultUnits = {
 };
 
 export default function ProjectUnitsTab({ project }) {
+  const { isAdmin, isBimManager } = useAuth();
+  const canEdit = isAdmin || isBimManager;
+
   const [unitsInfo, setUnitsInfo] = useState(defaultUnits);
+  const [originalUnits, setOriginalUnits] = useState(defaultUnits);
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState('table'); // 'cards' or 'table'
@@ -39,15 +44,25 @@ export default function ProjectUnitsTab({ project }) {
 
       if (error) throw error;
       if (data) {
-        setUnitsInfo({ ...defaultUnits, ...data });
+        const merged = { ...defaultUnits, ...data };
+        setUnitsInfo(merged);
+        setOriginalUnits(merged);
       } else {
         const local = localStorage.getItem(localKey);
-        if (local) setUnitsInfo({ ...defaultUnits, ...JSON.parse(local) });
+        if (local) {
+          const parsed = { ...defaultUnits, ...JSON.parse(local) };
+          setUnitsInfo(parsed);
+          setOriginalUnits(parsed);
+        }
       }
     } catch (err) {
       console.warn("Using local fallback for units info:", err);
       const local = localStorage.getItem(localKey);
-      if (local) setUnitsInfo({ ...defaultUnits, ...JSON.parse(local) });
+      if (local) {
+        const parsed = { ...defaultUnits, ...JSON.parse(local) };
+        setUnitsInfo(parsed);
+        setOriginalUnits(parsed);
+      }
     } finally {
       setLoading(false);
     }
@@ -70,15 +85,21 @@ export default function ProjectUnitsTab({ project }) {
         .upsert(payload, { onConflict: 'project_id' });
       
       if (error) throw error;
-      alert("Unidades de medida actualizadas exitosamente.");
+      setOriginalUnits(unitsInfo);
       setIsEditing(false);
     } catch (err) {
       console.error("Error saving units:", err);
       alert("Guardado temporalmente en la memoria del navegador (base de datos no configurada).");
+      setOriginalUnits(unitsInfo);
       setIsEditing(false);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCancel = () => {
+    setUnitsInfo(originalUnits);
+    setIsEditing(false);
   };
 
   const handleChange = (field, value) => {
@@ -138,21 +159,31 @@ export default function ProjectUnitsTab({ project }) {
             </button>
           </div>
 
-          {!isEditing ? (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#1c1c19] border-2 border-[#1c1c19] font-black text-[9px] uppercase shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
-            >
-              <Edit2 size={12} /> Editar
-            </button>
-          ) : (
-            <button
-              onClick={handleSave}
-              disabled={loading}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0f4369] text-white border-2 border-[#1c1c19] font-black text-[9px] uppercase shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all disabled:opacity-50"
-            >
-              {loading ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Guardar
-            </button>
+          {canEdit && (
+            !isEditing ? (
+              <button
+                onClick={() => { setOriginalUnits(unitsInfo); setIsEditing(true); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#1c1c19] border-2 border-[#1c1c19] font-black text-[9px] uppercase shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
+              >
+                <Edit2 size={12} /> Editar
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleCancel}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#1c1c19] border-2 border-[#1c1c19] font-black text-[9px] uppercase shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
+                >
+                  <X size={12} /> Cancelar
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={loading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0f4369] text-white border-2 border-[#1c1c19] font-black text-[9px] uppercase shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all disabled:opacity-50"
+                >
+                  {loading ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Guardar
+                </button>
+              </div>
+            )
           )}
         </div>
       </div>

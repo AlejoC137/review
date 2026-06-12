@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, Settings, Hexagon,
   Layers, Info, X, FileText, Activity,
   HelpCircle, Book, ChevronLeft, ChevronRight, ChevronDown, Lock as LockIcon,
-  User, LogOut, ClipboardList, Folder, Calendar, Users, Target, Package
+  User, LogOut, ClipboardList, Folder, Calendar, Users, Target, Package, Database
 } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
@@ -25,7 +25,7 @@ const NavItem = ({ item, depth = 0 }) => {
   else if (item.path === '/dictionary') isActive = location.pathname === '/dictionary';
   else if (item.path === '/') isActive = location.pathname === '/';
   else if (item.path === '/roadmap') isActive = location.pathname === '/roadmap' && (location.hash === item.hash || (item.hash === '#phase-1' && location.hash === ''));
-  else if (item.path && (item.path.startsWith('/esquemas') || item.path.startsWith('/planner') || item.path.startsWith('/esquemaAdmin'))) {
+  else if (item.path && (item.path.startsWith('/esquemas') || item.path.startsWith('/planner') || item.path.startsWith('/esquemaAdmin') || item.path.startsWith('/pre-bep'))) {
     const [base, query] = item.path.split('?');
     if (query) {
       isActive = location.pathname.startsWith(base) && location.search.includes(query);
@@ -265,6 +265,7 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
                     <NavItem item={{ id: `nav-planner-${proj.id}`, label: 'Organizador / Deployer', path: `/planner?projectId=${proj.id}`, icon: ClipboardList }} depth={3} />
                     <NavItem item={{ id: `nav-protocolos-${proj.id}`, label: 'Protocolos', path: `/project/${proj.id}?tab=protocolos`, icon: FileText }} depth={3} />
                     <NavItem item={{ id: `nav-bep-equipo-${proj.id}`, label: 'Equipo y Roles', path: `/project/${proj.id}?tab=equipo&subtab=roles`, icon: Users }} depth={3} />
+                    <NavItem item={{ id: `nav-db-report-${proj.id}`, label: 'PRE BEP', path: `/pre-bep?projectId=${proj.id}`, icon: Database }} depth={3} />
                   </NavGroup>
                   <NavItem item={{ id: `nav-proyecto-${proj.id}`, label: 'Sub Proyecto / Unidades', path: `/project/${proj.id}?tab=proyecto`, icon: Layers }} depth={2} />
                   <NavItem item={{ id: `nav-materiales-${proj.id}`, label: 'Materiales', path: `/materials?projectId=${proj.id}`, icon: Package }} depth={2} />
@@ -285,6 +286,7 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
                   <NavItem item={{ id: 'nav-planner', label: 'Organizador', path: currentPlan ? `/planner/${currentPlan.id}` : '/planner', icon: ClipboardList }} depth={3} />
                   <NavItem item={{ id: 'nav-protocolos', label: 'Protocolos', path: '/project/kengo-kuma?tab=protocolos', icon: FileText }} depth={3} />
                   <NavItem item={{ id: 'nav-bep-equipo', label: 'Equipo y Roles', path: '/project/kengo-kuma?tab=equipo&subtab=roles', icon: Users }} depth={3} />
+                  <NavItem item={{ id: 'nav-db-report', label: 'PRE BEP', path: '/pre-bep?projectId=kengo-kuma', icon: Database }} depth={3} />
                 </NavGroup>
                 <NavItem item={{ id: 'nav-documentos', label: 'Documentos', path: '/documents', icon: FileText }} depth={2} />
                 <NavItem item={{ id: 'nav-calendario', label: 'Calendario Sem/Mes', path: '/project/kengo-kuma?tab=mes', icon: Calendar }} depth={2} />

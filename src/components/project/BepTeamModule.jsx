@@ -227,11 +227,13 @@ export default function BepTeamModule({ project }) {
     }
     try {
       const currentStaffIds = selectedRole.staff_ids || [];
+      const isAssigning = !currentStaffIds.includes(staffId);
+      
       let newStaffIds = [];
-      if (currentStaffIds.includes(staffId)) {
-        newStaffIds = currentStaffIds.filter(id => id !== staffId);
-      } else {
+      if (isAssigning) {
         newStaffIds = [...currentStaffIds, staffId];
+      } else {
+        newStaffIds = currentStaffIds.filter(id => id !== staffId);
       }
 
       const updates = {
@@ -247,11 +249,31 @@ export default function BepTeamModule({ project }) {
         localStorage.setItem(`bep_team_local_${project.id}`, JSON.stringify(updatedRoles));
         setBepRoles(updatedRoles);
         setSelectedRole({ ...selectedRole, ...updates });
+        
+        // Also update local generalStaff
+        if (isAssigning) {
+          setGeneralStaff(generalStaff.map(s => s.id === staffId ? { ...s, role_description: selectedRole.role_name, compania: selectedRole.organization } : s));
+        } else {
+          setGeneralStaff(generalStaff.map(s => s.id === staffId && s.role_description === selectedRole.role_name ? { ...s, role_description: '' } : s));
+        }
       } else {
         // Database update
         const updated = await projectService.updateBepRole(selectedRole.id, updates);
         setBepRoles(bepRoles.map(r => r.id === updated.id ? updated : r));
         setSelectedRole(updated);
+        
+        // Sincronizar con el perfil del staff
+        try {
+          if (isAssigning) {
+            await projectService.updateStaff(staffId, { role_description: selectedRole.role_name, compania: selectedRole.organization });
+            setGeneralStaff(generalStaff.map(s => s.id === staffId ? { ...s, role_description: selectedRole.role_name, compania: selectedRole.organization } : s));
+          } else {
+            await projectService.updateStaff(staffId, { role_description: '' });
+            setGeneralStaff(generalStaff.map(s => s.id === staffId && s.role_description === selectedRole.role_name ? { ...s, role_description: '' } : s));
+          }
+        } catch (e) {
+          console.error('Error syncing staff role:', e);
+        }
       }
     } catch (err) {
       console.error('Error toggling staff assignment:', err);
@@ -742,18 +764,31 @@ export default function BepTeamModule({ project }) {
                               {generalStaff.length === 0 ? (
                                 <div className="p-4 text-center text-[10px] font-mono uppercase opacity-40">No hay staff registrado</div>
                               ) : generalStaff.map(staff => {
-                                const isAssigned = (selectedRole.staff_ids || []).includes(staff.id);
+                                const isAssignedToCurrent = (selectedRole.staff_ids || []).includes(staff.id);
+                                const assignedRole = bepRoles.find(r => (r.staff_ids || []).includes(staff.id));
+                                const isOccupiedByOther = assignedRole && assignedRole.id !== selectedRole.id;
+                                
                                 return (
                                   <button
                                     key={staff.id}
-                                    onClick={() => handleToggleStaff(staff.id)}
-                                    className="w-full text-left px-3 py-2 flex items-center justify-between hover:bg-[#f6f3ee] text-[11px] font-bold"
+                                    onClick={() => {
+                                      if (!isOccupiedByOther) handleToggleStaff(staff.id);
+                                    }}
+                                    disabled={isOccupiedByOther}
+                                    className={`w-full text-left px-3 py-2 flex flex-col justify-center hover:bg-[#f6f3ee] ${isOccupiedByOther ? 'opacity-50 cursor-not-allowed bg-gray-50' : ''}`}
                                   >
-                                    <div className="flex items-center gap-2 truncate">
-                                      <div style={{ backgroundColor: staff.color || '#0f4369' }} className="w-2.5 h-2.5 rounded-full shrink-0" />
-                                      <span className="truncate">{staff.name}</span>
+                                    <div className="flex items-center justify-between w-full">
+                                      <div className="flex items-center gap-2 truncate">
+                                        <div style={{ backgroundColor: staff.color || '#0f4369' }} className="w-2.5 h-2.5 rounded-full shrink-0" />
+                                        <span className="text-[11px] font-bold truncate">{staff.name}</span>
+                                      </div>
+                                      {isAssignedToCurrent && <Check size={12} className="text-green-600 shrink-0 font-bold" />}
                                     </div>
-                                    {isAssigned && <Check size={12} className="text-green-600 shrink-0 font-bold" />}
+                                    {assignedRole && (
+                                      <span className="text-[8px] text-[#72777f] font-mono uppercase truncate mt-0.5 ml-4">
+                                        {isAssignedToCurrent ? 'Asignado aquí' : `En: ${assignedRole.role_name}`}
+                                      </span>
+                                    )}
                                   </button>
                                 );
                               })}

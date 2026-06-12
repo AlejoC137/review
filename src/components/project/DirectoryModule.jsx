@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, User, Phone, Mail, MapPin, Building, Trash2, Edit2, ExternalLink, X, Save } from 'lucide-react';
+import { Search, Plus, User, Phone, Mail, MapPin, Building, Trash2, Edit2, ExternalLink, X, Save, Briefcase, Users } from 'lucide-react';
 import { projectService } from '../../services/projectService';
+import RolesModal from './RolesModal';
+import SpecialtiesModal from './SpecialtiesModal';
 
 export default function DirectoryModule({ project }) {
    const [contacts, setContacts] = useState([]);
@@ -11,6 +13,8 @@ export default function DirectoryModule({ project }) {
    const [isModalOpen, setIsModalOpen] = useState(false);
    const [modalMode, setModalMode] = useState('create'); // 'create', 'edit'
    const [selectedContactId, setSelectedContactId] = useState(null);
+   const [isRolesModalOpen, setIsRolesModalOpen] = useState(false);
+   const [isSpecialtiesModalOpen, setIsSpecialtiesModalOpen] = useState(false);
 
    const [formData, setFormData] = useState({
       name: '',
@@ -47,6 +51,7 @@ export default function DirectoryModule({ project }) {
       setFormData({
          name: '',
          role: '',
+         discipline: '',
          enterprise: '',
          phone: '',
          email: ''
@@ -60,6 +65,7 @@ export default function DirectoryModule({ project }) {
       setFormData({
          name: contact.name || '',
          role: contact.role || '',
+         discipline: contact.discipline || '',
          enterprise: contact.enterprise || '',
          phone: contact.phone || '',
          email: contact.email || ''
@@ -158,7 +164,12 @@ export default function DirectoryModule({ project }) {
                      </div>
 
                      <h3 className="text-xl font-black uppercase italic tracking-tighter mb-1 line-clamp-1" title={contact.name}>{contact.name}</h3>
-                     <div className="text-[10px] font-black uppercase bg-[#0f4369] text-white px-2 py-0.5 inline-block mb-4 tracking-widest self-start">{contact.role || 'Rol no definido'}</div>
+                     <div className="flex gap-2 mb-4 flex-wrap">
+                        <div className="text-[10px] font-black uppercase bg-[#0f4369] text-white px-2 py-0.5 inline-block tracking-widest">{contact.role || 'Rol no definido'}</div>
+                        {contact.discipline && (
+                           <div className="text-[10px] font-black uppercase bg-[#1c1c19] text-white px-2 py-0.5 inline-block tracking-widest">{contact.discipline}</div>
+                        )}
+                     </div>
 
                      <div className="space-y-3 flex-1">
                         <div className="flex items-center gap-3 text-xs font-bold text-[#1c1c19] uppercase tracking-tight">
@@ -224,24 +235,45 @@ export default function DirectoryModule({ project }) {
                      <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                            <label className="text-[10px] font-black uppercase text-[#72777f]">Rol / Cargo</label>
-                           <input 
-                              type="text" 
-                              value={formData.role}
-                              onChange={(e) => setFormData({...formData, role: e.target.value})}
-                              className="w-full p-3 border-2 border-[#1c1c19] font-mono text-xs uppercase outline-none focus:bg-[#f6f3ee]"
-                              placeholder="Ej: Ingeniero Civil"
-                           />
+                           <div className="flex gap-2">
+                              <input 
+                                 type="text" 
+                                 value={formData.role}
+                                 onChange={(e) => setFormData({...formData, role: e.target.value})}
+                                 className="flex-1 w-full p-3 border-2 border-[#1c1c19] font-mono text-xs uppercase outline-none focus:bg-[#f6f3ee]"
+                                 placeholder="Ej: Ingeniero Civil"
+                              />
+                              <button type="button" onClick={() => setIsRolesModalOpen(true)} className="px-3 bg-[#f6f3ee] text-[#1c1c19] border-2 border-[#1c1c19] hover:bg-white transition-all flex items-center justify-center shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]" title="Seleccionar del Catálogo de Roles">
+                                 <Briefcase size={16} />
+                              </button>
+                           </div>
                         </div>
                         <div className="space-y-2">
-                           <label className="text-[10px] font-black uppercase text-[#72777f]">Empresa</label>
-                           <input 
-                              type="text" 
-                              value={formData.enterprise}
-                              onChange={(e) => setFormData({...formData, enterprise: e.target.value})}
-                              className="w-full p-3 border-2 border-[#1c1c19] font-mono text-xs uppercase outline-none focus:bg-[#f6f3ee]"
-                              placeholder="Ej: ARQ TVS"
-                           />
+                           <label className="text-[10px] font-black uppercase text-[#72777f]">Disciplina</label>
+                           <div className="flex gap-2">
+                              <input 
+                                 type="text" 
+                                 value={formData.discipline}
+                                 onChange={(e) => setFormData({...formData, discipline: e.target.value})}
+                                 className="flex-1 w-full p-3 border-2 border-[#1c1c19] font-mono text-xs uppercase outline-none focus:bg-[#f6f3ee]"
+                                 placeholder="Ej: Estructuras"
+                              />
+                              <button type="button" onClick={() => setIsSpecialtiesModalOpen(true)} className="px-3 bg-[#f6f3ee] text-[#1c1c19] border-2 border-[#1c1c19] hover:bg-white transition-all flex items-center justify-center shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]" title="Seleccionar del Catálogo de Especialidades">
+                                 <Users size={16} />
+                              </button>
+                           </div>
                         </div>
+                     </div>
+
+                     <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-[#72777f]">Empresa</label>
+                        <input 
+                           type="text" 
+                           value={formData.enterprise}
+                           onChange={(e) => setFormData({...formData, enterprise: e.target.value})}
+                           className="w-full p-3 border-2 border-[#1c1c19] font-mono text-xs uppercase outline-none focus:bg-[#f6f3ee]"
+                           placeholder="Ej: ARQ TVS"
+                        />
                      </div>
 
                      <div className="space-y-2">
@@ -286,6 +318,23 @@ export default function DirectoryModule({ project }) {
                </div>
             </div>
          )}
+
+         <RolesModal 
+            isOpen={isRolesModalOpen} 
+            onClose={() => setIsRolesModalOpen(false)} 
+            onSelectRole={(role) => {
+               setFormData(prev => ({ ...prev, role: role.name }));
+               setIsRolesModalOpen(false);
+            }}
+         />
+         <SpecialtiesModal 
+            isOpen={isSpecialtiesModalOpen} 
+            onClose={() => setIsSpecialtiesModalOpen(false)} 
+            onSelectSpecialty={(specialty) => {
+               setFormData(prev => ({ ...prev, discipline: specialty.name }));
+               setIsSpecialtiesModalOpen(false);
+            }}
+         />
       </div>
    );
 }
