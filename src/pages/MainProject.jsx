@@ -17,6 +17,7 @@ import ProtocolsModule from '../components/project/ProtocolsModule';
 import DirectoryModule from '../components/project/DirectoryModule';
 import RequirementsModule from '../components/project/RequirementsModule';
 import ProjectDataModule from '../components/project/ProjectDataModule';
+import ProjectToolsModule from '../components/project/ProjectToolsModule';
 
 
 
@@ -60,6 +61,8 @@ export default function MainProject({ project }) {
         return <DirectoryModule {...props} />;
       case 'requisitos':
         return <RequirementsModule {...props} />;
+      case 'herramientas':
+        return <ProjectToolsModule {...props} />;
       default:
         return <MonthlyModule {...props} />;
     }

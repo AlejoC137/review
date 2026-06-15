@@ -108,11 +108,16 @@ export const projectService = {
   },
 
   // ==================== SPECIALTIES ====================
-  async getSpecialties() {
-    const { data, error } = await supabase
-      .from('specialties')
-      .select('*')
-      .order('name', { ascending: true });
+  async getSpecialties(projectId) {
+    let query = supabase.from('specialties').select('*');
+    if (projectId) {
+      // Fetch both project-specific AND global specialties (where project_id is null)
+      query = query.or(`project_id.eq.${projectId},project_id.is.null`);
+    } else {
+      // Solo globales
+      query = query.is('project_id', null);
+    }
+    const { data, error } = await query.order('name', { ascending: true });
     if (error) throw error;
     return data;
   },
@@ -497,6 +502,35 @@ export const projectService = {
       .from('project_element_lod_tdi')
       .upsert(payload, { onConflict: 'project_id,discipline,element_name' })
       .select();
+    if (error) throw error;
+    return data;
+  },
+
+  async deleteLodTdiElement(projectId, discipline, elementName) {
+    const { error } = await supabase
+      .from('project_element_lod_tdi')
+      .delete()
+      .eq('project_id', projectId)
+      .eq('discipline', discipline)
+      .eq('element_name', elementName);
+    if (error) throw error;
+    return true;
+  },
+
+  async updateLodTdiElementName(projectId, oldDiscipline, oldElementName, newDiscipline, newElementName) {
+    // Since discipline and element_name might be part of the PK, updating them might require a targeted update.
+    const { data, error } = await supabase
+      .from('project_element_lod_tdi')
+      .update({
+        discipline: newDiscipline,
+        element_name: newElementName,
+        updated_at: new Date().toISOString()
+      })
+      .eq('project_id', projectId)
+      .eq('discipline', oldDiscipline)
+      .eq('element_name', oldElementName)
+      .select()
+      .single();
     if (error) throw error;
     return data;
   },

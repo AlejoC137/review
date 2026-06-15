@@ -13,6 +13,7 @@ import LodTdiMatrix from './LodTdiMatrix';
 import ProjectUnitsTab from './ProjectUnitsTab';
 import ProjectObjectivesModule from './ProjectObjectivesModule';
 import ProjectDeliveryScheduleTab from './ProjectDeliveryScheduleTab';
+import SpecialtiesProjectTab from './SpecialtiesProjectTab';
 
 const defaultPebInfo = {
   client: 'Grupo Attia',
@@ -670,6 +671,12 @@ export default function ProjectDataModule({ project, onTabChange }) {
             className={`px-4 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${subTab === 'cronograma' ? 'bg-[#1c1c19] text-white' : 'hover:bg-[#f6f3ee]'}`}
           >
             Cronograma Entregas
+          </button>
+          <button 
+            onClick={() => handleSubTabChange('especialidades')}
+            className={`px-4 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${subTab === 'especialidades' ? 'bg-[#1c1c19] text-white' : 'hover:bg-[#f6f3ee]'}`}
+          >
+            Especialidades
           </button>
         </div>
       </div>
@@ -1360,7 +1367,7 @@ export default function ProjectDataModule({ project, onTabChange }) {
                     <div className="flex justify-between items-center">
                       <span className="text-[10px] font-black uppercase text-[#003366]">Índice de Ocupación (IO):</span>
                       <span className="text-xs font-bold text-[#003366]">
-                        {parseFloat(pebInfo.lot_area || 0) > 0 ? (parseFloat(pebInfo.occupied_area || 0) / parseFloat(pebInfo.lot_area || 0)).toFixed(2) : '0.00'}
+                        {parseFloat(pebInfo.lot_area || 0) > 0 ? ((parseFloat(pebInfo.occupied_area || 0) / parseFloat(pebInfo.lot_area || 0)) * 100).toFixed(2) + '%' : '0.00%'}
                       </span>
                     </div>
                   </div>
@@ -1741,6 +1748,8 @@ export default function ProjectDataModule({ project, onTabChange }) {
           <ProjectObjectivesModule project={projectData} />
         ) : subTab === 'cronograma' ? (
           <ProjectDeliveryScheduleTab project={projectData} />
+        ) : subTab === 'especialidades' ? (
+          <SpecialtiesProjectTab project={projectData} />
         ) : null}
       </div>
     </div>

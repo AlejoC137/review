@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   HelpCircle, ChevronDown, RotateCcw,
   Search, ListFilter, AlertCircle, Loader2, CheckCircle2,
-  Table as TableIcon, X
+  Table as TableIcon, X, Plus, Edit2, Trash2, Save
 } from 'lucide-react';
 import { projectService } from '../../services/projectService';
 
@@ -171,7 +171,8 @@ const parseNotes = (notesString, defaultLods) => {
     esquema: { aem: '', lod: defaultLods?.esq || '' },
     anteproyecto: { aem: '', lod: defaultLods?.ant || '' },
     finales: { aem: '', lod: defaultLods?.proy || '' },
-    text: ''
+    text: '',
+    abbreviation: ''
   };
 
   if (!notesString) return def;
@@ -183,7 +184,8 @@ const parseNotes = (notesString, defaultLods) => {
         esquema: parsed.esquema || def.esquema,
         anteproyecto: parsed.anteproyecto || def.anteproyecto,
         finales: parsed.finales || def.finales,
-        text: parsed.text || ''
+        text: parsed.text || '',
+        abbreviation: parsed.abbreviation || ''
       };
     }
   } catch (e) {}
@@ -204,8 +206,11 @@ export default function LodTdiMatrix({ projectId }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDiscipline, setSelectedDiscipline] = useState('all');
   const [showTdiModal, setShowTdiModal] = useState(false);
+  const [projectElements, setProjectElements] = useState([]);
+  const [isAdding, setIsAdding] = useState(false);
+  const [form, setForm] = useState({ discipline: '', element: '', oldDiscipline: '', oldElement: '' });
 
-  const disciplines = ['all', ...new Set(DISCIPLINE_ELEMENTS.map(e => e.discipline))];
+  const disciplines = ['all', ...new Set(projectElements.map(e => e.discipline))];
 
   useEffect(() => {
     const fetchMatrix = async () => {
@@ -214,27 +219,39 @@ export default function LodTdiMatrix({ projectId }) {
       const localKey = `peb_lod_tdi_matrix_${projectId}`;
       const localSaved = localStorage.getItem(localKey);
       try {
-        const data = await projectService.getLodTdiMatrix(projectId);
-        if (data && data.length > 0) {
-          const map = {};
-          data.forEach(item => {
-            const staticEl = DISCIPLINE_ELEMENTS.find(de => de.discipline === item.discipline && de.element === item.element_name);
-            map[`${item.discipline}::${item.element_name}`] = {
-              parsed: parseNotes(item.notes, staticEl?.defLods),
-              rawLod: item.lod // We keep it but don't strictly rely on it for UI
-            };
-          });
-          setMatrixData(map);
-          setSavingState('saved');
-        } else if (localSaved) {
-          setMatrixData(JSON.parse(localSaved));
-          setSavingState('local');
-        } else {
-          setMatrixData({});
+        let data = await projectService.getLodTdiMatrix(projectId);
+        if (!data || data.length === 0) {
+          const payload = DISCIPLINE_ELEMENTS.map(el => ({
+             discipline: el.discipline,
+             element_name: el.element,
+             lod: 0,
+             tdi: [],
+             notes: serializeNotes(parseNotes('', el.defLods))
+          }));
+          await projectService.saveLodTdiMatrixBatch(projectId, payload);
+          data = await projectService.getLodTdiMatrix(projectId);
         }
+        
+        const map = {};
+        const elementsList = [];
+        data.forEach(item => {
+          const staticEl = DISCIPLINE_ELEMENTS.find(de => de.discipline === item.discipline && de.element === item.element_name);
+          elementsList.push({ discipline: item.discipline, element: item.element_name, isCustom: !staticEl });
+          map[`${item.discipline}::${item.element_name}`] = {
+            parsed: parseNotes(item.notes, staticEl?.defLods),
+            rawLod: item.lod
+          };
+        });
+        setProjectElements(elementsList);
+        setMatrixData(map);
+        setSavingState('saved');
       } catch (err) {
         console.warn('Matrix fetch fallback:', err.message);
-        if (localSaved) { setMatrixData(JSON.parse(localSaved)); setSavingState('local'); }
+        if (localSaved) { 
+           setMatrixData(JSON.parse(localSaved)); 
+           setProjectElements(DISCIPLINE_ELEMENTS);
+           setSavingState('local'); 
+        }
       } finally {
         setLoading(false);
       }
@@ -251,8 +268,8 @@ export default function LodTdiMatrix({ projectId }) {
     
     // Create updated parsed object
     let updatedParsed = { ...currentData.parsed };
-    if (field === 'text') {
-      updatedParsed.text = value;
+    if (field === 'text' || field === 'abbreviation') {
+      updatedParsed[field] = value;
     } else if (subfield === null) {
       // PhaseCell passes the whole phase object (e.g. { aem, lod }) — replace directly
       updatedParsed[field] = { ...(updatedParsed[field] || {}), ...value };
@@ -299,10 +316,70 @@ export default function LodTdiMatrix({ projectId }) {
     localStorage.removeItem(`peb_lod_tdi_matrix_${projectId}`);
     setMatrixData({});
     setSavingState('saved');
-    alert('Matriz reiniciada.');
+    alert('Matriz reiniciada. Recarga la página para restaurar los elementos por defecto.');
   };
 
-  const filtered = DISCIPLINE_ELEMENTS.filter(item => {
+  const handleSaveElement = async () => {
+    if (!form.discipline.trim() || !form.element.trim()) return;
+    try {
+      setSavingState('saving');
+      const itemKey = `${form.discipline}::${form.element}`;
+      
+      if (form.oldDiscipline && form.oldElement) {
+        await projectService.updateLodTdiElementName(projectId, form.oldDiscipline, form.oldElement, form.discipline, form.element);
+        setProjectElements(prev => prev.map(e => 
+          (e.discipline === form.oldDiscipline && e.element === form.oldElement) 
+            ? { ...e, discipline: form.discipline, element: form.element }
+            : e
+        ));
+        setMatrixData(prev => {
+           const newData = { ...prev };
+           const oldData = newData[`${form.oldDiscipline}::${form.oldElement}`];
+           if (oldData) {
+              newData[itemKey] = oldData;
+              delete newData[`${form.oldDiscipline}::${form.oldElement}`];
+           }
+           return newData;
+        });
+      } else {
+        await projectService.saveLodTdiElement(projectId, form.discipline, form.element, 100, [], serializeNotes(parseNotes('')));
+        setProjectElements(prev => [...prev, { discipline: form.discipline, element: form.element, isCustom: true }]);
+        setMatrixData(prev => ({ ...prev, [itemKey]: { parsed: parseNotes(''), rawLod: 100 } }));
+      }
+      setIsAdding(false);
+      setForm({ discipline: '', element: '', oldDiscipline: '', oldElement: '' });
+      setSavingState('saved');
+    } catch (e) {
+      console.error(e);
+      alert('Error al guardar el elemento');
+      setSavingState('local');
+    }
+  };
+
+  const handleDeleteElement = async (discipline, element) => {
+    if (!window.confirm(`¿Eliminar ${discipline} - ${element}?`)) return;
+    try {
+      setSavingState('saving');
+      await projectService.deleteLodTdiElement(projectId, discipline, element);
+      setProjectElements(prev => prev.filter(e => !(e.discipline === discipline && e.element === element)));
+      setMatrixData(prev => {
+        const newData = { ...prev };
+        delete newData[`${discipline}::${element}`];
+        return newData;
+      });
+      setSavingState('saved');
+    } catch (e) {
+      console.error(e);
+      setSavingState('local');
+    }
+  };
+
+  const startEditElement = (discipline, element) => {
+    setForm({ discipline, element, oldDiscipline: discipline, oldElement: element });
+    setIsAdding(true);
+  };
+
+  const filtered = projectElements.filter(item => {
     const s = searchTerm.toLowerCase();
     return (item.element.toLowerCase().includes(s) || item.discipline.toLowerCase().includes(s))
       && (selectedDiscipline === 'all' || item.discipline === selectedDiscipline);
@@ -337,6 +414,13 @@ export default function LodTdiMatrix({ projectId }) {
             <TableIcon size={14} /> Ver Matriz Referencial TDI
           </button>
           
+          <button 
+            onClick={() => { setForm({ discipline: '', element: '', oldDiscipline: '', oldElement: '' }); setIsAdding(true); }}
+            className="flex items-center gap-2 px-4 py-2 bg-[#00ff9d] text-[#1c1c19] border-2 border-[#1c1c19] font-black text-[10px] uppercase shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
+          >
+            <Plus size={14} /> Nuevo Elemento
+          </button>
+
           <div className="h-6 w-[2px] bg-[#1c1c19]/20 mx-1"></div>
 
           {savingState === 'saving' && (
@@ -396,17 +480,21 @@ export default function LodTdiMatrix({ projectId }) {
               <tr className="bg-[#1c1c19] text-white font-mono text-[10px] tracking-wider uppercase">
                 <th className="p-3 w-[12%] border-r border-white/20">Disciplina</th>
                 <th className="p-3 w-[15%] border-r-2 border-white/20">Elemento</th>
-                <th className="p-3 w-[18%] border-r border-white/20 text-center">Esquema Básico</th>
-                <th className="p-3 w-[18%] border-r border-white/20 text-center">Anteproyecto</th>
-                <th className="p-3 w-[18%] border-r-2 border-white/20 text-center">Proy/Finales</th>
-                <th className="p-3 w-[19%]">Notas</th>
+                <th className="p-3 w-[8%] border-r-2 border-white/20 text-center">Código</th>
+                <th className="p-3 w-[15%] border-r border-white/20 text-center">Esquema Básico</th>
+                <th className="p-3 w-[15%] border-r border-white/20 text-center">Anteproyecto</th>
+                <th className="p-3 w-[15%] border-r-2 border-white/20 text-center">Proy/Finales</th>
+                <th className="p-3 w-[18%] border-r-2 border-white/20">Notas</th>
+                <th className="p-3 w-[6%] text-center">Acc.</th>
               </tr>
               <tr className="bg-[#2c2c29] text-white/50 font-mono text-[8px] tracking-widest uppercase">
                 <th className="px-3 pb-1.5 border-r border-white/10" />
                 <th className="px-3 pb-1.5 border-r-2 border-white/10" />
+                <th className="px-3 pb-1.5 border-r-2 border-white/10" />
                 <th className="px-3 pb-1.5 border-r border-white/10 text-center">AEM &bull; LOD</th>
                 <th className="px-3 pb-1.5 border-r border-white/10 text-center">AEM &bull; LOD</th>
                 <th className="px-3 pb-1.5 border-r-2 border-white/10 text-center">AEM &bull; LOD</th>
+                <th className="px-3 pb-1.5 border-r-2 border-white/10" />
                 <th className="px-3 pb-1.5" />
               </tr>
             </thead>
@@ -434,6 +522,16 @@ export default function LodTdiMatrix({ projectId }) {
                       {item.element}
                     </td>
                     
+                    <td className="p-1.5 border-r-2 border-[#1c1c19]/30">
+                      <input 
+                        type="text" 
+                        value={cfg.abbreviation}
+                        onChange={e => handleUpdate(item.discipline, item.element, 'abbreviation', null, e.target.value.toUpperCase())}
+                        placeholder="Ej. MUR"
+                        maxLength={6}
+                        className="w-full text-center p-1.5 bg-[#fcf9f4] border border-[#1c1c19]/20 hover:border-[#1c1c19]/50 focus:border-[#0f4369] focus:bg-white text-[10px] font-bold uppercase placeholder:italic placeholder:font-normal placeholder:lowercase focus:outline-none transition-colors"
+                      />
+                    </td>
                     <td className="p-1.5 border-r border-[#1c1c19]/20 bg-[#f9f9f9] hover:bg-[#f0f0f0] transition-colors">
                       <PhaseCell 
                         data={cfg.esquema} 
@@ -456,12 +554,18 @@ export default function LodTdiMatrix({ projectId }) {
                       />
                     </td>
                     
-                    <td className="p-2">
+                    <td className="p-2 border-r-2 border-[#1c1c19]/20">
                       <input type="text" value={cfg.text}
                         onChange={e => handleUpdate(item.discipline, item.element, 'text', null, e.target.value)}
                         placeholder="Notas adicionales..."
                         className="w-full p-1.5 bg-[#fcf9f4] border border-[#1c1c19]/20 hover:border-[#1c1c19]/50 focus:border-[#0f4369] focus:bg-white text-[10px] font-bold placeholder:italic placeholder:font-normal focus:outline-none transition-colors"
                       />
+                    </td>
+                    <td className="p-2 text-center align-middle">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => startEditElement(item.discipline, item.element)} className="text-[#0f4369] hover:bg-blue-100 p-1.5 rounded transition-colors" title="Editar"><Edit2 size={14}/></button>
+                        <button onClick={() => handleDeleteElement(item.discipline, item.element)} className="text-red-600 hover:bg-red-100 p-1.5 rounded transition-colors" title="Eliminar"><Trash2 size={14}/></button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -476,6 +580,31 @@ export default function LodTdiMatrix({ projectId }) {
       </div>
 
       <TdiReferenceModal isOpen={showTdiModal} onClose={() => setShowTdiModal(false)} />
+
+      {isAdding && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[#1c1c19]/50 backdrop-blur-sm p-4">
+          <div className="bg-white border-4 border-[#1c1c19] shadow-[8px_8px_0_0_rgba(28,28,25,1)] w-full max-w-md flex flex-col">
+            <div className="p-4 border-b-2 border-[#1c1c19] flex justify-between items-center bg-[#f6f3ee]">
+              <h3 className="text-sm font-black uppercase">{form.oldElement ? 'Editar Elemento' : 'Nuevo Elemento'}</h3>
+              <button onClick={() => setIsAdding(false)} className="hover:text-red-500 transition-colors"><X size={20}/></button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="text-[10px] font-black uppercase text-gray-500 block mb-1">Disciplina</label>
+                <input type="text" value={form.discipline} onChange={e => setForm({...form, discipline: e.target.value})} className="w-full p-2 border-2 border-[#1c1c19] text-sm focus:outline-none focus:border-[#0f4369] transition-colors" placeholder="Ej. Arquitectura" />
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase text-gray-500 block mb-1">Elemento</label>
+                <input type="text" value={form.element} onChange={e => setForm({...form, element: e.target.value})} className="w-full p-2 border-2 border-[#1c1c19] text-sm focus:outline-none focus:border-[#0f4369] transition-colors" placeholder="Ej. Muros" />
+              </div>
+            </div>
+            <div className="p-4 border-t-2 border-[#1c1c19] bg-[#f6f3ee] flex justify-end gap-2">
+              <button onClick={() => setIsAdding(false)} className="px-4 py-2 border-2 border-[#1c1c19] text-xs font-bold uppercase hover:bg-white transition-colors">Cancelar</button>
+              <button onClick={handleSaveElement} className="flex items-center gap-2 px-4 py-2 bg-[#1c1c19] text-white border-2 border-[#1c1c19] text-xs font-bold uppercase hover:bg-[#0f4369] transition-colors"><Save size={14}/> Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

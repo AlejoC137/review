@@ -101,6 +101,36 @@ const renderObjectOrValue = (val) => {
   if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(valStr)) {
     return <span className="text-gray-400 italic font-mono">-</span>;
   }
+  
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}(?::?\d{2})?)?$/.test(valStr)) {
+    try {
+      const d = new Date(valStr);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleString('es-CO', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        });
+      }
+    } catch (e) {}
+  }
+  
+  if (/^\d{4}-\d{2}-\d{2}$/.test(valStr)) {
+    try {
+      const d = new Date(`${valStr}T00:00:00`);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('es-CO', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        });
+      }
+    } catch (e) {}
+  }
+
   if (valStr.startsWith('http://') || valStr.startsWith('https://')) {
     return <a href={valStr} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">{valStr}</a>;
   }
@@ -233,8 +263,7 @@ export default function PreBEPView() {
   
   // States for Control Panel
   const [chapterVisibility, setChapterVisibility] = useState(() => {
-    const saved = localStorage.getItem(`prebep_chapter_visibility_${projectId}`);
-    return saved ? JSON.parse(saved) : {
+    const defaultVisibility = {
       datos: true,
       unidades: true,
       directorio: true,
@@ -244,8 +273,22 @@ export default function PreBEPView() {
       materiales: true,
       documentos: true,
       calendario: true,
-      esquemas: true
+      esquemas: true,
+      software: true,
+      objetivos: true,
+      cronograma_entregas: true
     };
+    const saved = localStorage.getItem(`prebep_chapter_visibility_${projectId}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Aseguramos que las nuevas llaves existan si el localStorage es antiguo
+        return { ...defaultVisibility, ...parsed };
+      } catch(e) {
+        return defaultVisibility;
+      }
+    }
+    return defaultVisibility;
   });
 
   const handleChapterVisibilityChange = (key, value) => {
@@ -253,6 +296,63 @@ export default function PreBEPView() {
       const next = { ...prev, [key]: value };
       localStorage.setItem(`prebep_chapter_visibility_${projectId}`, JSON.stringify(next));
       return next;
+    });
+  };
+
+  const CHAPTER_LABELS = {
+    datos: "Datos del Proyecto",
+    unidades: "Sub Proyectos / Unidades",
+    directorio: "Equipo, Roles y Directorio",
+    software: "Software y Plataformas",
+    requisitos: "Requisitos de Información",
+    lod_tdi: "Matriz de Entregables (LOD/TDI)",
+    protocolos: "Protocolos",
+    materiales: "Base de Datos de Materiales",
+    documentos: "Documentos Generales",
+    calendario: "Calendario Sem/Mes (Tasks)",
+    esquemas: "BEP (Esquemas / Organizador)",
+    objetivos: "Objetivos del Proyecto",
+    cronograma_entregas: "Cronograma de Entregas"
+  };
+
+  const defaultChapterOrder = [
+    'datos', 'unidades', 'directorio', 'software', 'requisitos', 'lod_tdi',
+    'protocolos', 'materiales', 'documentos', 'calendario', 'esquemas',
+    'objetivos', 'cronograma_entregas'
+  ];
+
+  const [chapterOrder, setChapterOrder] = useState(() => {
+    const saved = localStorage.getItem(`prebep_chapter_order_${projectId}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Ensure all default chapters exist in parsed array
+        const missing = defaultChapterOrder.filter(c => !parsed.includes(c));
+        return [...parsed, ...missing];
+      } catch (e) {
+        return defaultChapterOrder;
+      }
+    }
+    return defaultChapterOrder;
+  });
+
+  const handleOrderChange = (key, newIndex) => {
+    // newIndex is 1-based index from the user input
+    if (isNaN(newIndex)) return;
+    let targetIndex = newIndex - 1;
+    if (targetIndex < 0) targetIndex = 0;
+    if (targetIndex >= chapterOrder.length) targetIndex = chapterOrder.length - 1;
+    
+    setChapterOrder(prev => {
+      const currentIndex = prev.indexOf(key);
+      if (currentIndex === targetIndex) return prev;
+      
+      const newOrder = [...prev];
+      newOrder.splice(currentIndex, 1);
+      newOrder.splice(targetIndex, 0, key);
+      
+      localStorage.setItem(`prebep_chapter_order_${projectId}`, JSON.stringify(newOrder));
+      return newOrder;
     });
   };
 
@@ -271,6 +371,8 @@ export default function PreBEPView() {
 
   // Structured data states (Unified from BimPreBEPDocument)
   const [project, setProject] = useState(null);
+  const [pebInfo, setPebInfo] = useState(null);
+  const [specialties, setSpecialties] = useState([]);
   const [bepTeam, setBepTeam] = useState([]);
   const [staff, setStaff] = useState([]);
   const [contacts, setContacts] = useState([]);
@@ -282,6 +384,10 @@ export default function PreBEPView() {
   const [documents, setDocuments] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [plans, setPlans] = useState([]);
+  const [software, setSoftware] = useState([]);
+  const [objectives, setObjectives] = useState([]);
+  const [bimUses, setBimUses] = useState([]);
+  const [deliverables, setDeliverables] = useState([]);
 
   // LOD Columns state
   const [lodVisibleColumns, setLodVisibleColumns] = useState(() => {
@@ -365,6 +471,26 @@ export default function PreBEPView() {
     const nextCols = calendarioVisibleColumns.includes(col) ? calendarioVisibleColumns.filter(c => c !== col) : [...calendarioVisibleColumns, col];
     setCalendarioVisibleColumns(nextCols);
     localStorage.setItem(`prebep_calendario_columns_${projectId}`, JSON.stringify(nextCols));
+  };
+
+  const [objetivosVisibleColumns, setObjetivosVisibleColumns] = useState(() => {
+    const saved = localStorage.getItem(`prebep_objetivos_columns_${projectId}`);
+    return saved ? JSON.parse(saved) : ['prioridad', 'descripcion', 'usos'];
+  });
+  const handleObjetivosColumnToggle = (col) => {
+    const nextCols = objetivosVisibleColumns.includes(col) ? objetivosVisibleColumns.filter(c => c !== col) : [...objetivosVisibleColumns, col];
+    setObjetivosVisibleColumns(nextCols);
+    localStorage.setItem(`prebep_objetivos_columns_${projectId}`, JSON.stringify(nextCols));
+  };
+
+  const [entregasVisibleColumns, setEntregasVisibleColumns] = useState(() => {
+    const saved = localStorage.getItem(`prebep_entregas_columns_${projectId}`);
+    return saved ? JSON.parse(saved) : ['entregable_bim', 'fase', 'responsable'];
+  });
+  const handleEntregasColumnToggle = (col) => {
+    const nextCols = entregasVisibleColumns.includes(col) ? entregasVisibleColumns.filter(c => c !== col) : [...entregasVisibleColumns, col];
+    setEntregasVisibleColumns(nextCols);
+    localStorage.setItem(`prebep_entregas_columns_${projectId}`, JSON.stringify(nextCols));
   };
 
   // State for active config tab in Control Panel
@@ -538,6 +664,8 @@ export default function PreBEPView() {
       // Cargar todos los datos estructurados en paralelo
       const [
         projData,
+        pebInfoData,
+        specialtiesData,
         teamData,
         staffData,
         contactsData,
@@ -549,9 +677,15 @@ export default function PreBEPView() {
         docsData,
         tasksData,
         plansData,
+        softwareData,
+        objectivesData,
+        bimUsesData,
+        deliverablesData,
         tables
       ] = await Promise.all([
         projectService.getProjectById(projectId).catch(() => ({ id: projectId, name: 'KENGO KUMA RESORT' })),
+        databaseReportService.getTableData('project_general_info', projectId).then(data => data && data.length > 0 ? data[0] : null).catch(() => null),
+        projectService.getSpecialties(projectId).catch(() => []),
         projectService.getBepTeam(projectId).catch(() => []),
         projectService.getStaff().catch(() => []),
         projectService.getDirectoryContacts(projectId).catch(() => []),
@@ -614,10 +748,52 @@ export default function PreBEPView() {
         databaseReportService.getTableData('resources', projectId).then(data => data.filter(r => r.category !== 'Protocolo')).catch(() => []),
         databaseReportService.getTableData('tasks', projectId).catch(() => []),
         databaseReportService.getTableData('bim_plans', projectId).catch(() => []),
+        databaseReportService.getTableData('project_software', projectId).then(data => {
+          if (data && data.length > 0) return data;
+          try {
+            const local = localStorage.getItem(`project_software_${projectId}`);
+            if (local && JSON.parse(local).length > 0) return JSON.parse(local);
+          } catch(e) {}
+          return [
+            { software_principal: 'Revit', version_software: '2025', uso_del_modelo: 'Modelado BIM — Arquitectura, Estructura, Instalaciones, Protección contra incendios y Seguridad', es_software_primario: true },
+            { software_principal: 'Navisworks Manage', version_software: '2025', uso_del_modelo: 'Coordinación 3D y Detección de interferencias (Clash Detection) — Equipo BIM y Coordinación Técnica', es_software_primario: false }
+          ];
+        }).catch(() => []),
+
+        databaseReportService.getTableData('project_objectives', projectId).then(data => {
+          if (data && data.length > 0) return data;
+          try {
+            const local = localStorage.getItem(`project_objectives_${projectId}`);
+            if (local && JSON.parse(local).length > 0) return JSON.parse(local);
+          } catch(e) {}
+          return [
+            { prioridad: 1, descripcion: 'Incrementar eficacia en el diseño', usos_potenciales: 'Desarrollo de diseños y Generación de Documentación.' },
+            { prioridad: 1, descripcion: 'Revisar el progreso del diseño', usos_potenciales: 'Revisión de diseños y Coordinación 3D' },
+            { prioridad: 1, descripcion: 'Evaluación de las cantidades asociadas a cambios en diseño y sus efectos en la cadena de valor', usos_potenciales: 'Cuantificación de Cantidades de obra 5D' },
+            { prioridad: 1, descripcion: 'Optimización del proceso constructivo y manejo de Obra', usos_potenciales: 'Generación de documentación.' }
+          ];
+        }).catch(() => []),
+
+        databaseReportService.getTableData('project_bim_uses', projectId).then(data => {
+          if (data && data.length > 0) return data;
+          try {
+            const local = localStorage.getItem(`project_bim_uses_${projectId}`);
+            if (local && JSON.parse(local).length > 0) return JSON.parse(local);
+          } catch(e) {}
+          return [
+            { valor: 'ALTO', uso: 'Desarrollo de diseños (3D)', descripcion: 'Creación de los modelos BIM de las distintas disciplinas del proyecto para incorporar la información a una base de datos inteligente de la cual se pueden extraer diferentes tipos de data.', priority: 1 },
+            { valor: 'MEDIO', uso: 'Documentación para la construcción', descripcion: 'A partir de los modelos BIM en el desarrollo de diseños, se genera la información planimétrica necesaria para la construcción, de tal manera que sea coherente entre la documentación y las revisiones.', priority: 1 },
+            { valor: 'ALTO', uso: 'Coordinación 3D', descripcion: 'Proceso de planificación entre las distintas disciplinas previo y durante las fases de diseño para evitar posibles interferencias. Comprende la detección de interferencias entre varios modelos.', priority: 1 },
+            { valor: 'MEDIO', uso: 'Cuantificación de Cantidades de obra 5D', descripcion: 'Proceso de utilización de la información de uno o más modelos BIM para extraer cantidades de componentes y materiales del proyecto', priority: 1 }
+          ];
+        }).catch(() => []),
+        databaseReportService.getTableData('project_delivery_schedule', projectId).catch(() => []),
         databaseReportService.getAvailableTables()
       ]);
 
       setProject(projData);
+      setPebInfo(pebInfoData);
+      setSpecialties(specialtiesData || []);
       setBepTeam(teamData);
       setStaff(staffData);
       setContacts(contactsData);
@@ -629,14 +805,18 @@ export default function PreBEPView() {
       setDocuments(docsData);
       setTasks(tasksData);
       setPlans(plansData);
-      setAvailableTables(tables);
+      setSoftware(softwareData || []);
+      setObjectives(objectivesData || []);
+      setBimUses(bimUsesData || []);
+      setDeliverables(deliverablesData || []);
+      setAvailableTables(tables || []);
 
-      if (tables.length > 0 && !selectedExplorerTable) {
+      if (tables?.length > 0 && !selectedExplorerTable) {
         setSelectedExplorerTable(tables[0]);
       }
 
       // Descargar datos de todas las tablas para el Explorador Interactivo
-      const dataPromises = tables.map(async (table) => {
+      const dataPromises = (tables || []).map(async (table) => {
         try {
           const records = await databaseReportService.getTableData(table, projectId);
           return { table, records, error: null };
@@ -843,8 +1023,8 @@ export default function PreBEPView() {
     </table>
   );
 
-  const renderDirectorioTable = () => (
-    <table className="w-full text-xs border-collapse border border-gray-300 table-fixed">
+  const renderDirectorioTable = (dataArray) => (
+    <table className="w-full text-xs border-collapse border border-gray-300 table-fixed mb-6">
       <thead className="bg-[#f6f3ee]">
         <tr>
           {directorioVisibleColumns.includes('nombre') && <th className="p-2 border-r border-gray-300 text-left w-1/4">Nombre</th>}
@@ -854,7 +1034,7 @@ export default function PreBEPView() {
         </tr>
       </thead>
       <tbody>
-        {[...staff, ...contacts].map((c, i) => (
+        {dataArray.map((c, i) => (
           <tr key={i} className="border-b border-gray-200">
             {directorioVisibleColumns.includes('nombre') && <td className="p-2 font-bold uppercase break-words">{renderObjectOrValue(c.name || c.nombre)}</td>}
             {directorioVisibleColumns.includes('rol') && <td className="p-2 uppercase break-words">{renderObjectOrValue(c.role || c.cargo || c.role_description)}</td>}
@@ -945,6 +1125,98 @@ export default function PreBEPView() {
     </table>
   );
 
+  const renderSoftwareTable = () => (
+    <table className="w-full text-xs border-collapse border border-gray-300 table-fixed">
+      <thead className="bg-[#1c1c19] text-white">
+        <tr>
+          {softwareVisibleColumns.includes('software') && <th className="p-2 text-left border-r border-gray-600">Software</th>}
+          {softwareVisibleColumns.includes('version') && <th className="p-2 text-left border-r border-gray-600">Versión</th>}
+          {softwareVisibleColumns.includes('uso') && <th className="p-2 text-left">Uso / Propósito</th>}
+        </tr>
+      </thead>
+      <tbody>
+        {software.map((s, i) => (
+          <tr key={i} className="border-b border-gray-200">
+            {softwareVisibleColumns.includes('software') && <td className="p-2 font-bold uppercase break-words">{renderObjectOrValue(s.software_principal || s.name || s.software)} {s.es_software_primario && <span className="ml-2 text-[8px] bg-[#0f4369] text-white px-1 py-0.5 rounded">PRINCIPAL</span>}</td>}
+            {softwareVisibleColumns.includes('version') && <td className="p-2 font-mono text-[10px] break-words">{renderObjectOrValue(s.version_software || s.version)}</td>}
+            {softwareVisibleColumns.includes('uso') && <td className="p-2 text-[10px] uppercase break-words">{renderObjectOrValue(s.uso_del_modelo || s.purpose || s.uso || s.description)}</td>}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
+  const renderObjetivosTable = () => (
+    <table className="w-full text-xs border-collapse border border-gray-300 table-fixed">
+      <thead className="bg-[#1c1c19] text-white">
+        <tr>
+          {objetivosVisibleColumns.includes('prioridad') && <th className="p-2 text-left border-r border-gray-600 w-24">Prioridad [1-3]</th>}
+          {objetivosVisibleColumns.includes('descripcion') && <th className="p-2 text-left border-r border-gray-600">Descripción del Objetivo</th>}
+          {objetivosVisibleColumns.includes('usos') && <th className="p-2 text-left">Usos BIM Potenciales</th>}
+        </tr>
+      </thead>
+      <tbody>
+        {objectives.map((o, i) => {
+          const uses = bimUses.filter(u => String(u.priority) === String(o.prioridad || o.priority)).map(u => u.name || u.description).join(', ');
+          return (
+            <tr key={i} className="border-b border-gray-200">
+              {objetivosVisibleColumns.includes('prioridad') && <td className="p-2 font-bold text-center border-r border-gray-200">{renderObjectOrValue(o.prioridad || o.priority)}</td>}
+              {objetivosVisibleColumns.includes('descripcion') && <td className="p-2 text-[10px] uppercase break-words border-r border-gray-200">{renderObjectOrValue(o.descripcion || o.description || o.name)}</td>}
+              {objetivosVisibleColumns.includes('usos') && <td className="p-2 text-[10px] uppercase break-words">{renderObjectOrValue(o.usos_potenciales || o.bim_uses) || uses || '-'}</td>}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+
+  const renderUsosBIMTable = () => (
+    <table className="w-full text-xs border-collapse border border-gray-300 table-fixed">
+      <thead className="bg-[#1c1c19] text-white">
+        <tr>
+          <th className="p-2 text-left border-r border-gray-600 w-24 uppercase">Valor</th>
+          <th className="p-2 text-left border-r border-gray-600 uppercase">Usos</th>
+          <th className="p-2 text-left uppercase">Descripción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {bimUses.map((u, i) => (
+          <tr key={i} className="border-b border-gray-200">
+            <td className="p-2 font-bold text-center border-r border-gray-200 uppercase">{renderObjectOrValue(u.valor || (u.priority === 1 ? 'ALTO' : u.priority === 2 ? 'MEDIO' : u.priority === 3 ? 'BAJO' : u.priority))}</td>
+            <td className="p-2 font-bold text-[10px] uppercase break-words border-r border-gray-200 text-[#0f4369]">{renderObjectOrValue(u.uso || u.name)}</td>
+            <td className="p-2 text-[10px] uppercase break-words text-[#1c1c19] bg-[#fcf9f4]">{renderObjectOrValue(u.descripcion || u.description)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
+  const renderEntregasTable = () => (
+    <table className="w-full text-xs border-collapse border border-gray-300 table-fixed">
+      <thead className="bg-[#1c1c19] text-white">
+        <tr>
+          {entregasVisibleColumns.includes('entregable_bim') && <th className="p-2 text-left border-r border-gray-600">Entregable BIM</th>}
+          {entregasVisibleColumns.includes('fase') && <th className="p-2 text-left border-r border-gray-600">Fase</th>}
+          {entregasVisibleColumns.includes('responsable') && <th className="p-2 text-left">Responsable</th>}
+        </tr>
+      </thead>
+      <tbody>
+        {deliverables.map((d, i) => (
+          <tr key={i} className="border-b border-gray-200">
+            {entregasVisibleColumns.includes('entregable_bim') && <td className="p-2 font-bold uppercase break-words border-r border-gray-200">{renderObjectOrValue(d.entregable_bim || d.name)}</td>}
+            {entregasVisibleColumns.includes('fase') && <td className="p-2 text-[10px] uppercase break-words border-r border-gray-200">{renderObjectOrValue(d.fase || d.phase)}</td>}
+            {entregasVisibleColumns.includes('responsable') && <td className="p-2 text-[10px] uppercase break-words">{renderObjectOrValue(d.responsable || d.responsible)}</td>}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
+  const getChapterNum = (key) => {
+    const idx = chapterOrder.indexOf(key);
+    return idx >= 0 ? idx + 1 : '';
+  };
+
   // Renderiza el contenido completo continuo del PRE-BEP
   const renderContinuousDocument = () => {
     return (
@@ -997,330 +1269,458 @@ export default function PreBEPView() {
             <section className="mb-8 w-full">
               <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">ÍNDICE DE CONTENIDO</h2>
               <ul className="list-none space-y-2 text-xs font-bold uppercase tracking-widest pl-4 border-l-4 border-[#0f4369]">
-                {chapterVisibility.datos && <li>1. Datos del Proyecto</li>}
-                {chapterVisibility.unidades && <li>2. Sub Proyectos / Unidades</li>}
-                {chapterVisibility.directorio && <li>3. Equipo, Roles y Directorio</li>}
-                {chapterVisibility.requisitos && <li>4. Requisitos de Información</li>}
-                {chapterVisibility.lod_tdi && <li>5. Matriz de Entregables (LOD/TDI)</li>}
-                {chapterVisibility.protocolos && <li>6. Protocolos</li>}
-                {chapterVisibility.materiales && <li>7. Base de Datos de Materiales</li>}
-                {chapterVisibility.documentos && <li>8. Documentos Generales</li>}
-                {chapterVisibility.calendario && <li>9. Calendario Sem/Mes (Tasks)</li>}
-                {chapterVisibility.esquemas && <li>10. BEP (Esquemas / Organizador)</li>}
+                {chapterOrder.filter(k => chapterVisibility[k]).map((k) => (
+                  <li key={k}>{getChapterNum(k)}. {CHAPTER_LABELS[k]}</li>
+                ))}
               </ul>
             </section>
             <div className="w-full border-t border-dashed border-gray-400 my-8"></div>
           </div>
         )}
 
-        {/* 1. DATOS DEL PROYECTO Y 2. SUB PROYECTOS */}
-        <div className="w-full py-4 flex flex-col" style={{ boxSizing: 'border-box' }}>
-          {chapterVisibility.datos && (
-            <section className="mb-8 w-full">
-            <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">1. DATOS DEL PROYECTO</h2>
-            <table className="w-full text-xs border-collapse mb-8 border border-gray-300 table-fixed">
-              <tbody>
-                <tr className="bg-[#f6f3ee]">
-                  <th colSpan="2" className="text-left p-2.5 font-bold tracking-widest uppercase border-b border-gray-300">
-                    INFORMACIÓN GENERAL
-                  </th>
-                </tr>
-                {project && Object.entries(project).map(([key, value]) => {
-                  const keyLower = key.toLowerCase();
-                  const isId = keyLower === 'id' || keyLower.endsWith('_id') || keyLower.endsWith('id') || keyLower.includes('uuid') || keyLower === 'key' || /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(String(value));
-                  return !isId && (
-                    <tr key={key} className="border-b border-gray-200">
-                      <td className="p-2.5 font-semibold w-1/3 bg-gray-50 border-r border-gray-200 uppercase break-all">{key}</td>
-                      <td className="p-2.5 font-medium break-words overflow-hidden">{renderObjectOrValue(value)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            <EditableTabLink projectId={projectId} sectionId="datos" defaultLabel="DATOS DEL PROYECTO" defaultUrl="?tab=datos" />
-          </section>
-          )}
+        {/* Renderizado Dinámico de Capítulos */}
+        {chapterOrder.filter(k => chapterVisibility[k]).map((key, index, array) => {
+          let chapterContent = null;
+          switch(key) {
+            case 'datos':
+              chapterContent = (
+                <section className="w-full">
+                  <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">{getChapterNum('datos')}. DATOS DEL PROYECTO</h2>
+                  <table className="w-full text-xs border-collapse mb-8 border border-gray-300 table-fixed">
+                    <tbody>
+                      <tr className="bg-[#f6f3ee]">
+                        <th colSpan="2" className="text-left p-2.5 font-bold tracking-widest uppercase border-b border-gray-300">
+                          INFORMACIÓN GENERAL
+                        </th>
+                      </tr>
+                      {project && Object.entries(project).map(([k, value]) => {
+                        const keyLower = k.toLowerCase();
+                        const isId = keyLower === 'id' || keyLower.endsWith('_id') || keyLower.endsWith('id') || keyLower.includes('uuid') || keyLower === 'key' || /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(String(value));
+                        return !isId && (
+                          <tr key={k} className="border-b border-gray-200">
+                            <td className="p-2.5 font-semibold w-1/3 bg-gray-50 border-r border-gray-200 uppercase break-all">{k}</td>
+                            <td className="p-2.5 font-medium break-words overflow-hidden">{renderObjectOrValue(value)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
 
-          {chapterVisibility.unidades && (
-            <section className="mb-8 w-full">
-            <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight mt-8 text-[#0f4369]">2. SUB PROYECTOS / UNIDADES</h2>
-            {spaces.length > 0 ? (
-              renderSubproyectosTable()
-            ) : (
-              <p className="text-xs text-gray-500 italic uppercase">No hay sub-proyectos registrados.</p>
-            )}
-            <EditableTabLink projectId={projectId} sectionId="unidades" defaultLabel="DATOS DEL PROYECTO - UNIDADES" defaultUrl="?tab=datos&subtab=unidades" />
-          </section>
-          )}
-        </div>
+                  {pebInfo && (
+                    <table className="w-full text-xs border-collapse mb-8 border border-gray-300 table-fixed">
+                      <tbody>
+                        <tr className="bg-[#f6f3ee]">
+                          <th colSpan="2" className="text-left p-2.5 font-bold tracking-widest uppercase border-b border-gray-300">
+                            ÁREAS DEL PROYECTO
+                          </th>
+                        </tr>
+                        <tr className="border-b border-gray-200">
+                          <td className="p-2.5 font-semibold w-1/3 bg-gray-50 border-r border-gray-200 uppercase break-all text-[#72777f]">Área del Lote</td>
+                          <td className="p-2.5 font-medium break-words overflow-hidden font-mono">{parseFloat(pebInfo.lot_area || 0).toLocaleString()} m²</td>
+                        </tr>
+                        <tr className="border-b border-gray-200">
+                          <td className="p-2.5 font-semibold w-1/3 bg-gray-50 border-r border-gray-200 uppercase break-all text-[#72777f]">Área Ventas</td>
+                          <td className="p-2.5 font-medium break-words overflow-hidden font-mono">{parseFloat(pebInfo.sales_area || 0).toLocaleString()} m²</td>
+                        </tr>
+                        <tr className="border-b border-gray-200">
+                          <td className="p-2.5 font-semibold w-1/3 bg-gray-50 border-r border-gray-200 uppercase break-all text-[#72777f]">Área Construida</td>
+                          <td className="p-2.5 font-medium break-words overflow-hidden font-mono">{parseFloat(pebInfo.built_area || 0).toLocaleString()} m²</td>
+                        </tr>
+                        <tr className="border-b border-gray-200">
+                          <td className="p-2.5 font-semibold w-1/3 bg-gray-50 border-r border-gray-200 uppercase break-all text-[#72777f]">Circulaciones</td>
+                          <td className="p-2.5 font-medium break-words overflow-hidden font-mono">{parseFloat(pebInfo.circulation_area || 0).toLocaleString()} m²</td>
+                        </tr>
+                        <tr className="border-b border-gray-200">
+                          <td className="p-2.5 font-semibold w-1/3 bg-gray-50 border-r border-gray-200 uppercase break-all text-[#72777f]">Ocupación Piso 1</td>
+                          <td className="p-2.5 font-medium break-words overflow-hidden font-mono">{parseFloat(pebInfo.occupied_area || 0).toLocaleString()} m²</td>
+                        </tr>
+                        <tr className="border-b border-gray-200">
+                          <td className="p-2.5 font-black w-1/3 bg-gray-50 border-r border-gray-200 uppercase break-all text-[#1c1c19]">Total</td>
+                          <td className="p-2.5 font-bold break-words overflow-hidden text-[#0f4369] font-mono">{(parseFloat(pebInfo.sales_area || 0) + parseFloat(pebInfo.built_area || 0) + parseFloat(pebInfo.circulation_area || 0)).toLocaleString()} m²</td>
+                        </tr>
+                        <tr className="border-b border-gray-200 bg-[#f0f4f8]">
+                          <td className="p-2.5 font-black w-1/3 border-r border-gray-200 uppercase break-all text-[#003366]">Índice de Construcción (IC)</td>
+                          <td className="p-2.5 font-bold break-words overflow-hidden text-[#003366] font-mono">{parseFloat(pebInfo.lot_area || 0) > 0 ? (parseFloat(pebInfo.built_area || 0) / parseFloat(pebInfo.lot_area || 0)).toFixed(2) : '0.00'}</td>
+                        </tr>
+                        <tr className="border-b border-gray-200 bg-[#f0f4f8]">
+                          <td className="p-2.5 font-black w-1/3 border-r border-gray-200 uppercase break-all text-[#003366]">Índice de Ocupación (IO)</td>
+                          <td className="p-2.5 font-bold break-words overflow-hidden text-[#003366] font-mono">{parseFloat(pebInfo.lot_area || 0) > 0 ? ((parseFloat(pebInfo.occupied_area || 0) / parseFloat(pebInfo.lot_area || 0)) * 100).toFixed(2) + '%' : '0.00%'}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  )}
 
-        {(chapterVisibility.datos || chapterVisibility.unidades) && <div className="w-full border-t border-dashed border-gray-400 my-8"></div>}
+                  <EditableTabLink projectId={projectId} sectionId="datos" defaultLabel="DATOS DEL PROYECTO" defaultUrl="?tab=datos" />
+                </section>
+              );
+              break;
 
-        {/* 3. EQUIPO, ROLES Y DIRECTORIO */}
-        {chapterVisibility.directorio && (
-          <div className="w-full py-4 flex flex-col" style={{ boxSizing: 'border-box' }}>
-            <section className="mb-8 w-full">
-            <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">3. EQUIPO, ROLES Y DIRECTORIO</h2>
-            
-            <h3 className="font-bold text-sm mb-3 uppercase tracking-wider text-[#1c1c19]">&bull; Equipo BIM (BEP Team)</h3>
-            {bepTeam.length > 0 ? (
-              renderEquipoTable()
-            ) : <p className="mb-8 text-xs text-gray-500 italic uppercase">Sin equipo BIM registrado.</p>}
+            case 'unidades':
+              chapterContent = (
+                <section className="w-full">
+                  <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">{getChapterNum('unidades')}. SUB PROYECTOS / UNIDADES</h2>
+                  {spaces.length > 0 ? (
+                    renderSubproyectosTable()
+                  ) : (
+                    <p className="text-xs text-gray-500 italic uppercase">No hay sub-proyectos registrados.</p>
+                  )}
+                  <EditableTabLink projectId={projectId} sectionId="unidades" defaultLabel="DATOS DEL PROYECTO - UNIDADES" defaultUrl="?tab=datos&subtab=unidades" />
+                </section>
+              );
+              break;
 
-            <h3 className="font-bold text-sm mb-3 uppercase tracking-wider text-[#1c1c19]">&bull; Directorio Completo (Staff y Contactos)</h3>
-            {[...staff, ...contacts].length > 0 ? (
-              renderDirectorioTable()
-            ) : <p className="text-xs text-gray-500 italic uppercase">Sin directorio extendido.</p>}
-            <EditableTabLink projectId={projectId} sectionId="directorio" defaultLabel="DIRECTORIO" defaultUrl="?tab=directorio" />
-          </section>
-        </div>
-        )}
+            case 'directorio':
+              chapterContent = (
+                <section className="w-full">
+                  <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">{getChapterNum('directorio')}. EQUIPO, ROLES Y DIRECTORIO</h2>
+                  
+                  <h3 className="font-bold text-sm mb-3 uppercase tracking-wider text-[#1c1c19]">&bull; Equipo BIM (BEP Team)</h3>
+                  {bepTeam.length > 0 ? (
+                    renderEquipoTable()
+                  ) : <p className="mb-8 text-xs text-gray-500 italic uppercase">Sin equipo BIM registrado.</p>}
 
-        {chapterVisibility.directorio && <div className="w-full border-t border-dashed border-gray-400 my-8"></div>}
+                  <h3 className="font-bold text-sm mb-3 uppercase tracking-wider text-[#1c1c19]">&bull; Directorio Interno (Staff)</h3>
+                  {staff.length > 0 ? (
+                    renderDirectorioTable(staff)
+                  ) : <p className="text-xs text-gray-500 italic uppercase mb-6">Sin directorio interno.</p>}
 
-        {/* 4. REQUISITOS Y 5. LOD/TDI */}
-        <div className="w-full py-4 flex flex-col" style={{ boxSizing: 'border-box' }}>
-          {chapterVisibility.requisitos && (
-            <section className="mb-8 w-full">
-            <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">4. REQUISITOS DE INFORMACIÓN</h2>
-            {requirements.length > 0 ? (
-              <div className="space-y-4 mb-8 w-full">
-                {requirements.map((req, i) => (
-                  <div key={i} className="p-3 border-2 border-[#1c1c19] bg-[#fcf9f4] shadow-[3px_3px_0_0_rgba(28,28,25,1)] w-full overflow-hidden">
-                    <h4 className="font-bold text-xs uppercase text-[#0f4369] break-words">{req.title || req.name}</h4>
-                    <p className="text-[8px] font-black uppercase text-gray-400 mb-1">{req.category}</p>
-                    <div className="text-[10px] leading-relaxed uppercase break-words">{renderObjectOrValue(req.description || req.details)}</div>
-                  </div>
-                ))}
-              </div>
-            ) : <p className="text-xs text-gray-500 italic uppercase mb-8">Sin requisitos.</p>}
-            <EditableTabLink projectId={projectId} sectionId="requisitos" defaultLabel="REQUISITOS" defaultUrl="?tab=requisitos" />
-          </section>
-          )}
+                  <h3 className="font-bold text-sm mb-3 mt-6 uppercase tracking-wider text-[#1c1c19]">&bull; Directorio Externo (Contactos)</h3>
+                  {contacts.length > 0 ? (
+                    renderDirectorioTable(contacts)
+                  ) : <p className="text-xs text-gray-500 italic uppercase mb-6">Sin contactos externos.</p>}
 
-          {chapterVisibility.lod_tdi && (
-          <section className="w-full">
-            <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">5. MATRIZ DE ENTREGABLES (LOD/TDI)</h2>
-            {lodTdi.length > 0 ? (
-              <>
-                {renderLodTable()}
-              </>
-            ) : <p className="text-xs text-gray-500 italic uppercase">Sin entregables registrados.</p>}
-            <EditableTabLink projectId={projectId} sectionId="lod_tdi" defaultLabel="DATOS DEL PROYECTO - LOD/TDI" defaultUrl="?tab=datos&subtab=lod_tdi" />
-          </section>
-          )}
-        </div>
+                  <h3 className="font-bold text-sm mb-3 mt-6 uppercase tracking-wider text-[#1c1c19]">&bull; Catálogo de Especialidades</h3>
+                  {specialties.length > 0 ? (
+                    <table className="w-full text-xs border-collapse border border-gray-300 table-fixed mb-6">
+                      <thead className="bg-[#f6f3ee]">
+                        <tr>
+                          <th className="p-2 border-r border-gray-300 text-left w-1/4 uppercase">Nombre</th>
+                          <th className="p-2 border-r border-gray-300 text-left w-1/6 uppercase">Diminutivo</th>
+                          <th className="p-2 border-r border-gray-300 text-left w-1/6 uppercase">Responsable</th>
+                          <th className="p-2 text-left uppercase">Descripción</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {specialties.map((spec) => (
+                          <tr key={spec.id} className="border-b border-gray-200">
+                            <td className="p-2 font-bold uppercase break-words border-r border-gray-300 text-[#0f4369]">
+                              {spec.name}
+                              {!spec.project_id && (
+                                <span className="ml-2 bg-gray-200 text-gray-600 px-1.5 py-0.5 text-[8px] font-black tracking-widest uppercase border border-gray-400 rounded-sm inline-block align-middle">Global</span>
+                              )}
+                            </td>
+                            <td className="p-2 uppercase break-words border-r border-gray-300 font-mono font-bold text-center bg-[#f6f3ee]">{spec.abbreviation || '-'}</td>
+                            <td className="p-2 uppercase break-words border-r border-gray-300 text-center text-gray-500 font-mono text-[9px]">{spec.responsible_name || '-'}</td>
+                            <td className="p-2 text-[10px] text-gray-600 leading-tight uppercase break-words">{spec.description || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : <p className="mb-8 text-xs text-gray-500 italic uppercase">Sin especialidades registradas.</p>}
 
-        {(chapterVisibility.requisitos || chapterVisibility.lod_tdi) && <div className="w-full border-t border-dashed border-gray-400 my-8"></div>}
+                  <EditableTabLink projectId={projectId} sectionId="directorio" defaultLabel="DIRECTORIO" defaultUrl="?tab=directorio" />
+                </section>
+              );
+              break;
 
-        {/* 6. PROTOCOLOS */}
-        {chapterVisibility.protocolos && (
-          <div className="w-full py-4 flex flex-col" style={{ boxSizing: 'border-box' }}>
-            <section className="w-full">
-            <div className="flex items-center justify-between mb-4 border-b-2 border-[#1c1c19] pb-2">
-              <h2 className="text-2xl font-black uppercase tracking-tight text-[#0f4369] m-0 border-0 pb-0">6. PROTOCOLOS</h2>
-            </div>
-            {protocols.length > 0 ? (
-              <div className="space-y-16 w-full">
-                {protocols.map((p, i) => (
-                  <div key={i} className={`w-full break-inside-avoid pb-8 ${showFullProtocols ? 'border-b-2 border-dashed border-gray-300' : 'border-b border-gray-200 pb-4'} last:border-0`}>
-                    {/* Header Protocolo */}
-                    <div className={showFullProtocols ? "mb-6" : "mb-0"}>
-                       <div className="flex items-center justify-between mb-3 border-b-2 border-[#1c1c19] pb-2">
-                         <div className="text-[10px] uppercase font-black tracking-[4px] text-[#0f4369]">Protocolo Maestro</div>
-                         <div className="text-[9px] uppercase font-mono tracking-widest text-gray-400">REF_ID: {p.id?.substring(0,8).toUpperCase()}</div>
-                       </div>
-                       <h3 className="font-black text-4xl uppercase tracking-tight break-words text-[#1c1c19]">{p.title || p.name}</h3>
-                       {p.description && (
-                         <div className={`text-sm font-medium text-gray-700 italic border-l-4 border-[#0f4369] pl-4 ${showFullProtocols ? 'mt-4 mb-6' : 'mt-2 mb-0'}`}>
-                           {p.description}
-                         </div>
-                       )}
+            case 'software':
+              chapterContent = (
+                <section className="w-full">
+                  <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">{getChapterNum('software')}. SOFTWARE Y PLATAFORMAS</h2>
+                  {software.length > 0 ? (
+                    renderSoftwareTable()
+                  ) : <p className="text-xs text-gray-500 italic uppercase">Sin software registrado.</p>}
+                  <EditableTabLink projectId={projectId} sectionId="software" defaultLabel="SOFTWARE" defaultUrl="?tab=datos&subtab=software" />
+                </section>
+              );
+              break;
+
+            case 'requisitos':
+              chapterContent = (
+                <section className="w-full">
+                  <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">{getChapterNum('requisitos')}. REQUISITOS DE INFORMACIÓN</h2>
+                  {requirements.length > 0 ? (
+                    <div className="space-y-4 mb-8 w-full">
+                      {requirements.map((req, i) => (
+                        <div key={i} className="p-3 border-2 border-[#1c1c19] bg-[#fcf9f4] shadow-[3px_3px_0_0_rgba(28,28,25,1)] w-full overflow-hidden">
+                          <h4 className="font-bold text-xs uppercase text-[#0f4369] break-words">{req.title || req.name}</h4>
+                          <p className="text-[8px] font-black uppercase text-gray-400 mb-1">{req.category}</p>
+                          <div className="text-[10px] leading-relaxed uppercase break-words">{renderObjectOrValue(req.description || req.details)}</div>
+                        </div>
+                      ))}
                     </div>
+                  ) : <p className="text-xs text-gray-500 italic uppercase mb-8">Sin requisitos.</p>}
+                  <EditableTabLink projectId={projectId} sectionId="requisitos" defaultLabel="REQUISITOS" defaultUrl="?tab=requisitos" />
+                </section>
+              );
+              break;
 
-                    {showFullProtocols && (
-                      <>
-                        {/* Estructura de documentos */}
-                    { (p.manuals?.length > 0 || p.templates?.length > 0) && (
-                      <div className="mb-10 pl-4 border-l-2 border-gray-200">
-                         <h4 className="text-[10px] font-black uppercase text-gray-500 tracking-widest mb-4">
-                            ESTRUCTURA DE DOCUMENTOS RELACIONADOS
-                         </h4>
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {p.manuals?.length > 0 && (
-                              <div>
-                                 <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2 border-b border-gray-200 pb-1">Manuales Secundarios ({p.manuals.length})</div>
-                                 <ul className="list-disc list-inside space-y-1 text-xs text-[#0f4369] font-bold uppercase">
-                                   {p.manuals.map(m => (
-                                     <li key={m.id}>{m.title}</li>
-                                   ))}
-                                 </ul>
-                              </div>
-                            )}
-                            {p.templates?.length > 0 && (
-                              <div>
-                                 <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2 border-b border-gray-200 pb-1">Plantillas y Recursos ({p.templates.length})</div>
-                                 <ul className="list-disc list-inside space-y-1 text-xs text-[#0f4369] font-bold uppercase">
-                                   {p.templates.map(t => (
-                                     <li key={t.id}>{t.title}</li>
-                                   ))}
-                                 </ul>
-                              </div>
-                            )}
-                         </div>
-                      </div>
-                    )}
-
-                    {/* Contenido Protocolo */}
-                    <div className="mb-10 prose prose-sm max-w-none prose-headings:font-black prose-headings:uppercase prose-a:text-[#0f4369]">
-                       <h4 className="text-xl font-black uppercase border-b-2 border-[#1c1c19] pb-2 mb-6 text-[#1c1c19]">{p.title} GLOBAL</h4>
-                       {p.blocks && p.blocks.length > 0 ? (
-                         <ContentBlockEditor blocks={p.blocks} isEditing={false} onChange={() => {}} onUploadImage={() => {}} fontSize={13} />
-                       ) : (
-                         <div className="text-[11px] leading-relaxed font-sans text-slate-700 markdown-content prose max-w-none break-words">
-                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                             {(p.content || p.body || p.description || '').replace(/\\n/g, '\n')}
-                           </ReactMarkdown>
-                         </div>
-                       )}
-                    </div>
-                    
-                    {/* Manuales Full Content */}
-                    {p.manuals?.map((m, idx) => (
-                       <div key={m.id} className="mt-8 break-inside-avoid">
-                          <div className="mb-4">
-                             <div className="text-[9px] uppercase font-black tracking-widest text-[#0f4369] mb-1">MANUAL SECUNDARIO {idx + 1}</div>
-                             <h4 className="font-black text-2xl uppercase tracking-tight text-[#1c1c19]">{m.title}</h4>
-                             {m.description && <p className="text-xs mt-1 text-gray-500 italic uppercase">{m.description}</p>}
-                          </div>
-                          <div className="prose prose-sm max-w-none prose-headings:font-black prose-headings:uppercase pl-4 border-l-2 border-gray-100">
-                             {m.blocks && m.blocks.length > 0 ? (
-                               <ContentBlockEditor blocks={m.blocks} isEditing={false} onChange={() => {}} onUploadImage={() => {}} fontSize={13} />
-                             ) : (
-                               <div className="text-[11px] leading-relaxed font-sans text-slate-700 markdown-content prose max-w-none break-words">
-                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                   {(m.content || m.body || m.description || '').replace(/\\n/g, '\n')}
-                                 </ReactMarkdown>
-                               </div>
-                             )}
-                          </div>
-                       </div>
-                    ))}
-
-                    {showFullProtocols && (p.url || p.file_url) && (
-                      <div className="mt-8 pt-4 border-t border-gray-200">
-                        <p className="text-[9px] text-blue-600 break-all font-mono">
-                          URL EXTERNA: <a href={p.url || p.file_url} target="_blank" rel="noopener noreferrer" className="underline">{p.url || p.file_url}</a>
-                        </p>
-                      </div>
-                    )}
-                    
+            case 'lod_tdi':
+              chapterContent = (
+                <section className="w-full">
+                  <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">{getChapterNum('lod_tdi')}. MATRIZ DE ENTREGABLES (LOD/TDI)</h2>
+                  {lodTdi.length > 0 ? (
+                    <>
+                      {renderLodTable()}
                     </>
-                    )}
+                  ) : <p className="text-xs text-gray-500 italic uppercase">Sin entregables registrados.</p>}
+                  <EditableTabLink projectId={projectId} sectionId="lod_tdi" defaultLabel="DATOS DEL PROYECTO - LOD/TDI" defaultUrl="?tab=datos&subtab=lod_tdi" />
+                </section>
+              );
+              break;
 
-                    {!showFullProtocols && (
-                      <div className="mt-4 bg-[#f6f3ee] border-l-4 border-[#ba1a1a] p-3 flex flex-wrap items-center gap-2">
-                        <span className="text-[10px] font-black uppercase text-[#0f4369] tracking-widest flex items-center gap-2">
-                          👉 PARA INFORMACION COMPLETA VEASE:
-                        </span>
-                        <a href={p.url || p.file_url || `/resourceView/${p.id}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-[#0f4369] hover:underline font-bold uppercase underline">
-                          {p.title || p.name}
-                        </a>
-                      </div>
-                    )}
+            case 'protocolos':
+              chapterContent = (
+                <section className="w-full">
+                  <div className="flex items-center justify-between mb-4 border-b-2 border-[#1c1c19] pb-2">
+                    <h2 className="text-2xl font-black uppercase tracking-tight text-[#0f4369] m-0 border-0 pb-0">{getChapterNum('protocolos')}. PROTOCOLOS</h2>
                   </div>
-                ))}
-              </div>
-            ) : <p className="text-xs text-gray-500 italic uppercase">Sin protocolos registrados.</p>}
-            <EditableTabLink projectId={projectId} sectionId="protocolos" defaultLabel="PROTOCOLOS" defaultUrl="?tab=protocolos" />
-          </section>
-        </div>
-        )}
+                  {protocols.length > 0 ? (
+                    <div className="space-y-16 w-full">
+                      {protocols.map((p, i) => (
+                        <div key={i} className={`w-full break-inside-avoid pb-8 ${showFullProtocols ? 'border-b-2 border-dashed border-gray-300' : 'border-b border-gray-200 pb-4'} last:border-0`}>
+                          {/* Header Protocolo */}
+                          <div className={showFullProtocols ? "mb-6" : "mb-0"}>
+                            <div className="flex items-center justify-between mb-3 border-b-2 border-[#1c1c19] pb-2">
+                              <div className="text-[10px] uppercase font-black tracking-[4px] text-[#0f4369]">Protocolo Maestro</div>
+                              <div className="text-[9px] uppercase font-mono tracking-widest text-gray-400">REF_ID: {p.id?.substring(0,8).toUpperCase()}</div>
+                            </div>
+                            <h3 className="font-black text-4xl uppercase tracking-tight break-words text-[#1c1c19]">{p.title || p.name}</h3>
+                            {p.description && (
+                              <div className={`text-sm font-medium text-gray-700 italic border-l-4 border-[#0f4369] pl-4 ${showFullProtocols ? 'mt-4 mb-6' : 'mt-2 mb-0'}`}>
+                                {p.description}
+                              </div>
+                            )}
+                          </div>
 
-        {chapterVisibility.protocolos && <div className="w-full border-t border-dashed border-gray-400 my-8"></div>}
+                          {showFullProtocols && (
+                            <>
+                              {/* Estructura de documentos */}
+                          { (p.manuals?.length > 0 || p.templates?.length > 0) && (
+                            <div className="mb-10 pl-4 border-l-2 border-gray-200">
+                              <h4 className="text-[10px] font-black uppercase text-gray-500 tracking-widest mb-4">
+                                  ESTRUCTURA DE DOCUMENTOS RELACIONADOS
+                              </h4>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                  {p.manuals?.length > 0 && (
+                                    <div>
+                                      <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2 border-b border-gray-200 pb-1">Manuales Secundarios ({p.manuals.length})</div>
+                                      <ul className="list-disc list-inside space-y-1 text-xs text-[#0f4369] font-bold uppercase">
+                                        {p.manuals.map(m => (
+                                          <li key={m.id}>{m.title}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                  {p.templates?.length > 0 && (
+                                    <div>
+                                      <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2 border-b border-gray-200 pb-1">Plantillas y Recursos ({p.templates.length})</div>
+                                      <ul className="list-disc list-inside space-y-1 text-xs text-[#0f4369] font-bold uppercase">
+                                        {p.templates.map(t => (
+                                          <li key={t.id}>{t.title}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                              </div>
+                            </div>
+                          )}
 
-        {/* 7. MATERIALES */}
-        {chapterVisibility.materiales && (
-          <div className="w-full py-4 flex flex-col" style={{ boxSizing: 'border-box' }}>
-            <section className="w-full">
-            <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">7. BASE DE DATOS DE MATERIALES</h2>
-            {materials.length > 0 ? (
-              <div className="w-full">
-                {renderMaterialesTable()}
-                {materials.length > 100 && (
-                  <p className="text-[9px] text-gray-400 mt-3 italic uppercase">* Se muestran los primeros 100 materiales del catálogo.</p>
-                )}
-              </div>
-            ) : <p className="text-xs text-gray-500 italic uppercase">El catálogo de materiales está vacío.</p>}
-            <EditableTabLink projectId={projectId} sectionId="materiales" defaultLabel="MATERIALES" defaultUrl="?tab=datos&subtab=materiales" />
-          </section>
-        </div>
-        )}
+                          {/* Contenido Protocolo */}
+                          <div className="mb-10 prose prose-sm max-w-none prose-headings:font-black prose-headings:uppercase prose-a:text-[#0f4369]">
+                            <h4 className="text-xl font-black uppercase border-b-2 border-[#1c1c19] pb-2 mb-6 text-[#1c1c19]">{p.title} GLOBAL</h4>
+                            {p.blocks && p.blocks.length > 0 ? (
+                              <ContentBlockEditor blocks={p.blocks} isEditing={false} onChange={() => {}} onUploadImage={() => {}} fontSize={13} />
+                            ) : (
+                              <div className="text-[11px] leading-relaxed font-sans text-slate-700 markdown-content prose max-w-none break-words">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                  {(p.content || p.body || p.description || '').replace(/\n/g, '
+')}
+                                </ReactMarkdown>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Manuales Full Content */}
+                          {p.manuals?.map((m, idx) => (
+                            <div key={m.id} className="mt-8 break-inside-avoid">
+                                <div className="mb-4">
+                                  <div className="text-[9px] uppercase font-black tracking-widest text-[#0f4369] mb-1">MANUAL SECUNDARIO {idx + 1}</div>
+                                  <h4 className="font-black text-2xl uppercase tracking-tight text-[#1c1c19]">{m.title}</h4>
+                                  {m.description && <p className="text-xs mt-1 text-gray-500 italic uppercase">{m.description}</p>}
+                                </div>
+                                <div className="prose prose-sm max-w-none prose-headings:font-black prose-headings:uppercase pl-4 border-l-2 border-gray-100">
+                                  {m.blocks && m.blocks.length > 0 ? (
+                                    <ContentBlockEditor blocks={m.blocks} isEditing={false} onChange={() => {}} onUploadImage={() => {}} fontSize={13} />
+                                  ) : (
+                                    <div className="text-[11px] leading-relaxed font-sans text-slate-700 markdown-content prose max-w-none break-words">
+                                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                        {(m.content || m.body || m.description || '').replace(/\n/g, '
+')}
+                                      </ReactMarkdown>
+                                    </div>
+                                  )}
+                                </div>
+                            </div>
+                          ))}
 
-        {chapterVisibility.materiales && <div className="w-full border-t border-dashed border-gray-400 my-8"></div>}
+                          {showFullProtocols && (p.url || p.file_url) && (
+                            <div className="mt-8 pt-4 border-t border-gray-200">
+                              <p className="text-[9px] text-blue-600 break-all font-mono">
+                                URL EXTERNA: <a href={p.url || p.file_url} target="_blank" rel="noopener noreferrer" className="underline">{p.url || p.file_url}</a>
+                              </p>
+                            </div>
+                          )}
+                          
+                          </>
+                          )}
 
-        {/* 8. DOCUMENTOS Y 9. CALENDARIO */}
-        <div className="w-full py-4 flex flex-col" style={{ boxSizing: 'border-box' }}>
-          {chapterVisibility.documentos && (
-            <section className="mb-8 w-full">
-            <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">8. DOCUMENTOS GENERALES</h2>
-            {documents.length > 0 ? (
-              <ul className="space-y-3 w-full">
-                {documents.map((d, i) => (
-                  <li key={i} className="p-3 bg-white border-2 border-[#1c1c19] shadow-[3px_3px_0_0_rgba(28,28,25,1)] w-full overflow-hidden">
-                    <h4 className="font-bold uppercase text-xs text-[#0f4369] break-words">{d.title || d.name}</h4>
-                    <div className="text-[10px] text-gray-600 mb-1 uppercase break-words">{renderObjectOrValue(d.category)} - {renderObjectOrValue(d.description)}</div>
-                    {d.url && (
-                      <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-blue-500 break-all font-mono underline">
-                        {d.url}
-                      </a>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="text-xs text-gray-500 italic uppercase mb-8">No hay documentos registrados para este proyecto.</p>}
-            <EditableTabLink projectId={projectId} sectionId="documentos" defaultLabel="DOCUMENTOS" defaultUrl="?tab=recursos" />
-          </section>
-          )}
-
-          {chapterVisibility.calendario && (
-            <section className="mt-8 w-full">
-            <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">9. CALENDARIO SEM/MES (TASKS)</h2>
-            {tasks.length > 0 ? (
-              renderCalendarioTable()
-            ) : <p className="text-xs text-gray-500 italic uppercase">No hay tareas o cronogramas cargados.</p>}
-            <EditableTabLink projectId={projectId} sectionId="calendario" defaultLabel="CALENDARIO MENSUAL" defaultUrl="?tab=cronograma" />
-          </section>
-          )}
-        </div>
-
-        {(chapterVisibility.documentos || chapterVisibility.calendario) && <div className="w-full border-t border-dashed border-gray-400 my-8"></div>}
-
-        {/* 10. ESQUEMAS / DEPLOYER */}
-        {chapterVisibility.esquemas && (
-          <div className="w-full py-4 flex flex-col" style={{ boxSizing: 'border-box' }}>
-            <section className="w-full">
-            <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">10. BEP (ESQUEMAS / ORGANIZADOR)</h2>
-            <p className="text-[9px] text-gray-500 mb-4 uppercase tracking-widest border-l-2 border-amber-400 pl-3">
-              Registro de los planes de implementación y esquemas conceptuales asociados al proyecto.
-            </p>
-            {plans.length > 0 ? (
-              <div className="space-y-6 w-full">
-                {plans.map((plan, i) => (
-                  <div key={i} className="p-4 bg-[#fcf9f4] border-2 border-[#1c1c19] shadow-[3px_3px_0_0_rgba(28,28,25,1)] w-full overflow-hidden">
-                    <h4 className="font-bold text-xs uppercase mb-1 break-words">{plan.name}</h4>
-                    <p className="text-[10px] mb-3 uppercase text-gray-600 break-words">{plan.description}</p>
-                    <div className="bg-[#fcf9f4] border border-gray-300 p-4 text-[10px] rounded-sm w-full overflow-hidden">
-                      {renderObjectOrValue(plan.plan_data || plan.schema)}
+                          {!showFullProtocols && (
+                            <div className="mt-4 bg-[#f6f3ee] border-l-4 border-[#ba1a1a] p-3 flex flex-wrap items-center gap-2">
+                              <span className="text-[10px] font-black uppercase text-[#0f4369] tracking-widest flex items-center gap-2">
+                                👉 PARA INFORMACION COMPLETA VEASE:
+                              </span>
+                              <a href={p.url || p.file_url || `/resourceView/${p.id}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-[#0f4369] hover:underline font-bold uppercase underline">
+                                {p.title || p.name}
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
+                  ) : <p className="text-xs text-gray-500 italic uppercase">Sin protocolos registrados.</p>}
+                  <EditableTabLink projectId={projectId} sectionId="protocolos" defaultLabel="PROTOCOLOS" defaultUrl="?tab=protocolos" />
+                </section>
+              );
+              break;
+
+            case 'materiales':
+              chapterContent = (
+                <section className="w-full">
+                  <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">{getChapterNum('materiales')}. BASE DE DATOS DE MATERIALES</h2>
+                  {materials.length > 0 ? (
+                    <div className="w-full">
+                      {renderMaterialesTable()}
+                      {materials.length > 100 && (
+                        <p className="text-[9px] text-gray-400 mt-3 italic uppercase">* Se muestran los primeros 100 materiales del catálogo.</p>
+                      )}
+                    </div>
+                  ) : <p className="text-xs text-gray-500 italic uppercase">El catálogo de materiales está vacío.</p>}
+                  <EditableTabLink projectId={projectId} sectionId="materiales" defaultLabel="MATERIALES" defaultUrl="?tab=datos&subtab=materiales" />
+                </section>
+              );
+              break;
+
+            case 'documentos':
+              chapterContent = (
+                <section className="w-full">
+                  <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">{getChapterNum('documentos')}. DOCUMENTOS GENERALES</h2>
+                  {documents.length > 0 ? (
+                    <ul className="space-y-3 w-full">
+                      {documents.map((d, i) => (
+                        <li key={i} className="p-3 bg-white border-2 border-[#1c1c19] shadow-[3px_3px_0_0_rgba(28,28,25,1)] w-full overflow-hidden">
+                          <h4 className="font-bold uppercase text-xs text-[#0f4369] break-words">{d.title || d.name}</h4>
+                          <div className="text-[10px] text-gray-600 mb-1 uppercase break-words">{renderObjectOrValue(d.category)} - {renderObjectOrValue(d.description)}</div>
+                          {d.url && (
+                            <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-blue-500 break-all font-mono underline">
+                              {d.url}
+                            </a>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="text-xs text-gray-500 italic uppercase mb-8">No hay documentos registrados para este proyecto.</p>}
+                  <EditableTabLink projectId={projectId} sectionId="documentos" defaultLabel="DOCUMENTOS" defaultUrl="?tab=recursos" />
+                </section>
+              );
+              break;
+
+            case 'calendario':
+              chapterContent = (
+                <section className="w-full">
+                  <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">{getChapterNum('calendario')}. CALENDARIO SEM/MES (TASKS)</h2>
+                  {tasks.length > 0 ? (
+                    renderCalendarioTable()
+                  ) : <p className="text-xs text-gray-500 italic uppercase">No hay tareas o cronogramas cargados.</p>}
+                  <EditableTabLink projectId={projectId} sectionId="calendario" defaultLabel="CALENDARIO MENSUAL" defaultUrl="?tab=cronograma" />
+                </section>
+              );
+              break;
+
+            case 'esquemas':
+              chapterContent = (
+                <section className="w-full">
+                  <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">{getChapterNum('esquemas')}. BEP (ESQUEMAS / ORGANIZADOR)</h2>
+                  <p className="text-[9px] text-gray-500 mb-4 uppercase tracking-widest border-l-2 border-amber-400 pl-3">
+                    Registro de los planes de implementación y esquemas conceptuales asociados al proyecto.
+                  </p>
+                  {plans.length > 0 ? (
+                    <div className="space-y-6 w-full">
+                      {plans.map((plan, i) => (
+                        <div key={i} className="p-4 bg-[#fcf9f4] border-2 border-[#1c1c19] shadow-[3px_3px_0_0_rgba(28,28,25,1)] w-full overflow-hidden">
+                          <h4 className="font-bold text-xs uppercase mb-1 break-words">{plan.name}</h4>
+                          <p className="text-[10px] mb-3 uppercase text-gray-600 break-words">{plan.description}</p>
+                          <div className="bg-[#fcf9f4] border border-gray-300 p-4 text-[10px] rounded-sm w-full overflow-hidden">
+                            {renderObjectOrValue(plan.plan_data || plan.schema)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : <p className="text-xs text-gray-500 italic uppercase">No se encontraron planes BIM o esquemas vinculados.</p>}
+                  <EditableTabLink projectId={projectId} sectionId="esquemas" defaultLabel="ESQUEMAS" defaultUrl="?tab=acciones" />
+                </section>
+              );
+              break;
+
+            case 'objetivos':
+              chapterContent = (
+                <section className="w-full">
+                  <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">{getChapterNum('objetivos')}. OBJETIVOS DEL PROYECTO</h2>
+                  
+                  <h3 className="font-bold text-sm mb-3 mt-4 uppercase tracking-wider text-[#1c1c19]">&bull; TABLA 4: DEFINICIÓN OBJETIVOS DEL PROYECTO</h3>
+                  {objectives.length > 0 ? (
+                    renderObjetivosTable()
+                  ) : <p className="text-xs text-gray-500 italic uppercase mb-6">Sin objetivos registrados.</p>}
+
+                  <h3 className="font-bold text-sm mb-3 mt-8 uppercase tracking-wider text-[#1c1c19]">&bull; {getChapterNum('objetivos')}.1 USOS BIM (TABLA 5)</h3>
+                  {bimUses.length > 0 ? (
+                    renderUsosBIMTable()
+                  ) : <p className="text-xs text-gray-500 italic uppercase mb-6">Sin usos BIM registrados.</p>}
+
+                  <div className="mt-4">
+                    <EditableTabLink projectId={projectId} sectionId="objetivos" defaultLabel="OBJETIVOS" defaultUrl="?tab=datos&subtab=objetivos" />
                   </div>
-                ))}
+                </section>
+              );
+              break;
+
+            case 'cronograma_entregas':
+              chapterContent = (
+                <section className="w-full">
+                  <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">{getChapterNum('cronograma_entregas')}. CRONOGRAMA DE ENTREGAS</h2>
+                  {deliverables.length > 0 ? (
+                    renderEntregasTable()
+                  ) : <p className="text-xs text-gray-500 italic uppercase">Sin entregables registrados en el cronograma.</p>}
+                  <EditableTabLink projectId={projectId} sectionId="cronograma_entregas" defaultLabel="CRONOGRAMA" defaultUrl="?tab=datos&subtab=cronograma" />
+                </section>
+              );
+              break;
+              
+            default:
+              return null;
+          }
+
+          return (
+            <React.Fragment key={key}>
+              <div className="w-full py-4 flex flex-col" style={{ boxSizing: 'border-box' }}>
+                {chapterContent}
               </div>
-            ) : <p className="text-xs text-gray-500 italic uppercase">No se encontraron planes BIM o esquemas vinculados.</p>}
-            <EditableTabLink projectId={projectId} sectionId="esquemas" defaultLabel="ESQUEMAS" defaultUrl="?tab=acciones" />
-          </section>
-        </div>
-        )}
+              {index < array.length - 1 && (
+                <div className="w-full border-t border-dashed border-gray-400 my-8"></div>
+              )}
+            </React.Fragment>
+          );
+        })}
       </div>
     );
   };
@@ -1564,28 +1964,30 @@ export default function PreBEPView() {
                     <input type="checkbox" checked={showIndex} onChange={(e) => handleShowIndexChange(e.target.checked)} className="w-4 h-4 accent-[#0f4369]" />
                     <span className="text-[10px] font-bold uppercase">Índice de Contenido</span>
                   </label>
-                  {Object.entries({
-                    datos: "1. Datos del Proyecto",
-                    unidades: "2. Sub Proyectos / Unidades",
-                    directorio: "3. Equipo, Roles y Directorio",
-                    requisitos: "4. Requisitos de Información",
-                    lod_tdi: "5. Matriz de Entregables (LOD/TDI)",
-                    protocolos: "6. Protocolos",
-                    materiales: "7. Base de Datos de Materiales",
-                    documentos: "8. Documentos Generales",
-                    calendario: "9. Calendario Sem/Mes (Tasks)",
-                    esquemas: "10. BEP (Esquemas / Organizador)"
-                  }).map(([key, label]) => (
-                    <label key={key} className="flex items-center gap-3 p-3 border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors">
-                      <input 
-                        type="checkbox" 
-                        checked={chapterVisibility[key]} 
-                        onChange={(e) => handleChapterVisibilityChange(key, e.target.checked)} 
-                        className="w-4 h-4 accent-[#0f4369]" 
-                      />
-                      <span className="text-[10px] font-bold uppercase">{label}</span>
-                    </label>
-                  ))}
+                  {chapterOrder.map((key, index) => {
+                    const labelText = CHAPTER_LABELS[key];
+                    return (
+                      <div key={key} className="flex items-center gap-3 p-2 border border-gray-200 hover:bg-gray-50 transition-colors">
+                        <input
+                          type="number"
+                          value={index + 1}
+                          onChange={(e) => handleOrderChange(key, parseInt(e.target.value))}
+                          className="w-12 p-1 text-center border border-gray-300 text-xs font-bold text-[#0f4369] bg-white outline-none focus:border-[#0f4369]"
+                          min={1}
+                          max={chapterOrder.length}
+                        />
+                        <label className="flex items-center gap-3 cursor-pointer flex-1">
+                          <input 
+                            type="checkbox" 
+                            checked={chapterVisibility[key]} 
+                            onChange={(e) => handleChapterVisibilityChange(key, e.target.checked)} 
+                            className="w-4 h-4 accent-[#0f4369]" 
+                          />
+                          <span className="text-[10px] font-bold uppercase">{labelText}</span>
+                        </label>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {chapterVisibility.protocolos && (
@@ -1617,10 +2019,12 @@ export default function PreBEPView() {
                     { id: 'subproyectos', label: '2. SUB PROYECTOS', show: chapterVisibility.unidades },
                     { id: 'equipo', label: '3. EQUIPO BIM', show: chapterVisibility.directorio },
                     { id: 'directorio', label: '3. DIRECTORIO', show: chapterVisibility.directorio },
-                    { id: 'software', label: '4. SOFTWARE', show: chapterVisibility.requisitos },
-                    { id: 'lod_tdi', label: '5. LOD/TDI', show: chapterVisibility.lod_tdi },
-                    { id: 'materiales', label: '7. MATERIALES', show: chapterVisibility.materiales },
-                    { id: 'calendario', label: '9. CALENDARIO', show: chapterVisibility.calendario }
+                    { id: 'software', label: '4. SOFTWARE', show: chapterVisibility.software },
+                    { id: 'lod_tdi', label: '6. LOD/TDI', show: chapterVisibility.lod_tdi },
+                    { id: 'materiales', label: '8. MATERIALES', show: chapterVisibility.materiales },
+                    { id: 'calendario', label: '10. CALENDARIO', show: chapterVisibility.calendario },
+                    { id: 'objetivos', label: '12. OBJETIVOS', show: chapterVisibility.objetivos },
+                    { id: 'cronograma', label: '13. CRONOGRAMA', show: chapterVisibility.cronograma_entregas }
                   ].filter(tab => tab.show).map(tab => (
                     <button
                       key={tab.id}
@@ -1680,20 +2084,28 @@ export default function PreBEPView() {
                           </label>
                         ))}
                       </div>
-                      <div className="max-h-96 overflow-y-auto bg-white border-2 border-[#1c1c19] shadow-[2px_2px_0_0_rgba(28,28,25,1)]">
-                        {renderDirectorioTable()}
+                      <div className="max-h-96 overflow-y-auto bg-white border-2 border-[#1c1c19] shadow-[2px_2px_0_0_rgba(28,28,25,1)] flex flex-col p-4 gap-4">
+                        <div className="font-bold text-[10px] uppercase text-[#72777f]">Directorio Interno (Staff)</div>
+                        {renderDirectorioTable(staff)}
+                        <div className="font-bold text-[10px] uppercase text-[#72777f]">Directorio Externo (Contactos)</div>
+                        {renderDirectorioTable(contacts)}
                       </div>
                     </div>
                   )}
 
-                  {activeConfigTab === 'software' && chapterVisibility.requisitos && (
-                    <div className="flex flex-wrap gap-2">
-                      {['software', 'version', 'uso'].map(col => (
-                        <label key={col} className="flex items-center gap-2 text-[9px] uppercase font-mono cursor-pointer bg-white px-2 py-1.5 border border-gray-200 hover:bg-gray-50 transition-colors">
-                          <input type="checkbox" checked={softwareVisibleColumns.includes(col)} onChange={() => handleSoftwareColumnToggle(col)} className="w-3 h-3 cursor-pointer accent-[#0f4369]" />
-                          {col}
-                        </label>
-                      ))}
+                  {activeConfigTab === 'software' && chapterVisibility.software && (
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-wrap gap-2">
+                        {['software', 'version', 'uso'].map(col => (
+                          <label key={col} className="flex items-center gap-2 text-[9px] uppercase font-mono cursor-pointer bg-white px-2 py-1.5 border border-gray-200 hover:bg-gray-50 transition-colors">
+                            <input type="checkbox" checked={softwareVisibleColumns.includes(col)} onChange={() => handleSoftwareColumnToggle(col)} className="w-3 h-3 cursor-pointer accent-[#0f4369]" />
+                            {col}
+                          </label>
+                        ))}
+                      </div>
+                      <div className="max-h-96 overflow-y-auto bg-white border-2 border-[#1c1c19] shadow-[2px_2px_0_0_rgba(28,28,25,1)]">
+                        {renderSoftwareTable()}
+                      </div>
                     </div>
                   )}
 
@@ -1747,6 +2159,41 @@ export default function PreBEPView() {
                       </div>
                       <div className="max-h-96 overflow-y-auto bg-white border-2 border-[#1c1c19] shadow-[2px_2px_0_0_rgba(28,28,25,1)]">
                         {renderCalendarioTable()}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeConfigTab === 'objetivos' && chapterVisibility.objetivos && (
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-wrap gap-2">
+                        {['prioridad', 'descripcion', 'usos'].map(col => (
+                          <label key={col} className="flex items-center gap-2 text-[9px] uppercase font-mono cursor-pointer bg-white px-2 py-1.5 border border-gray-200 hover:bg-gray-50 transition-colors">
+                            <input type="checkbox" checked={objetivosVisibleColumns.includes(col)} onChange={() => handleObjetivosColumnToggle(col)} className="w-3 h-3 cursor-pointer accent-[#0f4369]" />
+                            {col}
+                          </label>
+                        ))}
+                      </div>
+                      <div className="max-h-96 overflow-y-auto bg-white border-2 border-[#1c1c19] shadow-[2px_2px_0_0_rgba(28,28,25,1)] flex flex-col p-4 gap-4">
+                        <div className="font-bold text-[10px] uppercase text-[#72777f]">Tabla 4: Definición Objetivos del Proyecto</div>
+                        {renderObjetivosTable()}
+                        <div className="font-bold text-[10px] uppercase text-[#72777f] mt-4">Tabla 5: Usos BIM</div>
+                        {renderUsosBIMTable()}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeConfigTab === 'cronograma' && chapterVisibility.cronograma_entregas && (
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-wrap gap-2">
+                        {['entregable_bim', 'fase', 'responsable'].map(col => (
+                          <label key={col} className="flex items-center gap-2 text-[9px] uppercase font-mono cursor-pointer bg-white px-2 py-1.5 border border-gray-200 hover:bg-gray-50 transition-colors">
+                            <input type="checkbox" checked={entregasVisibleColumns.includes(col)} onChange={() => handleEntregasColumnToggle(col)} className="w-3 h-3 cursor-pointer accent-[#0f4369]" />
+                            {col}
+                          </label>
+                        ))}
+                      </div>
+                      <div className="max-h-96 overflow-y-auto bg-white border-2 border-[#1c1c19] shadow-[2px_2px_0_0_rgba(28,28,25,1)]">
+                        {renderEntregasTable()}
                       </div>
                     </div>
                   )}

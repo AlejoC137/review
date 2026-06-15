@@ -330,8 +330,9 @@ export default function DirectoryModule({ project }) {
          <SpecialtiesModal 
             isOpen={isSpecialtiesModalOpen} 
             onClose={() => setIsSpecialtiesModalOpen(false)} 
-            onSelectSpecialty={(specialty) => {
-               setFormData(prev => ({ ...prev, discipline: specialty.name }));
+            projectId={project.id}
+            onSelectSpecialty={(spec) => {
+               setFormData(prev => ({ ...prev, discipline: spec.name }));
                setIsSpecialtiesModalOpen(false);
             }}
          />

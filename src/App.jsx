@@ -30,6 +30,7 @@ import ComponentsView from './pages/ComponentsView';
 import ProtocolPrintView from './pages/ProtocolPrintView';
 import AdminPresentationCard from './pages/AdminPresentationCard';
 import PreBEPView from './pages/PreBEPView';
+import SpecialtiesView from './pages/SpecialtiesView';
 
 function App() {
   return (
@@ -59,6 +60,7 @@ function App() {
               <Route path="/about" element={<AboutUs />} />
 
               <Route path="/dictionary" element={<DictionaryView />} />
+              <Route path="/specialties" element={<SpecialtiesView />} />
 
               <Route path="/materials" element={<MaterialsView />} />
 

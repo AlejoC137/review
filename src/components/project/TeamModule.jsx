@@ -7,6 +7,7 @@ import RolesModal from './RolesModal';
 import SpecialtiesModal from './SpecialtiesModal';
 import BepTeamModule from './BepTeamModule';
 import TeamTableModule from './TeamTableModule';
+import SpecialtiesProjectTab from './SpecialtiesProjectTab';
 import { useAuth } from '../../context/AuthContext';
 import { projectService } from '../../services/projectService';
 
@@ -214,6 +215,12 @@ export default function TeamModule({ project }) {
             Tabla de Datos
           </button>
           <button 
+            onClick={() => handleSubTabChange('especialidades')}
+            className={`px-4 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${activeSubTab === 'especialidades' ? 'bg-[#1c1c19] text-white' : 'hover:bg-[#f6f3ee]'}`}
+          >
+            Especialidades
+          </button>
+          <button 
             onClick={() => setSearchParams({ tab: 'datos', subtab: 'cronograma' })}
             className="px-4 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all bg-[#0f4369] text-white hover:bg-[#0a2e49] ml-1"
           >
@@ -228,6 +235,8 @@ export default function TeamModule({ project }) {
           <BepTeamModule project={project} />
         ) : activeSubTab === 'tabla' ? (
           <TeamTableModule project={project} />
+        ) : activeSubTab === 'especialidades' ? (
+          <SpecialtiesProjectTab project={project} />
         ) : (
           <div className="flex h-full overflow-hidden">
             {/* Sidebar - Team List */}
@@ -652,6 +661,7 @@ export default function TeamModule({ project }) {
       <SpecialtiesModal 
         isOpen={isSpecialtiesModalOpen} 
         onClose={() => setIsSpecialtiesModalOpen(false)} 
+        projectId={project.id}
         onSelectSpecialty={(specialty) => {
           if (isAddingStaff) {
             setNewStaffForm(prev => ({ ...prev, especialidad: specialty.name }));

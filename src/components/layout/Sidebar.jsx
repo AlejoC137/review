@@ -60,7 +60,7 @@ const NavItem = ({ item, depth = 0 }) => {
       title={isCollapsed ? item.label : (isDisabled ? 'REQUIERE_BIM_MANAGER_KEY' : '')}
     >
       <div className={`transition-transform duration-200 ${isActive ? 'scale-110' : 'group-hover/item:scale-105'}`}>
-        {isDisabled ? <LockIcon size={14} className="shrink-0" /> : <item.icon size={16} className="shrink-0" />}
+        {isDisabled ? <LockIcon size={14} className="shrink-0" /> : (item.icon && <item.icon size={16} className="shrink-0" />)}
       </div>
       {!isCollapsed && (
         <span className="ml-3 text-[10px] font-bold tracking-wider whitespace-nowrap opacity-100 uppercase flex-1 truncate">
@@ -259,12 +259,21 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
             {projectsList.length > 0 ? (
               projectsList.map(proj => (
                 <NavGroup key={proj.id} id={`proj-${proj.id}`} label={proj.name} icon={Activity} depth={1}>
-                  <NavItem item={{ id: `nav-datos-${proj.id}`, label: 'Datos del Proyecto', path: `/project/${proj.id}?tab=datos`, icon: Info }} depth={2} />
+                  <NavGroup id={`datos-${proj.id}`} label="Datos del Proyecto" icon={Info} depth={2}>
+                    <NavItem item={{ id: `nav-datos-resumen-${proj.id}`, label: 'Resumen Operativo', path: `/project/${proj.id}?tab=datos&subtab=resumen` }} depth={3} />
+                    <NavItem item={{ id: `nav-datos-peb-${proj.id}`, label: 'Información General', path: `/project/${proj.id}?tab=datos&subtab=peb_info` }} depth={3} />
+                    <NavItem item={{ id: `nav-datos-software-${proj.id}`, label: 'Software y Plataformas', path: `/project/${proj.id}?tab=datos&subtab=software` }} depth={3} />
+                    <NavItem item={{ id: `nav-datos-lod-${proj.id}`, label: 'Matriz LOD y TDI', path: `/project/${proj.id}?tab=datos&subtab=lod_tdi` }} depth={3} />
+                    <NavItem item={{ id: `nav-datos-objetivos-${proj.id}`, label: 'Objetivos del Proyecto', path: `/project/${proj.id}?tab=datos&subtab=objetivos` }} depth={3} />
+                    <NavItem item={{ id: `nav-datos-unidades-${proj.id}`, label: 'Unidades y Formatos', path: `/project/${proj.id}?tab=datos&subtab=unidades` }} depth={3} />
+                    <NavItem item={{ id: `nav-datos-cronograma-${proj.id}`, label: 'Cronograma Entregas', path: `/project/${proj.id}?tab=datos&subtab=cronograma` }} depth={3} />
+                  </NavGroup>
                   <NavGroup id={`bep-${proj.id}`} label="BEP" icon={FileText} depth={2}>
                     <NavItem item={{ id: `nav-esquemas-${proj.id}`, label: 'Esquema', path: `/esquemas?projectId=${proj.id}`, icon: Hexagon }} depth={3} />
                     <NavItem item={{ id: `nav-planner-${proj.id}`, label: 'Organizador / Deployer', path: `/planner?projectId=${proj.id}`, icon: ClipboardList }} depth={3} />
                     <NavItem item={{ id: `nav-protocolos-${proj.id}`, label: 'Protocolos', path: `/project/${proj.id}?tab=protocolos`, icon: FileText }} depth={3} />
                     <NavItem item={{ id: `nav-bep-equipo-${proj.id}`, label: 'Equipo y Roles', path: `/project/${proj.id}?tab=equipo&subtab=roles`, icon: Users }} depth={3} />
+                    <NavItem item={{ id: `nav-herramientas-${proj.id}`, label: 'Herramientas BIM', path: `/project/${proj.id}?tab=herramientas`, icon: Settings }} depth={3} />
                     <NavItem item={{ id: `nav-db-report-${proj.id}`, label: 'PRE BEP', path: `/pre-bep?projectId=${proj.id}`, icon: Database }} depth={3} />
                   </NavGroup>
                   <NavItem item={{ id: `nav-proyecto-${proj.id}`, label: 'Sub Proyecto / Unidades', path: `/project/${proj.id}?tab=proyecto`, icon: Layers }} depth={2} />
@@ -278,7 +287,15 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
               ))
             ) : (
               <NavGroup id="proyecto1" label="Proyecto 1" icon={Activity} depth={1}>
-                <NavItem item={{ id: 'nav-kengo-datos', label: 'Datos del Proyecto', path: '/project/kengo-kuma?tab=datos', icon: Info }} depth={2} />
+                <NavGroup id="kengo-datos" label="Datos del Proyecto" icon={Info} depth={2}>
+                  <NavItem item={{ id: 'nav-kengo-datos-resumen', label: 'Resumen Operativo', path: '/project/kengo-kuma?tab=datos&subtab=resumen' }} depth={3} />
+                  <NavItem item={{ id: 'nav-kengo-datos-peb', label: 'Información General', path: '/project/kengo-kuma?tab=datos&subtab=peb_info' }} depth={3} />
+                  <NavItem item={{ id: 'nav-kengo-datos-software', label: 'Software y Plataformas', path: '/project/kengo-kuma?tab=datos&subtab=software' }} depth={3} />
+                  <NavItem item={{ id: 'nav-kengo-datos-lod', label: 'Matriz LOD y TDI', path: '/project/kengo-kuma?tab=datos&subtab=lod_tdi' }} depth={3} />
+                  <NavItem item={{ id: 'nav-kengo-datos-objetivos', label: 'Objetivos del Proyecto', path: '/project/kengo-kuma?tab=datos&subtab=objetivos' }} depth={3} />
+                  <NavItem item={{ id: 'nav-kengo-datos-unidades', label: 'Unidades y Formatos', path: '/project/kengo-kuma?tab=datos&subtab=unidades' }} depth={3} />
+                  <NavItem item={{ id: 'nav-kengo-datos-cronograma', label: 'Cronograma Entregas', path: '/project/kengo-kuma?tab=datos&subtab=cronograma' }} depth={3} />
+                </NavGroup>
                 <NavItem item={{ id: 'nav-kengo-proyecto', label: 'Sub Proyecto / Unidades', path: '/project/kengo-kuma?tab=proyecto', icon: Layers }} depth={2} />
                 <NavItem item={{ id: 'nav-kengo-materiales', label: 'Materiales', path: '/materials?projectId=kengo-kuma', icon: Package }} depth={2} />
                 <NavGroup id="bep" label="BEP" icon={FileText} depth={2}>
@@ -286,6 +303,7 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
                   <NavItem item={{ id: 'nav-planner', label: 'Organizador', path: currentPlan ? `/planner/${currentPlan.id}` : '/planner', icon: ClipboardList }} depth={3} />
                   <NavItem item={{ id: 'nav-protocolos', label: 'Protocolos', path: '/project/kengo-kuma?tab=protocolos', icon: FileText }} depth={3} />
                   <NavItem item={{ id: 'nav-bep-equipo', label: 'Equipo y Roles', path: '/project/kengo-kuma?tab=equipo&subtab=roles', icon: Users }} depth={3} />
+                  <NavItem item={{ id: 'nav-herramientas', label: 'Herramientas BIM', path: '/project/kengo-kuma?tab=herramientas', icon: Settings }} depth={3} />
                   <NavItem item={{ id: 'nav-db-report', label: 'PRE BEP', path: '/pre-bep?projectId=kengo-kuma', icon: Database }} depth={3} />
                 </NavGroup>
                 <NavItem item={{ id: 'nav-documentos', label: 'Documentos', path: '/documents', icon: FileText }} depth={2} />
@@ -328,6 +346,8 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
               <NavItem item={{ id: 'nav-articulos', label: 'Artículos', path: '/resources', icon: FileText }} depth={2} />
             </NavGroup>
           </NavGroup>
+
+
 
           {isAdmin && (
             <NavGroup id="admin" label="Admin" icon={Settings} depth={0}>

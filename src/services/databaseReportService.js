@@ -156,6 +156,12 @@ export const TABLE_METADATA = {
     chapter: '10. Gestión de Ciclo de Vida',
     description: 'Actividades de control del ciclo de vida programadas en el Gantt.',
     filterColumn: 'project_id'
+  },
+  project_delivery_schedule: {
+    displayName: 'project_delivery_schedule (Cronograma de Entregas)',
+    chapter: '11. Cronograma de Entregas',
+    description: 'Cronograma y planificación de entregables BIM.',
+    filterColumn: 'project_id'
   }
 };
 
@@ -184,7 +190,8 @@ export const KNOWN_EXISTING_TABLES = [
   'esquemas',
   'bim_plans',
   'lifecycles',
-  'lifecycle_stages'
+  'lifecycle_stages',
+  'project_delivery_schedule'
 ];
 
 export const databaseReportService = {

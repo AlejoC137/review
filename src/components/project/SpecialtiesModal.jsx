@@ -4,7 +4,7 @@ import { projectService } from '../../services/projectService';
 import { useAuth } from '../../context/AuthContext';
 import { PROMPTS } from '../../config/aiPrompts';
 
-export default function SpecialtiesModal({ isOpen, onClose, onSelectSpecialty }) {
+export default function SpecialtiesModal({ isOpen, onClose, onSelectSpecialty, projectId }) {
   const { isAdmin } = useAuth();
   const [specialties, setSpecialties] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -50,7 +50,7 @@ export default function SpecialtiesModal({ isOpen, onClose, onSelectSpecialty })
           // Insertar cada Especialidad
           for (const Specialty of parsedData) {
               if (Specialty.name) {
-                  await projectService.createSpecialty({ name: Specialty.name, description: Specialty.description || '' });
+                  await projectService.createSpecialty({ name: Specialty.name, description: Specialty.description || '', project_id: projectId });
               }
           }
           setJsonInput('');
@@ -75,7 +75,7 @@ export default function SpecialtiesModal({ isOpen, onClose, onSelectSpecialty })
   const fetchSpecialties = async () => {
     try {
       setLoading(true);
-      const data = await projectService.getSpecialties();
+      const data = await projectService.getSpecialties(projectId);
       setSpecialties(data || []);
     } catch (error) {
       console.error("Error fetching specialties:", error);
@@ -90,7 +90,7 @@ export default function SpecialtiesModal({ isOpen, onClose, onSelectSpecialty })
       if (editingId) {
         await projectService.updateSpecialty(editingId, form);
       } else {
-        await projectService.createSpecialty(form);
+        await projectService.createSpecialty({ ...form, project_id: projectId });
       }
       setForm({ name: '', description: '' });
       setIsAdding(false);
@@ -263,6 +263,9 @@ export default function SpecialtiesModal({ isOpen, onClose, onSelectSpecialty })
                           >
                             <Check size={14} /> {specialty.name}
                           </button>
+                          {!specialty.project_id && (
+                            <span className="bg-gray-200 text-gray-600 px-1.5 py-0.5 text-[8px] font-black tracking-widest uppercase border border-gray-400 rounded-sm ml-2 mt-1 inline-block">Global</span>
+                          )}
                         </td>
                         <td className="p-3 border-r-2 border-[#1c1c19] text-xs text-[#72777f]">
                           {specialty.description || '-'}
