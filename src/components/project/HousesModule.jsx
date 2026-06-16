@@ -401,7 +401,7 @@ export default function HousesModule({ project }) {
 
             <div className="flex-1 overflow-y-auto bg-[#fafafa]">
               {activeSubTab === 'espacios' ? (
-                <SpacesView subProjectId={selectedHouse?.id} />
+                <SpacesView subProjectId={selectedHouse?.id} projectId={project?.id} />
               ) : activeSubTab === 'proyecto' ? (
                 <div className="max-w-6xl mx-auto grid grid-cols-12 gap-3">
                   <div className="col-span-12 lg:col-span-4 space-y-3">

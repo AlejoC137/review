@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { lifecycleService } from '../../services/lifecycleService';
 import { projectService } from '../../services/projectService';
+import { areasService } from '../../services/areasService';
 import { supabase } from '../../services/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import LodTdiMatrix from './LodTdiMatrix';
@@ -62,6 +63,26 @@ export default function ProjectDataModule({ project, onTabChange }) {
       return next;
     });
   };
+
+  const [areasTotals, setAreasTotals] = useState({ covered: 0, uncovered: 0, gross: 0 });
+
+  useEffect(() => {
+    if (project?.id) {
+      areasService.getAreas(project.id).then(data => {
+        // Calcular totales usando el contexto "constructiva" por defecto
+        const constructiva = data.filter(a => a.context_type === 'constructiva');
+        const totals = constructiva.reduce((acc, a) => {
+          const covered = parseFloat(a.built_area) || 0;
+          const uncovered = parseFloat(a.uncovered_area) || 0;
+          acc.covered += covered;
+          acc.uncovered += uncovered;
+          acc.gross += (covered + uncovered);
+          return acc;
+        }, { covered: 0, uncovered: 0, gross: 0 });
+        setAreasTotals(totals);
+      }).catch(console.error);
+    }
+  }, [project?.id]);
 
   // Multi-Software List States
   const [softwareList, setSoftwareList] = useState([]);
@@ -1083,7 +1104,21 @@ export default function ProjectDataModule({ project, onTabChange }) {
 
                 {/* 4. ÁREAS DEL PROYECTO */}
                 <div className="p-5 bg-white border-2 border-[#1c1c19] space-y-4 md:col-span-2">
-                  <h4 className="text-xs font-black uppercase border-b-2 border-[#1c1c19]/10 pb-2">4. ÁREAS DEL PROYECTO</h4>
+                  <div className="flex justify-between items-center border-b-2 border-[#1c1c19]/10 pb-2">
+                    <h4 className="text-xs font-black uppercase">4. ÁREAS DEL PROYECTO</h4>
+                    <button 
+                      onClick={() => navigate(`/areas?projectId=${project?.id || 'kengo-kuma'}`)}
+                      className="px-3 py-1 bg-[#0f4369] text-white text-[9px] font-black uppercase flex items-center gap-1 hover:bg-[#1c1c19] transition-all"
+                    >
+                      <LayoutGrid size={12} />
+                      ABRIR GESTOR DE ÁREAS
+                    </button>
+                  </div>
+                  
+                  <div className="bg-[#f6f3ee] p-3 text-[10px] text-[#72777f] font-bold italic mb-4">
+                    NOTA: El Área Cubierta y Descubierta se calculan automáticamente desde el Gestor de Áreas (Modelo Constructiva).
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div>
                       <label className="text-[9px] font-black uppercase text-[#72777f]">Área del lote (m²)</label>
@@ -1096,33 +1131,30 @@ export default function ProjectDataModule({ project, onTabChange }) {
                       />
                     </div>
                     <div>
-                      <label className="text-[9px] font-black uppercase text-[#72777f]">Área ventas (m²)</label>
+                      <label className="text-[9px] font-black uppercase text-[#0f4369]">Área Total Cubierta (m²)</label>
                       <input 
-                        type="number" 
-                        step="0.01"
-                        value={pebForm.sales_area} 
-                        onChange={e => setPebForm({...pebForm, sales_area: parseFloat(e.target.value) || 0})}
-                        className="w-full p-2 border-2 border-[#1c1c19] font-mono text-xs font-bold" 
+                        type="text" 
+                        disabled
+                        value={areasTotals.covered.toLocaleString()}
+                        className="w-full p-2 border-2 border-[#1c1c19]/30 bg-gray-50 font-mono text-xs font-black text-[#0f4369] cursor-not-allowed" 
                       />
                     </div>
                     <div>
-                      <label className="text-[9px] font-black uppercase text-[#72777f]">Área construida (m²)</label>
+                      <label className="text-[9px] font-black uppercase text-[#ba1a1a]">Área Total Descubierta (m²)</label>
                       <input 
-                        type="number" 
-                        step="0.01"
-                        value={pebForm.built_area} 
-                        onChange={e => setPebForm({...pebForm, built_area: parseFloat(e.target.value) || 0})}
-                        className="w-full p-2 border-2 border-[#1c1c19] font-mono text-xs font-bold" 
+                        type="text" 
+                        disabled
+                        value={areasTotals.uncovered.toLocaleString()}
+                        className="w-full p-2 border-2 border-[#1c1c19]/30 bg-gray-50 font-mono text-xs font-black text-[#ba1a1a] cursor-not-allowed" 
                       />
                     </div>
                     <div>
-                      <label className="text-[9px] font-black uppercase text-[#72777f]">Área circulaciones (m²)</label>
+                      <label className="text-[9px] font-black uppercase text-[#72777f]">Área Total Bruta (m²)</label>
                       <input 
-                        type="number" 
-                        step="0.01"
-                        value={pebForm.circulation_area} 
-                        onChange={e => setPebForm({...pebForm, circulation_area: parseFloat(e.target.value) || 0})}
-                        className="w-full p-2 border-2 border-[#1c1c19] font-mono text-xs font-bold" 
+                        type="text" 
+                        disabled
+                        value={areasTotals.gross.toLocaleString()}
+                        className="w-full p-2 border-2 border-[#1c1c19]/30 bg-gray-50 font-mono text-xs font-bold cursor-not-allowed" 
                       />
                     </div>
                     <div>
@@ -1136,12 +1168,12 @@ export default function ProjectDataModule({ project, onTabChange }) {
                       />
                     </div>
                     <div>
-                      <label className="text-[9px] font-black uppercase text-[#72777f]">Total (m² - Calculado)</label>
+                      <label className="text-[9px] font-black uppercase text-[#1c1c19]">Total (m² - Calculado)</label>
                       <input 
                         type="text" 
                         disabled
-                        value={((parseFloat(pebForm.sales_area) || 0) + (parseFloat(pebForm.built_area) || 0) + (parseFloat(pebForm.circulation_area) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        className="w-full p-2 border-2 border-[#1c1c19]/30 bg-gray-50 font-mono text-xs font-black text-[#0f4369] cursor-not-allowed" 
+                        value={areasTotals.gross.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        className="w-full p-2 border-2 border-[#1c1c19]/30 bg-gray-50 font-mono text-xs font-black text-[#1c1c19] cursor-not-allowed" 
                       />
                     </div>
                   </div>
@@ -1151,7 +1183,7 @@ export default function ProjectDataModule({ project, onTabChange }) {
                     <div className="flex justify-between items-center mb-1">
                       <span className="text-[10px] font-black uppercase text-[#003366]">Índice de Construcción (IC):</span>
                       <span className="text-xs font-bold text-[#003366]">
-                        {parseFloat(pebForm.lot_area) > 0 ? (parseFloat(pebForm.built_area) / parseFloat(pebForm.lot_area)).toFixed(2) : '0.00'}
+                        {parseFloat(pebForm.lot_area) > 0 ? (areasTotals.covered / parseFloat(pebForm.lot_area)).toFixed(2) : '0.00'}
                       </span>
                     </div>
                     <div className="flex justify-between items-center">

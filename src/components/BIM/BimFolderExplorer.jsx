@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Folder, File, FileText, ChevronRight, ChevronDown, ExternalLink, HardDrive, Copy } from 'lucide-react';
 import { PROMPTS } from '../../config/aiPrompts';
 
-const FolderNode = ({ node, level = 0, currentPath = [] }) => {
-  const [isOpen, setIsOpen] = useState(level < 2);
+const FolderNode = ({ node, level = 0, currentPath = [], isStatic = false }) => {
+  const [isOpen, setIsOpen] = useState(isStatic ? true : level < 2);
   const [isCopied, setIsCopied] = useState(false);
   const newPath = [...currentPath, node.name];
   const children = node.children || [];
@@ -33,7 +33,7 @@ const FolderNode = ({ node, level = 0, currentPath = [] }) => {
     <div className="font-mono">
       <div 
         className="flex items-center gap-3 py-2 px-3 hover:bg-[#1c1c19]/5 cursor-pointer border-b border-transparent hover:border-[#1c1c19]/10 transition-all rounded-sm group" 
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => !isStatic && setIsOpen(!isOpen)}
         style={{ paddingLeft: `${level * 20}px` }}
       >
         <span>{getIcon()}</span>
@@ -45,13 +45,15 @@ const FolderNode = ({ node, level = 0, currentPath = [] }) => {
         </div>
 
         {/* AI COMMAND BUTTON */}
-        <button
-            onClick={handleCopyPrompt}
-            className={`ml-2 px-1.5 py-0.5 rounded-[2px] text-[7px] font-black uppercase tracking-tighter transition-all border border-[#1c1c19]/10 shadow-[2px_2px_0_0_rgba(28,28,25,0.1)] ${isCopied ? 'bg-green-600 text-white translate-y-[1px] shadow-none' : 'bg-amber-400 text-[#1c1c19] hover:bg-amber-500 active:translate-y-[1px] active:shadow-none'}`}
-            title="Copiar AI Command"
-        >
-            {isCopied ? 'COPIADO' : 'AI COMMAND'}
-        </button>
+        {!isStatic && (
+          <button
+              onClick={handleCopyPrompt}
+              className={`ml-2 px-1.5 py-0.5 rounded-[2px] text-[7px] font-black uppercase tracking-tighter transition-all border border-[#1c1c19]/10 shadow-[2px_2px_0_0_rgba(28,28,25,0.1)] ${isCopied ? 'bg-green-600 text-white translate-y-[1px] shadow-none' : 'bg-amber-400 text-[#1c1c19] hover:bg-amber-500 active:translate-y-[1px] active:shadow-none'}`}
+              title="Copiar AI Command"
+          >
+              {isCopied ? 'COPIADO' : 'AI COMMAND'}
+          </button>
+        )}
         
         {node.url && (
             <a href={node.url} target="_blank" rel="noreferrer" className="ml-auto opacity-0 group-hover:opacity-100 p-1 hover:bg-[#0f4369] hover:text-white rounded transition-all">
@@ -63,7 +65,7 @@ const FolderNode = ({ node, level = 0, currentPath = [] }) => {
       {isOpen && children.length > 0 && (
         <div className="border-l-[1px] border-[#1c1c19]/10 ml-5 my-1">
           {children.map((child, idx) => (
-            <FolderNode key={child.id || idx} node={child} level={level + 1} currentPath={newPath} />
+            <FolderNode key={child.id || idx} node={child} level={level + 1} currentPath={newPath} isStatic={isStatic} />
           ))}
         </div>
       )}
@@ -71,7 +73,7 @@ const FolderNode = ({ node, level = 0, currentPath = [] }) => {
   );
 };
 
-export default function BimFolderExplorer({ mapData, title }) {
+export default function BimFolderExplorer({ mapData, title, isStatic = false }) {
   if (!mapData) return (
     <div className="p-20 text-center">
       <div className="animate-pulse flex flex-col items-center gap-4">
@@ -94,7 +96,7 @@ export default function BimFolderExplorer({ mapData, title }) {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-white/30 backdrop-blur-sm">
-        <FolderNode node={mapData} />
+        <FolderNode node={mapData} isStatic={isStatic} />
       </div>
       <div className="p-3 border-t border-[#1c1c19]/10 bg-white/50 text-[9px] font-mono text-gray-400 uppercase tracking-widest flex justify-between items-center">
         <span>© ARK DIGITAL TWIN ENGINE</span>

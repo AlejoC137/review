@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   HelpCircle, ChevronDown, RotateCcw,
   Search, ListFilter, AlertCircle, Loader2, CheckCircle2,
-  Table as TableIcon, X, Plus, Edit2, Trash2, Save
+  Table as TableIcon, X, Plus, Edit2, Trash2, Save, Sparkles
 } from 'lucide-react';
 import { projectService } from '../../services/projectService';
+import AiLodTdiFillModal from './AiLodTdiFillModal';
 
 /* ─── Static data ──────────────────────────────────────────── */
 const DISCIPLINE_ELEMENTS = [
@@ -70,26 +71,30 @@ const TDI_MAPPING = {
 
 /* ─── Componentes Hijos ────────────────────────── */
 
-function PhaseCell({ data, onChange, disciplineColor }) {
+function PhaseGroup({ data, onChange, disciplineColor }) {
   return (
-    <div className={`flex flex-col w-full h-full border border-[#1c1c19]/10 overflow-hidden group focus-within:border-[#0f4369] focus-within:ring-1 focus-within:ring-[#0f4369] transition-colors ${disciplineColor}`}>
-      <input
-        type="text"
-        value={data.aem || ''}
-        onChange={e => onChange({ ...data, aem: e.target.value })}
-        placeholder="AEM"
-        className="w-full px-1.5 pt-1 pb-0.5 text-[9px] font-bold border-none border-b border-[#1c1c19]/10 focus:ring-0 focus:outline-none bg-transparent text-[#1c1c19] placeholder:text-gray-300 placeholder:italic"
-      />
-      <select 
-        value={data.lod} 
-        onChange={e => onChange({ ...data, lod: e.target.value === '' ? '' : parseInt(e.target.value, 10) })}
-        className={`w-full px-1.5 pb-1 text-[11px] font-mono font-black border-none focus:ring-0 focus:outline-none cursor-pointer appearance-none text-center bg-transparent ${data.lod ? 'text-[#0f4369]' : 'text-gray-400'}`}
-      >
-        {LOD_OPTIONS.map(opt => (
-          <option key={opt.val} value={opt.val}>{opt.label}</option>
-        ))}
-      </select>
-    </div>
+    <>
+      <td className={`p-0 border-r border-[#1c1c19]/20 transition-colors w-[6%] ${disciplineColor}`}>
+        <input
+          type="text"
+          value={data.aem || ''}
+          onChange={e => onChange({ ...data, aem: e.target.value.toUpperCase() })}
+          className="w-full h-full min-h-[32px] p-1.5 text-[10px] font-bold border-none focus:ring-inset focus:ring-2 focus:ring-[#0f4369] focus:outline-none bg-transparent text-[#1c1c19] text-center placeholder:text-[#1c1c19]/30"
+          placeholder="AEM"
+        />
+      </td>
+      <td className="p-0 border-r-2 border-[#1c1c19]/30 bg-[#fcf9f4] hover:bg-[#f0f0f0] transition-colors w-[6%]">
+        <select 
+          value={data.lod} 
+          onChange={e => onChange({ ...data, lod: e.target.value === '' ? '' : parseInt(e.target.value, 10) })}
+          className={`w-full h-full min-h-[32px] p-1.5 text-[11px] font-mono font-black border-none focus:ring-inset focus:ring-2 focus:ring-[#0f4369] focus:outline-none cursor-pointer appearance-none text-center bg-transparent ${data.lod ? 'text-[#0f4369]' : 'text-gray-400'}`}
+        >
+          {LOD_OPTIONS.map(opt => (
+            <option key={opt.val} value={opt.val}>{opt.label}</option>
+          ))}
+        </select>
+      </td>
+    </>
   );
 }
 
@@ -177,21 +182,29 @@ const parseNotes = (notesString, defaultLods) => {
 
   if (!notesString) return def;
 
-  try {
-    if (notesString.trim().startsWith('{')) {
-      const parsed = JSON.parse(notesString);
-      return {
-        esquema: parsed.esquema || def.esquema,
-        anteproyecto: parsed.anteproyecto || def.anteproyecto,
-        finales: parsed.finales || def.finales,
-        text: parsed.text || '',
-        abbreviation: parsed.abbreviation || ''
-      };
-    }
-  } catch (e) {}
+  let parsed = null;
+  if (typeof notesString === 'object') {
+    parsed = notesString;
+  } else if (typeof notesString === 'string') {
+    try {
+      if (notesString.trim().startsWith('{')) {
+        parsed = JSON.parse(notesString);
+      }
+    } catch (e) {}
+  }
+
+  if (parsed) {
+    return {
+      esquema: parsed.esquema || def.esquema,
+      anteproyecto: parsed.anteproyecto || def.anteproyecto,
+      finales: parsed.finales || def.finales,
+      text: parsed.text || '',
+      abbreviation: parsed.abbreviation || ''
+    };
+  }
 
   // Legacy fallback
-  return { ...def, text: notesString };
+  return { ...def, text: typeof notesString === 'string' ? notesString : '' };
 };
 
 const serializeNotes = (dataObj) => {
@@ -206,6 +219,8 @@ export default function LodTdiMatrix({ projectId }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDiscipline, setSelectedDiscipline] = useState('all');
   const [showTdiModal, setShowTdiModal] = useState(false);
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [projectElements, setProjectElements] = useState([]);
   const [isAdding, setIsAdding] = useState(false);
   const [form, setForm] = useState({ discipline: '', element: '', oldDiscipline: '', oldElement: '' });
@@ -257,7 +272,7 @@ export default function LodTdiMatrix({ projectId }) {
       }
     };
     fetchMatrix();
-  }, [projectId]);
+  }, [projectId, reloadKey]);
 
   const handleUpdate = async (discipline, element, field, subfield, value) => {
     const itemKey = `${discipline}::${element}`;
@@ -415,6 +430,14 @@ export default function LodTdiMatrix({ projectId }) {
           </button>
           
           <button 
+            onClick={() => setShowAiModal(true)}
+            className="flex items-center justify-center p-2 bg-[#fcf9f4] border-2 border-[#1c1c19] hover:bg-[#1c1c19] hover:text-white transition-all shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px]"
+            title="Importar con IA"
+          >
+            <Sparkles size={14} className="text-yellow-500 animate-pulse" />
+          </button>
+
+          <button 
             onClick={() => { setForm({ discipline: '', element: '', oldDiscipline: '', oldElement: '' }); setIsAdding(true); }}
             className="flex items-center gap-2 px-4 py-2 bg-[#00ff9d] text-[#1c1c19] border-2 border-[#1c1c19] font-black text-[10px] uppercase shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
           >
@@ -468,108 +491,111 @@ export default function LodTdiMatrix({ projectId }) {
       {/* ── Table ── */}
       <div className="bg-white border-2 border-[#1c1c19] shadow-[6px_6px_0_0_rgba(28,28,25,1)] overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[900px]">
+          <table className="w-full text-left border-collapse min-w-[1000px]">
             <thead>
               <tr>
-                <th colSpan="2" className="bg-[#fcf9f4] border-r-2 border-[#1c1c19] p-2 text-center text-[10px] font-black text-transparent select-none">-</th>
-                <th colSpan="3" className="bg-[#e5e2dd] border-b-2 border-r-2 border-[#1c1c19] p-2 text-center text-[10px] font-black tracking-widest text-[#0f4369] uppercase border-l-2">
-                  Fases del Proyecto (AEM & LOD)
+                <th colSpan="2" className="bg-[#fcf9f4] border-b-2 border-r-2 border-[#1c1c19] p-2 text-center text-[10px] font-black text-transparent select-none">-</th>
+                <th colSpan="6" className="bg-[#e5e2dd] border-b-2 border-r-2 border-[#1c1c19] p-2 text-center text-[10px] font-black tracking-widest text-[#0f4369] uppercase border-l-2">
+                  Fases del Proyecto
                 </th>
-                <th className="bg-[#fcf9f4] border-b-2 border-[#1c1c19] p-2 text-center text-[10px] font-black text-transparent select-none">-</th>
+                <th colSpan="2" className="bg-[#fcf9f4] border-b-2 border-[#1c1c19] p-2 text-center text-[10px] font-black text-transparent select-none">-</th>
               </tr>
               <tr className="bg-[#1c1c19] text-white font-mono text-[10px] tracking-wider uppercase">
-                <th className="p-3 w-[12%] border-r border-white/20">Disciplina</th>
-                <th className="p-3 w-[15%] border-r-2 border-white/20">Elemento</th>
-                <th className="p-3 w-[8%] border-r-2 border-white/20 text-center">Código</th>
-                <th className="p-3 w-[15%] border-r border-white/20 text-center">Esquema Básico</th>
-                <th className="p-3 w-[15%] border-r border-white/20 text-center">Anteproyecto</th>
-                <th className="p-3 w-[15%] border-r-2 border-white/20 text-center">Proy/Finales</th>
-                <th className="p-3 w-[18%] border-r-2 border-white/20">Notas</th>
-                <th className="p-3 w-[6%] text-center">Acc.</th>
+                <th className="p-3 w-[20%] border-r-2 border-[#1c1c19] align-bottom" rowSpan="2">Elemento del modelo</th>
+                <th className="p-3 w-[8%] border-r-2 border-[#1c1c19] align-bottom text-center" rowSpan="2">Código</th>
+                <th className="p-2 border-r-2 border-[#1c1c19] text-center border-b border-white/20" colSpan="2">Esquema Básico</th>
+                <th className="p-2 border-r-2 border-[#1c1c19] text-center border-b border-white/20" colSpan="2">Anteproyecto</th>
+                <th className="p-2 border-r-2 border-[#1c1c19] text-center border-b border-white/20" colSpan="2">Proy/Finales</th>
+                <th className="p-3 w-[15%] border-r-2 border-[#1c1c19] align-bottom" rowSpan="2">Notas</th>
+                <th className="p-3 w-[5%] text-center align-bottom" rowSpan="2">Acc.</th>
               </tr>
-              <tr className="bg-[#2c2c29] text-white/50 font-mono text-[8px] tracking-widest uppercase">
-                <th className="px-3 pb-1.5 border-r border-white/10" />
-                <th className="px-3 pb-1.5 border-r-2 border-white/10" />
-                <th className="px-3 pb-1.5 border-r-2 border-white/10" />
-                <th className="px-3 pb-1.5 border-r border-white/10 text-center">AEM &bull; LOD</th>
-                <th className="px-3 pb-1.5 border-r border-white/10 text-center">AEM &bull; LOD</th>
-                <th className="px-3 pb-1.5 border-r-2 border-white/10 text-center">AEM &bull; LOD</th>
-                <th className="px-3 pb-1.5 border-r-2 border-white/10" />
-                <th className="px-3 pb-1.5" />
+              <tr className="bg-[#2c2c29] text-white/80 font-mono text-[9px] tracking-widest uppercase">
+                <th className="p-1.5 w-[6%] border-r border-[#1c1c19]/30 text-center">AEM</th>
+                <th className="p-1.5 w-[6%] border-r-2 border-[#1c1c19] text-center">LOD</th>
+                <th className="p-1.5 w-[6%] border-r border-[#1c1c19]/30 text-center">AEM</th>
+                <th className="p-1.5 w-[6%] border-r-2 border-[#1c1c19] text-center">LOD</th>
+                <th className="p-1.5 w-[6%] border-r border-[#1c1c19]/30 text-center">AEM</th>
+                <th className="p-1.5 w-[6%] border-r-2 border-[#1c1c19] text-center">LOD</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1c1c19]/15">
               {loading ? (
-                <tr><td colSpan={6} className="p-12 text-center">
+                <tr><td colSpan="10" className="p-12 text-center">
                   <Loader2 className="animate-spin mx-auto text-[#0f4369]" size={28} />
                 </td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={6} className="p-8 text-center text-slate-500 italic">
+                <tr><td colSpan="10" className="p-8 text-center text-slate-500 italic">
                   No se encontraron elementos con los filtros actuales.
                 </td></tr>
-              ) : filtered.map((item, index) => {
-                const key = `${item.discipline}::${item.element}`;
-                const cfg = matrixData[key]?.parsed || parseNotes('', item.defLods);
-                
-                return (
-                  <tr key={index} className="hover:bg-[#f6f3ee]/30 transition-colors">
-                    <td className="p-3 border-r border-[#1c1c19]/10">
-                      <span className="px-1.5 py-0.5 bg-[#f6f3ee] border border-[#1c1c19]/20 text-[8px] font-black uppercase font-mono text-slate-700">
-                        {item.discipline}
-                      </span>
-                    </td>
-                    <td className="p-3 border-r-2 border-[#1c1c19]/30 text-[10px] font-bold uppercase tracking-tight text-[#1c1c19]">
-                      {item.element}
-                    </td>
-                    
-                    <td className="p-1.5 border-r-2 border-[#1c1c19]/30">
-                      <input 
-                        type="text" 
-                        value={cfg.abbreviation}
-                        onChange={e => handleUpdate(item.discipline, item.element, 'abbreviation', null, e.target.value.toUpperCase())}
-                        placeholder="Ej. MUR"
-                        maxLength={6}
-                        className="w-full text-center p-1.5 bg-[#fcf9f4] border border-[#1c1c19]/20 hover:border-[#1c1c19]/50 focus:border-[#0f4369] focus:bg-white text-[10px] font-bold uppercase placeholder:italic placeholder:font-normal placeholder:lowercase focus:outline-none transition-colors"
-                      />
-                    </td>
-                    <td className="p-1.5 border-r border-[#1c1c19]/20 bg-[#f9f9f9] hover:bg-[#f0f0f0] transition-colors">
-                      <PhaseCell 
-                        data={cfg.esquema} 
-                        onChange={(d) => handleUpdate(item.discipline, item.element, 'esquema', null, d)} 
-                        disciplineColor={getPhaseColor(item.discipline, cfg.esquema.lod)}
-                      />
-                    </td>
-                    <td className="p-1.5 border-r border-[#1c1c19]/20 bg-[#f9f9f9] hover:bg-[#f0f0f0] transition-colors">
-                      <PhaseCell 
-                        data={cfg.anteproyecto} 
-                        onChange={(d) => handleUpdate(item.discipline, item.element, 'anteproyecto', null, d)} 
-                        disciplineColor={getPhaseColor(item.discipline, cfg.anteproyecto.lod)}
-                      />
-                    </td>
-                    <td className="p-1.5 border-r-2 border-[#1c1c19]/30 bg-[#f9f9f9] hover:bg-[#f0f0f0] transition-colors">
-                      <PhaseCell 
-                        data={cfg.finales} 
-                        onChange={(d) => handleUpdate(item.discipline, item.element, 'finales', null, d)} 
-                        disciplineColor={getPhaseColor(item.discipline, cfg.finales.lod)}
-                      />
-                    </td>
-                    
-                    <td className="p-2 border-r-2 border-[#1c1c19]/20">
-                      <input type="text" value={cfg.text}
-                        onChange={e => handleUpdate(item.discipline, item.element, 'text', null, e.target.value)}
-                        placeholder="Notas adicionales..."
-                        className="w-full p-1.5 bg-[#fcf9f4] border border-[#1c1c19]/20 hover:border-[#1c1c19]/50 focus:border-[#0f4369] focus:bg-white text-[10px] font-bold placeholder:italic placeholder:font-normal focus:outline-none transition-colors"
-                      />
-                    </td>
-                    <td className="p-2 text-center align-middle">
-                      <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => startEditElement(item.discipline, item.element)} className="text-[#0f4369] hover:bg-blue-100 p-1.5 rounded transition-colors" title="Editar"><Edit2 size={14}/></button>
-                        <button onClick={() => handleDeleteElement(item.discipline, item.element)} className="text-red-600 hover:bg-red-100 p-1.5 rounded transition-colors" title="Eliminar"><Trash2 size={14}/></button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+              ) : (
+                (() => {
+                  const grouped = {};
+                  filtered.forEach(item => {
+                    if (!grouped[item.discipline]) grouped[item.discipline] = [];
+                    grouped[item.discipline].push(item);
+                  });
+
+                  return Object.keys(grouped).map(discipline => (
+                    <React.Fragment key={discipline}>
+                      <tr className="bg-[#e5e2dd] border-y-2 border-[#1c1c19]">
+                        <td colSpan="10" className="p-2 pl-4 text-xs font-black uppercase text-[#1c1c19] tracking-wider">
+                          {discipline}
+                        </td>
+                      </tr>
+                      {grouped[discipline].map((item, index) => {
+                        const key = `${item.discipline}::${item.element}`;
+                        const cfg = matrixData[key]?.parsed || parseNotes('', item.defLods);
+                        
+                        return (
+                          <tr key={index} className="hover:bg-[#f6f3ee]/50 transition-colors bg-white">
+                            <td className="p-2 border-r-2 border-[#1c1c19]/30 text-[10px] font-bold uppercase tracking-tight text-[#1c1c19]">
+                              {item.element}
+                            </td>
+                            <td className="p-1.5 border-r-2 border-[#1c1c19]/30">
+                              <input 
+                                type="text" 
+                                value={cfg.abbreviation}
+                                onChange={e => handleUpdate(item.discipline, item.element, 'abbreviation', null, e.target.value.toUpperCase())}
+                                placeholder="Ej. MUR"
+                                maxLength={6}
+                                className="w-full text-center p-1.5 bg-transparent border border-[#1c1c19]/20 hover:border-[#1c1c19]/50 focus:border-[#0f4369] focus:bg-white text-[10px] font-bold uppercase placeholder:italic placeholder:font-normal placeholder:lowercase focus:outline-none transition-colors"
+                              />
+                            </td>
+                            <PhaseGroup 
+                              data={cfg.esquema} 
+                              onChange={(d) => handleUpdate(item.discipline, item.element, 'esquema', null, d)} 
+                              disciplineColor={getPhaseColor(item.discipline, cfg.esquema.lod)}
+                            />
+                            <PhaseGroup 
+                              data={cfg.anteproyecto} 
+                              onChange={(d) => handleUpdate(item.discipline, item.element, 'anteproyecto', null, d)} 
+                              disciplineColor={getPhaseColor(item.discipline, cfg.anteproyecto.lod)}
+                            />
+                            <PhaseGroup 
+                              data={cfg.finales} 
+                              onChange={(d) => handleUpdate(item.discipline, item.element, 'finales', null, d)} 
+                              disciplineColor={getPhaseColor(item.discipline, cfg.finales.lod)}
+                            />
+                            <td className="p-1.5 border-r-2 border-[#1c1c19]/20">
+                              <input type="text" value={cfg.text}
+                                onChange={e => handleUpdate(item.discipline, item.element, 'text', null, e.target.value)}
+                                placeholder="Notas adicionales..."
+                                className="w-full p-1.5 bg-transparent border border-[#1c1c19]/20 hover:border-[#1c1c19]/50 focus:border-[#0f4369] focus:bg-white text-[10px] font-bold placeholder:italic placeholder:font-normal focus:outline-none transition-colors"
+                              />
+                            </td>
+                            <td className="p-1 text-center align-middle">
+                              <div className="flex items-center justify-center gap-1">
+                                <button onClick={() => startEditElement(item.discipline, item.element)} className="text-[#0f4369] hover:bg-blue-100 p-1 rounded transition-colors" title="Editar"><Edit2 size={12}/></button>
+                                <button onClick={() => handleDeleteElement(item.discipline, item.element)} className="text-red-600 hover:bg-red-100 p-1 rounded transition-colors" title="Eliminar"><Trash2 size={12}/></button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  ));
+                })()
+              )}
             </tbody>
           </table>
         </div>
@@ -580,6 +606,13 @@ export default function LodTdiMatrix({ projectId }) {
       </div>
 
       <TdiReferenceModal isOpen={showTdiModal} onClose={() => setShowTdiModal(false)} />
+      
+      <AiLodTdiFillModal 
+        isOpen={showAiModal} 
+        onClose={() => setShowAiModal(false)} 
+        projectId={projectId}
+        onComplete={() => setReloadKey(prev => prev + 1)}
+      />
 
       {isAdding && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[#1c1c19]/50 backdrop-blur-sm p-4">

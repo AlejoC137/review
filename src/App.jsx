@@ -30,7 +30,9 @@ import ComponentsView from './pages/ComponentsView';
 import ProtocolPrintView from './pages/ProtocolPrintView';
 import AdminPresentationCard from './pages/AdminPresentationCard';
 import PreBEPView from './pages/PreBEPView';
+import LevelsView from './pages/LevelsView';
 import SpecialtiesView from './pages/SpecialtiesView';
+import AreasManagerView from './pages/AreasManagerView';
 
 function App() {
   return (
@@ -72,6 +74,8 @@ function App() {
               <Route path="/planner/:schemaId" element={<PlannerView />} />
 
               <Route path="/pre-bep" element={<PreBEPView />} />
+              <Route path="/levels" element={<LevelsView />} />
+              <Route path="/areas" element={<ProtectedRoute><AreasManagerView /></ProtectedRoute>} />
 
               <Route path="/documents" element={
                 <ProtectedRoute>

@@ -158,6 +158,7 @@ export default function PlannerView() {
                 /* Active Plan View */
                 <div className="flex-1 flex flex-col h-full relative">
                     {/* Internal Navigation Header */}
+                    {!searchParams.get('embedded') && (
                     <div className="z-[160] flex items-center justify-between p-4 bg-white border-b-2 border-[#1c1c19] no-print">
                         <div className="flex items-center gap-4">
                             <button
@@ -223,6 +224,7 @@ export default function PlannerView() {
                             )}
                         </div>
                     </div>
+                    )}
 
                     <div className="flex-1 w-full h-full p-0 bg-[#f6f3ee] flex flex-col items-center overflow-auto">
                         {activePlan.schema_id ? (
@@ -237,8 +239,9 @@ export default function PlannerView() {
                                 ) : (
                                     <div className="w-full max-w-5xl h-full mx-auto p-6 pt-10">
                                         <BimFolderExplorer
-                                            mapData={activePlan.plan_data}
+                                            mapData={activePlan.merged_data}
                                             title={activePlan.name}
+                                            isStatic={searchParams.get('static') === 'true'}
                                         />
                                     </div>
                                 )}

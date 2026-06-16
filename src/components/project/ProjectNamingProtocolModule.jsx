@@ -4,11 +4,13 @@ import {
 } from 'lucide-react';
 import { projectService } from '../../services/projectService';
 import { supabase } from '../../services/supabaseClient';
+import { levelsService } from '../../services/levelsService';
 
 export default function ProjectNamingProtocolModule({ project }) {
   const [specialties, setSpecialties] = useState([]);
   const [matrixElements, setMatrixElements] = useState([]);
   const [pebInfo, setPebInfo] = useState(null);
+  const [levels, setLevels] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [selectedSpecialty, setSelectedSpecialty] = useState('');
@@ -57,14 +59,19 @@ export default function ProjectNamingProtocolModule({ project }) {
         let pebResData = null;
 
         try {
-          const [specsRes, matrixRes, pebRes] = await Promise.all([
+          const [specsRes, matrixRes, pebRes, levelsRes] = await Promise.all([
             projectService.getSpecialties(project.id),
             projectService.getLodTdiMatrix(project.id),
-            supabase.from('project_general_info').select('code').eq('project_id', project.id).maybeSingle()
+            supabase.from('project_general_info').select('code').eq('project_id', project.id).maybeSingle(),
+            levelsService.getLevels(project.id).catch(() => [])
           ]);
           specs = specsRes || [];
           matrixData = matrixRes || [];
           pebResData = pebRes.data;
+          setLevels(levelsRes || []);
+          if (levelsRes && levelsRes.length > 0) {
+            setNivel(levelsRes[0].nombre);
+          }
         } catch (e) {
           console.warn('DB fetch failed, falling back to local storage', e);
         }
@@ -244,7 +251,23 @@ export default function ProjectNamingProtocolModule({ project }) {
                 </div>
                 <div>
                   <label className="text-[10px] font-black uppercase text-[#72777f] mb-2 block">Nivel:</label>
-                  <input type="text" value={nivel} onChange={e => setNivel(e.target.value.toUpperCase())} className="w-full p-2 border-2 border-[#1c1c19] text-xs font-bold uppercase focus:outline-none focus:border-[#0f4369]" placeholder="ZZ" />
+                  {levels && levels.length > 0 ? (
+                    <div className="relative">
+                      <select 
+                        value={nivel} 
+                        onChange={e => setNivel(e.target.value.toUpperCase())}
+                        className="w-full p-2 border-2 border-[#1c1c19] text-xs font-bold uppercase focus:outline-none focus:border-[#0f4369] appearance-none"
+                      >
+                        <option value="ZZ">ZZ (Múltiples / General)</option>
+                        {levels.map(l => (
+                          <option key={l.id} value={l.nombre}>{l.nombre}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-2 top-2.5 h-4 w-4 pointer-events-none text-gray-500" />
+                    </div>
+                  ) : (
+                    <input type="text" value={nivel} onChange={e => setNivel(e.target.value.toUpperCase())} className="w-full p-2 border-2 border-[#1c1c19] text-xs font-bold uppercase focus:outline-none focus:border-[#0f4369]" placeholder="ZZ" />
+                  )}
                 </div>
                 <div>
                   <label className="text-[10px] font-black uppercase text-[#72777f] mb-2 block">Tipo:</label>

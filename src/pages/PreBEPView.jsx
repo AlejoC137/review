@@ -11,6 +11,7 @@ import { supabase } from '../services/supabaseClient';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import ContentBlockEditor from '../components/modules/ContentBlockEditor';
+import PreBEPCdeTree from '../components/project/PreBEPCdeTree';
 
 // Helper para limpiar objetos de cualquier UUID o campo ID
 const cleanObjectFromUuids = (obj) => {
@@ -154,6 +155,8 @@ const PROJECT_TABS_OPTIONS = [
   { label: 'DIRECTORIO', url: '?tab=directorio' },
   
   // Adicionales
+  { label: 'NIVELES', url: '/levels' },
+  { label: 'GESTOR DE ÁREAS', url: '/areas' },
   { label: 'CURSOS / CAPACITACIÓN', url: '/roadmap' },
   { label: 'PROYECTO - MATRIZ LOD/TDI', url: '?tab=datos&subtab=lod_tdi' }, // Keep for legacy
   { label: 'GLOBAL - DICCIONARIO BIM', url: '/dictionary' },
@@ -205,7 +208,7 @@ const EditableTabLink = ({ projectId, sectionId, defaultLabel, defaultUrl }) => 
     if (currentUrl.startsWith('?')) {
       return `/project/${projectId}${currentUrl}`;
     }
-    const projectRoutes = ['/pre-bep', '/materials', '/documents', '/esquemas', '/planner'];
+    const projectRoutes = ['/pre-bep', '/materials', '/documents', '/esquemas', '/planner', '/levels', '/areas'];
     if (projectRoutes.includes(currentUrl)) {
       return `${currentUrl}?projectId=${projectId}`;
     }
@@ -269,6 +272,7 @@ export default function PreBEPView() {
       directorio: true,
       requisitos: true,
       lod_tdi: true,
+      cde: true,
       protocolos: true,
       materiales: true,
       documentos: true,
@@ -306,6 +310,7 @@ export default function PreBEPView() {
     software: "Software y Plataformas",
     requisitos: "Requisitos de Información",
     lod_tdi: "Matriz de Entregables (LOD/TDI)",
+    cde: "Entorno Común de Datos (CDE)",
     protocolos: "Protocolos",
     materiales: "Base de Datos de Materiales",
     documentos: "Documentos Generales",
@@ -317,7 +322,7 @@ export default function PreBEPView() {
 
   const defaultChapterOrder = [
     'datos', 'unidades', 'directorio', 'software', 'requisitos', 'lod_tdi',
-    'protocolos', 'materiales', 'documentos', 'calendario', 'esquemas',
+    'cde', 'protocolos', 'materiales', 'documentos', 'calendario', 'esquemas',
     'objetivos', 'cronograma_entregas'
   ];
 
@@ -368,6 +373,84 @@ export default function PreBEPView() {
 
   const [selectedExplorerTable, setSelectedExplorerTable] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const [customSections, setCustomSections] = useState(() => {
+    const saved = localStorage.getItem(`prebep_custom_sections_${projectId}`);
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [customImportTable, setCustomImportTable] = useState('');
+  const [customImportSelectedIds, setCustomImportSelectedIds] = useState([]);
+  const [customImportSearchQuery, setCustomImportSearchQuery] = useState('');
+
+  const getChapterLabel = (key) => {
+    if (key.startsWith('custom_')) {
+      const sec = customSections.find(s => s.id === key);
+      return sec ? sec.title : 'SECCIÓN IMPORTADA';
+    }
+    return CHAPTER_LABELS[key] || 'DESCONOCIDO';
+  };
+
+  const handleAddCustomSection = () => {
+    if (!customImportTable || customImportSelectedIds.length === 0) return;
+    
+    const tableData = dbData[customImportTable]?.records || [];
+    
+    const newSections = [];
+    const newIds = [];
+    const newVisibilities = {};
+    
+    customImportSelectedIds.forEach((recordId, i) => {
+      const record = tableData.find(r => r.id === recordId);
+      if (!record) return;
+
+      const title = record.name || record.title || record.Nombre || record.tarea || record.descripcion || `Registro de ${TABLE_METADATA[customImportTable]?.displayName || customImportTable}`;
+      
+      const newId = `custom_${Date.now()}_${i}`;
+      newSections.push({
+        id: newId,
+        table: customImportTable,
+        recordId: recordId,
+        title: title
+      });
+      newIds.push(newId);
+      newVisibilities[newId] = true;
+    });
+
+    if (newSections.length === 0) return;
+
+    setCustomSections(prev => {
+      const updated = [...prev, ...newSections];
+      localStorage.setItem(`prebep_custom_sections_${projectId}`, JSON.stringify(updated));
+      return updated;
+    });
+
+    setChapterOrder(prev => {
+      const newOrder = [...prev, ...newIds];
+      localStorage.setItem(`prebep_chapter_order_${projectId}`, JSON.stringify(newOrder));
+      return newOrder;
+    });
+
+    setChapterVisibility(prev => {
+      const next = { ...prev, ...newVisibilities };
+      localStorage.setItem(`prebep_chapter_visibility_${projectId}`, JSON.stringify(next));
+      return next;
+    });
+
+    setCustomImportSelectedIds([]);
+  };
+
+  const handleRemoveCustomSection = (key) => {
+    setCustomSections(prev => {
+      const updated = prev.filter(s => s.id !== key);
+      localStorage.setItem(`prebep_custom_sections_${projectId}`, JSON.stringify(updated));
+      return updated;
+    });
+    setChapterOrder(prev => {
+      const updated = prev.filter(k => k !== key);
+      localStorage.setItem(`prebep_chapter_order_${projectId}`, JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   // Structured data states (Unified from BimPreBEPDocument)
   const [project, setProject] = useState(null);
@@ -818,6 +901,17 @@ export default function PreBEPView() {
       // Descargar datos de todas las tablas para el Explorador Interactivo
       const dataPromises = (tables || []).map(async (table) => {
         try {
+          if (table === 'resources') {
+            const { data } = await supabase.from('resources').select('*').order('created_at', { ascending: false });
+            const { data: blocksData } = await supabase.from('resource_content_blocks').select('*').order('sort_order', { ascending: true });
+            
+            const resourcesWithBlocks = (data || []).map(r => ({
+              ...r,
+              blocks: (blocksData || []).filter(b => b.resource_id === r.id)
+            }));
+            
+            return { table, records: resourcesWithBlocks, error: null };
+          }
           const records = await databaseReportService.getTableData(table, projectId);
           return { table, records, error: null };
         } catch (err) {
@@ -973,7 +1067,71 @@ export default function PreBEPView() {
     );
   };
 
+  let tableCounter = 1;
+  const activeTables = [];
+  
+  chapterOrder.filter(k => chapterVisibility[k]).forEach(key => {
+      if (key.startsWith('custom_')) {
+          const customSec = customSections.find(s => s.id === key);
+          if (customSec) {
+              const tableData = dbData[customSec.table]?.records || [];
+              const record = tableData.find(r => r.id === customSec.recordId);
+              if (record && !(customSec.table === 'resources' && record.blocks && record.blocks.length > 0)) {
+                  activeTables.push({
+                      id: key,
+                      title: `INFORMACIÓN DE ${TABLE_METADATA[customSec.table]?.displayName || customSec.table}: ${customSec.title}`,
+                      number: tableCounter++
+                  });
+              }
+          }
+      } else {
+          switch(key) {
+              case 'datos':
+                  activeTables.push({ id: 'datos_gral', title: 'INFORMACIÓN GENERAL', number: tableCounter++ });
+                  if (pebInfo) activeTables.push({ id: 'datos_areas', title: 'ÁREAS DEL PROYECTO', number: tableCounter++ });
+                  break;
+              case 'unidades':
+                  if (spaces.length > 0) activeTables.push({ id: 'unidades_subproyectos', title: 'SUB PROYECTOS / FASES', number: tableCounter++ });
+                  break;
+              case 'directorio':
+                  if (bepTeam.length > 0) activeTables.push({ id: 'directorio_bep', title: 'EQUIPO BIM (BEP TEAM)', number: tableCounter++ });
+                  if (staff.length > 0) activeTables.push({ id: 'directorio_staff', title: 'DIRECTORIO INTERNO (STAFF)', number: tableCounter++ });
+                  if (contacts.length > 0) activeTables.push({ id: 'directorio_contactos', title: 'DIRECTORIO EXTERNO (CONTACTOS)', number: tableCounter++ });
+                  if (specialties.length > 0) activeTables.push({ id: 'directorio_especialidades', title: 'CATÁLOGO DE ESPECIALIDADES', number: tableCounter++ });
+                  break;
+              case 'software':
+                  if (software.length > 0) activeTables.push({ id: 'software_tabla', title: 'SOFTWARE Y PLATAFORMAS', number: tableCounter++ });
+                  break;
+              case 'lod_tdi':
+                  if (lodTdi.length > 0) activeTables.push({ id: 'lod_tdi_matriz', title: 'MATRIZ LOD / TDI', number: tableCounter++ });
+                  activeTables.push({ id: 'lod_tdi_ref', title: 'MATRIZ REFERENCIAL TDI POR NIVEL LOD', number: tableCounter++ });
+                  break;
+              case 'materiales':
+                  if (materials.length > 0) activeTables.push({ id: 'materiales_tabla', title: 'BASE DE DATOS DE MATERIALES', number: tableCounter++ });
+                  break;
+              case 'calendario':
+                  if (tasks.length > 0) activeTables.push({ id: 'calendario_tabla', title: 'CALENDARIO DE TAREAS', number: tableCounter++ });
+                  break;
+              case 'objetivos':
+                  if (objectives.length > 0) activeTables.push({ id: 'objetivos_tabla', title: 'OBJETIVOS DEL PROYECTO', number: tableCounter++ });
+                  if (bimUses.length > 0) activeTables.push({ id: 'objetivos_usos', title: 'USOS BIM', number: tableCounter++ });
+                  break;
+              case 'cronograma_entregas':
+                  if (deliverables.length > 0) activeTables.push({ id: 'entregas_tabla', title: 'CRONOGRAMA DE ENTREGAS', number: tableCounter++ });
+                  break;
+          }
+      }
+  });
+
+  const renderTableTitle = (id) => {
+      const table = activeTables.find(t => t.id === id);
+      if (!table) return null;
+      return <div className="text-[10px] font-bold uppercase text-[#0f4369] mb-2 tracking-widest border-b border-[#0f4369]/20 pb-1 mt-4">Tabla {table.number}: {table.title}</div>;
+  };
+
   const renderSubproyectosTable = () => (
+    <div className="w-full mb-8">
+      {renderTableTitle('unidades_subproyectos')}
     <table className="w-full text-xs border-collapse border border-gray-300 table-fixed">
       <thead className="bg-[#f6f3ee]">
         <tr>
@@ -990,9 +1148,12 @@ export default function PreBEPView() {
         ))}
       </tbody>
     </table>
+    </div>
   );
 
   const renderEquipoTable = () => (
+    <div className="w-full mb-8">
+      {renderTableTitle('directorio_bep')}
     <table className="w-full text-xs border-collapse border border-gray-300 mb-8 table-fixed">
       <thead className="bg-[#1c1c19] text-white">
         <tr>
@@ -1021,9 +1182,12 @@ export default function PreBEPView() {
         })}
       </tbody>
     </table>
+    </div>
   );
 
-  const renderDirectorioTable = (dataArray) => (
+  const renderDirectorioTable = (dataArray, tableId) => (
+    <div className="w-full mb-6">
+      {renderTableTitle(tableId)}
     <table className="w-full text-xs border-collapse border border-gray-300 table-fixed mb-6">
       <thead className="bg-[#f6f3ee]">
         <tr>
@@ -1044,32 +1208,258 @@ export default function PreBEPView() {
         ))}
       </tbody>
     </table>
+    </div>
   );
 
-  const renderLodTable = () => (
-    <table className="w-full text-xs border-collapse border border-gray-300 table-fixed">
-      <thead className="bg-[#1c1c19] text-white">
-        <tr>
-          {lodVisibleColumns.map(col => (
-            <th key={col} className="p-2 border-r border-gray-600 text-left uppercase">{col}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {lodTdi.map((row, i) => (
-          <tr key={i} className="border-b border-gray-200 even:bg-gray-50">
-            {lodVisibleColumns.map(col => (
-              <td key={col} className={`p-2 uppercase break-words ${col === 'lod' ? 'text-center font-mono font-bold text-[#0f4369]' : col === 'tdi' ? 'text-center font-mono font-bold text-[#ba1a1a]' : ''}`}>
-                {renderObjectOrValue(row[col])}
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
+  const renderTdiReferenceMatrix = () => {
+    const TDI_LETTERS = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O'];
+    const TDI_MAPPING = {
+      100: ['A','B','C','F','G','H','I','J','K','L','N'],
+      200: ['A','B','C','D','F','G','H','I','J','K','L','N'],
+      300: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N'],
+      400: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N']
+    };
+
+    return (
+      <div className="mt-8 mb-6 w-full">
+        {renderTableTitle('lod_tdi_ref')}
+        <h3 className="font-bold text-sm mb-3 uppercase tracking-wider text-[#1c1c19]">&bull; MATRIZ REFERENCIAL TDI POR NIVEL LOD</h3>
+        <table className="w-full text-center border-collapse border-2 border-[#1c1c19]">
+          <thead>
+            <tr className="bg-[#f6f3ee] border-b-2 border-[#1c1c19]">
+              <th className="p-2 border-r-2 border-[#1c1c19] font-black text-xs uppercase">Nivel LOD</th>
+              {TDI_LETTERS.map(l => (
+                <th key={l} className="p-2 border-r border-[#1c1c19]/20 font-mono font-bold text-xs">{l}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {[100, 200, 300, 400].map(lod => {
+              const activeSet = TDI_MAPPING[lod] || [];
+              return (
+                <tr key={lod} className="border-b border-[#1c1c19]/20 bg-white">
+                  <td className="p-2 border-r-2 border-[#1c1c19] font-black text-sm text-[#0f4369]">LOD {lod}</td>
+                  {TDI_LETTERS.map(l => {
+                    const isActive = activeSet.includes(l);
+                    return (
+                      <td key={l} className="p-2 border-r border-[#1c1c19]/20">
+                        {isActive ? (
+                          <div className="w-3 h-3 rounded-full bg-red-500 mx-auto shadow-[1px_1px_0_0_rgba(0,0,0,1)]"></div>
+                        ) : (
+                          <span className="text-[10px] text-gray-300 font-black">N/A</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <div className="mt-4 text-[9px] text-gray-500 font-bold uppercase tracking-wider text-left">
+          * El punto rojo indica que el requerimiento de información TDI es exigible para dicho nivel LOD según el estándar del proyecto. El TDI del nivel 350 es idéntico al 300.
+        </div>
+      </div>
+    );
+  };
+
+  const STATIC_ELEMENTS = [
+    { discipline: 'Espacial', element: 'Ejes', defLods: { esq: 200, ant: 300, proy: 350 } },
+    { discipline: 'Espacial', element: 'Niveles', defLods: { esq: 200, ant: 300, proy: 350 } },
+    { discipline: 'Espacial', element: 'Zonas', defLods: { esq: 200, ant: 300, proy: 350 } },
+    { discipline: 'Espacial', element: 'Espacios, habitaciones', defLods: { esq: 200, ant: 300, proy: 350 } },
+    { discipline: 'Sitio', element: 'Topografía', defLods: { esq: 200, ant: 300, proy: 350 } },
+    { discipline: 'Sitio', element: 'Excavación', defLods: { esq: 200, ant: 300, proy: 350 } },
+    { discipline: 'Cimentación', element: 'Zapatas', defLods: { esq: 200, ant: 300, proy: 350 } },
+    { discipline: 'Cimentación', element: 'Muros de contención', defLods: { esq: 200, ant: 300, proy: 350 } },
+    { discipline: 'Cimentación', element: 'Pilotes', defLods: { esq: 200, ant: 300, proy: 350 } },
+    { discipline: 'Estructura', element: 'Losas', defLods: { esq: 200, ant: 300, proy: 350 } },
+    { discipline: 'Estructura', element: 'Vigas', defLods: { esq: 200, ant: 300, proy: 350 } },
+    { discipline: 'Estructura', element: 'Columnas', defLods: { esq: 200, ant: 300, proy: 350 } },
+    { discipline: 'Estructura', element: 'Muros', defLods: { esq: 200, ant: 300, proy: 350 } },
+    { discipline: 'Estructura', element: 'Escaleras', defLods: { esq: 200, ant: 300, proy: 350 } },
+    { discipline: 'Envolvente', element: 'Cubierta', defLods: { esq: 300, ant: 300, proy: 350 } },
+    { discipline: 'Envolvente', element: 'Ventanas', defLods: { esq: 300, ant: 300, proy: 350 } },
+    { discipline: 'Envolvente', element: 'Puertas, aberturas', defLods: { esq: 300, ant: 300, proy: 350 } },
+    { discipline: 'Interiorismo', element: 'Particiones', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Interiorismo', element: 'Puertas, aberturas', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Interiorismo', element: 'Falso techo', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Interiorismo', element: 'Pisos', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Interiorismo', element: 'Mobiliario', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Plomería', element: 'Tuberías', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Plomería', element: 'Accesorios', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Plomería', element: 'Equipos', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Plomería', element: 'Mobiliario', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Eléctrica y Comunicación', element: 'Tuberías', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Eléctrica y Comunicación', element: 'Accesorios', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Eléctrica y Comunicación', element: 'Cables', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Eléctrica y Comunicación', element: 'Luminarias', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Eléctrica y Comunicación', element: 'Equipos', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Seguridad y Control', element: 'Tuberías', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Seguridad y Control', element: 'Accesorios', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Seguridad y Control', element: 'Cables', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Seguridad y Control', element: 'Luminarias', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'Seguridad y Control', element: 'Equipos', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'HVAC', element: 'Tubería', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'HVAC', element: 'Accesorios', defLods: { esq: '', ant: 300, proy: 350 } },
+    { discipline: 'HVAC', element: 'Equipos', defLods: { esq: '', ant: 300, proy: 350 } }
+  ];
+
+  const renderLodTable = () => {
+    // Agrupar lodTdi por disciplina
+    const grouped = {};
+    lodTdi.forEach(item => {
+      const disc = item.discipline || 'Otras';
+      if (!grouped[disc]) grouped[disc] = [];
+      grouped[disc].push(item);
+    });
+
+    const getPhaseColor = (discipline, lod) => {
+      if (!lod) return 'bg-transparent';
+      const disc = (discipline || '').toLowerCase();
+      if (['espacial', 'sitio', 'envolvente', 'interiorismo'].includes(disc)) {
+        return 'bg-[#bfd4e7]';
+      }
+      if (['cimentación', 'estructura'].includes(disc)) {
+        return 'bg-[#d6e3c8]';
+      }
+      if (['plomería', 'eléctrica y comunicación', 'seguridad y control', 'hvac'].includes(disc)) {
+        return 'bg-[#f4e29e]';
+      }
+      return 'bg-[#a3a3a3]';
+    };
+
+    const parseNotes = (notesString, staticEl) => {
+      const defaultLods = staticEl?.defLods;
+      const def = {
+        esquema: { aem: '', lod: defaultLods?.esq || '' },
+        anteproyecto: { aem: '', lod: defaultLods?.ant || '' },
+        finales: { aem: '', lod: defaultLods?.proy || '' },
+        text: '',
+        abbreviation: ''
+      };
+      if (!notesString) return def;
+
+      let parsed = null;
+      if (typeof notesString === 'object') {
+        parsed = notesString;
+      } else if (typeof notesString === 'string') {
+        try {
+          if (notesString.trim().startsWith('{')) {
+            parsed = JSON.parse(notesString);
+          }
+        } catch (e) {}
+      }
+
+      if (parsed) {
+        return {
+          esquema: parsed.esquema || def.esquema,
+          anteproyecto: parsed.anteproyecto || def.anteproyecto,
+          finales: parsed.finales || def.finales,
+          text: parsed.text || '',
+          abbreviation: parsed.abbreviation || ''
+        };
+      }
+
+      return { ...def, text: typeof notesString === 'string' ? notesString : '' };
+    };
+
+    return (
+      <div className="mb-8 w-full">
+        {renderTableTitle('lod_tdi_matriz')}
+      <div className="bg-white border-2 border-[#1c1c19] overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[900px]">
+            <thead>
+              <tr>
+                <th colSpan="2" className="bg-[#fcf9f4] border-b-2 border-r-2 border-[#1c1c19] p-2 text-center text-[10px] font-black text-transparent select-none">-</th>
+                <th colSpan="6" className="bg-[#e5e2dd] border-b-2 border-r-2 border-[#1c1c19] p-2 text-center text-[10px] font-black tracking-widest text-[#0f4369] uppercase border-l-2">
+                  Fases del Proyecto
+                </th>
+                <th className="bg-[#fcf9f4] border-b-2 border-[#1c1c19] p-2 text-center text-[10px] font-black text-transparent select-none">-</th>
+              </tr>
+              <tr className="bg-[#1c1c19] text-white font-mono text-[10px] tracking-wider uppercase">
+                <th className="p-3 w-[22%] border-r-2 border-[#1c1c19] align-bottom" rowSpan="2">Elemento del modelo</th>
+                <th className="p-3 w-[8%] border-r-2 border-[#1c1c19] align-bottom text-center" rowSpan="2">Código</th>
+                <th className="p-2 border-r-2 border-[#1c1c19] text-center border-b border-white/20" colSpan="2">Esquema Básico</th>
+                <th className="p-2 border-r-2 border-[#1c1c19] text-center border-b border-white/20" colSpan="2">Anteproyecto</th>
+                <th className="p-2 border-r-2 border-[#1c1c19] text-center border-b border-white/20" colSpan="2">Proy/Finales</th>
+                <th className="p-3 w-[22%] align-bottom" rowSpan="2">Notas</th>
+              </tr>
+              <tr className="bg-[#2c2c29] text-white/80 font-mono text-[9px] tracking-widest uppercase">
+                <th className="p-1.5 w-[6%] border-r border-[#1c1c19]/30 text-center">AEM</th>
+                <th className="p-1.5 w-[6%] border-r-2 border-[#1c1c19] text-center">LOD</th>
+                <th className="p-1.5 w-[6%] border-r border-[#1c1c19]/30 text-center">AEM</th>
+                <th className="p-1.5 w-[6%] border-r-2 border-[#1c1c19] text-center">LOD</th>
+                <th className="p-1.5 w-[6%] border-r border-[#1c1c19]/30 text-center">AEM</th>
+                <th className="p-1.5 w-[6%] border-r-2 border-[#1c1c19] text-center">LOD</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#1c1c19]/15">
+              {Object.keys(grouped).map(discipline => (
+                <React.Fragment key={discipline}>
+                  <tr className="bg-[#e5e2dd] border-y-2 border-[#1c1c19]">
+                    <td colSpan="9" className="p-2 pl-4 text-xs font-black uppercase text-[#1c1c19] tracking-wider">
+                      {discipline}
+                    </td>
+                  </tr>
+                  {grouped[discipline].map((item, index) => {
+                    const staticEl = STATIC_ELEMENTS.find(el => el.discipline === discipline && el.element === item.element_name);
+                    const cfg = parseNotes(item.notes, staticEl);
+                    return (
+                      <tr key={index} className="hover:bg-[#f6f3ee]/50 transition-colors bg-white">
+                        <td className="p-2 border-r-2 border-[#1c1c19]/30 text-[10px] font-bold uppercase tracking-tight text-[#1c1c19]">
+                          {item.element_name}
+                        </td>
+                        <td className="p-1.5 border-r-2 border-[#1c1c19]/30 text-center text-[10px] font-bold uppercase text-[#1c1c19]">
+                          <span className="px-1.5 py-0.5 border border-[#1c1c19]/20 bg-white">
+                            {cfg.abbreviation || '-'}
+                          </span>
+                        </td>
+                        
+                        {/* Esquema */}
+                        <td className={`p-1.5 border-r border-[#1c1c19]/20 text-center text-[10px] font-bold uppercase text-[#1c1c19] ${getPhaseColor(item.discipline, cfg.esquema.lod)}`}>
+                          {cfg.esquema.aem || ''}
+                        </td>
+                        <td className="p-1.5 border-r-2 border-[#1c1c19]/30 text-center text-[11px] font-mono font-black text-[#0f4369]">
+                          {cfg.esquema.lod || ''}
+                        </td>
+                        
+                        {/* Anteproyecto */}
+                        <td className={`p-1.5 border-r border-[#1c1c19]/20 text-center text-[10px] font-bold uppercase text-[#1c1c19] ${getPhaseColor(item.discipline, cfg.anteproyecto.lod)}`}>
+                          {cfg.anteproyecto.aem || ''}
+                        </td>
+                        <td className="p-1.5 border-r-2 border-[#1c1c19]/30 text-center text-[11px] font-mono font-black text-[#0f4369]">
+                          {cfg.anteproyecto.lod || ''}
+                        </td>
+                        
+                        {/* Finales */}
+                        <td className={`p-1.5 border-r border-[#1c1c19]/20 text-center text-[10px] font-bold uppercase text-[#1c1c19] ${getPhaseColor(item.discipline, cfg.finales.lod)}`}>
+                          {cfg.finales.aem || ''}
+                        </td>
+                        <td className="p-1.5 border-r-2 border-[#1c1c19]/30 text-center text-[11px] font-mono font-black text-[#0f4369]">
+                          {cfg.finales.lod || ''}
+                        </td>
+
+                        <td className="p-2 text-[9px] text-[#1c1c19] italic">
+                          {cfg.text || ''}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      </div>
+    );
+  };
 
   const renderMaterialesTable = () => (
+    <div className="w-full mb-8">
+      {renderTableTitle('materiales_tabla')}
     <table className="w-full text-[9px] border-collapse border border-gray-300 table-fixed">
       <thead className="bg-[#f6f3ee]">
         <tr>
@@ -1098,9 +1488,12 @@ export default function PreBEPView() {
         ))}
       </tbody>
     </table>
+    </div>
   );
 
   const renderCalendarioTable = () => (
+    <div className="w-full mb-8">
+      {renderTableTitle('calendario_tabla')}
     <table className="w-full text-xs border-collapse border border-gray-300 table-fixed">
       <thead className="bg-[#1c1c19] text-white">
         <tr>
@@ -1123,9 +1516,12 @@ export default function PreBEPView() {
         ))}
       </tbody>
     </table>
+    </div>
   );
 
   const renderSoftwareTable = () => (
+    <div className="w-full mb-8">
+      {renderTableTitle('software_tabla')}
     <table className="w-full text-xs border-collapse border border-gray-300 table-fixed">
       <thead className="bg-[#1c1c19] text-white">
         <tr>
@@ -1144,9 +1540,12 @@ export default function PreBEPView() {
         ))}
       </tbody>
     </table>
+    </div>
   );
 
   const renderObjetivosTable = () => (
+    <div className="w-full mb-8">
+      {renderTableTitle('objetivos_tabla')}
     <table className="w-full text-xs border-collapse border border-gray-300 table-fixed">
       <thead className="bg-[#1c1c19] text-white">
         <tr>
@@ -1168,9 +1567,12 @@ export default function PreBEPView() {
         })}
       </tbody>
     </table>
+    </div>
   );
 
   const renderUsosBIMTable = () => (
+    <div className="w-full mb-8">
+      {renderTableTitle('objetivos_usos')}
     <table className="w-full text-xs border-collapse border border-gray-300 table-fixed">
       <thead className="bg-[#1c1c19] text-white">
         <tr>
@@ -1189,9 +1591,12 @@ export default function PreBEPView() {
         ))}
       </tbody>
     </table>
+    </div>
   );
 
   const renderEntregasTable = () => (
+    <div className="w-full mb-8">
+      {renderTableTitle('entregas_tabla')}
     <table className="w-full text-xs border-collapse border border-gray-300 table-fixed">
       <thead className="bg-[#1c1c19] text-white">
         <tr>
@@ -1210,6 +1615,7 @@ export default function PreBEPView() {
         ))}
       </tbody>
     </table>
+    </div>
   );
 
   const getChapterNum = (key) => {
@@ -1270,10 +1676,21 @@ export default function PreBEPView() {
               <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">ÍNDICE DE CONTENIDO</h2>
               <ul className="list-none space-y-2 text-xs font-bold uppercase tracking-widest pl-4 border-l-4 border-[#0f4369]">
                 {chapterOrder.filter(k => chapterVisibility[k]).map((k) => (
-                  <li key={k}>{getChapterNum(k)}. {CHAPTER_LABELS[k]}</li>
+                  <li key={k}>{getChapterNum(k)}. {getChapterLabel(k)}</li>
                 ))}
               </ul>
             </section>
+            
+            {activeTables.length > 0 && (
+              <section className="mb-8 w-full">
+                <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">ÍNDICE DE TABLAS</h2>
+                <ul className="list-none space-y-2 text-xs font-bold uppercase tracking-widest pl-4 border-l-4 border-amber-500">
+                  {activeTables.map((t) => (
+                    <li key={t.id} className="text-[#1c1c19]">TABLA {t.number}: <span className="font-medium text-[#0f4369]">{t.title}</span></li>
+                  ))}
+                </ul>
+              </section>
+            )}
             <div className="w-full border-t border-dashed border-gray-400 my-8"></div>
           </div>
         )}
@@ -1281,11 +1698,85 @@ export default function PreBEPView() {
         {/* Renderizado Dinámico de Capítulos */}
         {chapterOrder.filter(k => chapterVisibility[k]).map((key, index, array) => {
           let chapterContent = null;
-          switch(key) {
+          
+          if (key.startsWith('custom_')) {
+            const customSec = customSections.find(s => s.id === key);
+            if (customSec) {
+              const tableData = dbData[customSec.table]?.records || [];
+              const record = tableData.find(r => r.id === customSec.recordId);
+              
+              chapterContent = (
+                <section className="w-full">
+                  <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">
+                    {getChapterNum(key)}. {customSec.title}
+                  </h2>
+                  {record ? (() => {
+                    const visibleEntries = Object.entries(record).filter(([k, value]) => {
+                      const keyLower = k.toLowerCase();
+                      const isId = keyLower === 'id' || keyLower.endsWith('_id') || keyLower.endsWith('id') || keyLower.includes('uuid') || keyLower === 'key' || /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(String(value));
+                      const isMeta = ['blocks', 'created_at', 'updated_at', 'created_by', 'updated_by', 'title', 'name'].includes(keyLower);
+                      return !isId && !isMeta && value !== null && value !== undefined && value !== '';
+                    });
+
+                    return (
+                      <>
+                        {customSec.table === 'resources' && record.blocks && record.blocks.length > 0 && (
+                          <div className="prose prose-sm max-w-none prose-headings:font-black prose-headings:uppercase prose-headings:tracking-tight prose-a:text-[#0f4369] mb-8">
+                            <ContentBlockEditor blocks={record.blocks} isEditing={false} onChange={() => {}} onUploadImage={() => {}} />
+                          </div>
+                        )}
+                        {customSec.table !== 'resources' && visibleEntries.length > 0 && (
+                          <div className="mb-8 w-full">
+                            {renderTableTitle(key)}
+                            <table className="w-full text-xs border-collapse mb-8 border border-gray-300 table-fixed">
+                              <tbody>
+                                <tr className="bg-[#f6f3ee]">
+                                  <th colSpan="2" className="text-left p-2.5 font-bold tracking-widest uppercase border-b border-gray-300">
+                                    INFORMACIÓN DE {TABLE_METADATA[customSec.table]?.displayName || customSec.table}
+                                  </th>
+                                </tr>
+                                {visibleEntries.map(([k, value]) => (
+                                  <tr key={k} className="border-b border-gray-200">
+                                    <td className="p-2.5 font-semibold w-1/3 bg-gray-50 border-r border-gray-200 uppercase break-all">{k}</td>
+                                    <td className="p-2.5 font-medium break-words overflow-hidden">{renderObjectOrValue(value)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })() : (
+                    <p className="text-xs text-red-500 italic mb-8 p-4 border border-red-200 bg-red-50">No se encontraron datos para esta sección importada.</p>
+                  )}
+
+                  {customSec.table === 'resources' ? (
+                    <EditableTabLink 
+                      projectId={projectId} 
+                      sectionId={key} 
+                      defaultLabel={`RECURSO: ${customSec.title}`} 
+                      defaultUrl={`/resourceView/${customSec.recordId}`} 
+                    />
+                  ) : (
+                    <EditableTabLink 
+                      projectId={projectId} 
+                      sectionId={key} 
+                      defaultLabel={`EXPLORADOR: ${TABLE_METADATA[customSec.table]?.displayName || customSec.table}`} 
+                      defaultUrl={`?tab=datos&subtab=explorador`} 
+                    />
+                  )}
+                </section>
+              );
+            }
+          } else {
+            switch(key) {
             case 'datos':
               chapterContent = (
                 <section className="w-full">
                   <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">{getChapterNum('datos')}. DATOS DEL PROYECTO</h2>
+                  <div className="mb-8 w-full">
+                    {renderTableTitle('datos_gral')}
                   <table className="w-full text-xs border-collapse mb-8 border border-gray-300 table-fixed">
                     <tbody>
                       <tr className="bg-[#f6f3ee]">
@@ -1305,8 +1796,11 @@ export default function PreBEPView() {
                       })}
                     </tbody>
                   </table>
+                  </div>
 
                   {pebInfo && (
+                    <div className="mb-8 w-full">
+                      {renderTableTitle('datos_areas')}
                     <table className="w-full text-xs border-collapse mb-8 border border-gray-300 table-fixed">
                       <tbody>
                         <tr className="bg-[#f6f3ee]">
@@ -1348,6 +1842,7 @@ export default function PreBEPView() {
                         </tr>
                       </tbody>
                     </table>
+                    </div>
                   )}
 
                   <EditableTabLink projectId={projectId} sectionId="datos" defaultLabel="DATOS DEL PROYECTO" defaultUrl="?tab=datos" />
@@ -1381,16 +1876,18 @@ export default function PreBEPView() {
 
                   <h3 className="font-bold text-sm mb-3 uppercase tracking-wider text-[#1c1c19]">&bull; Directorio Interno (Staff)</h3>
                   {staff.length > 0 ? (
-                    renderDirectorioTable(staff)
+                    renderDirectorioTable(staff, 'directorio_staff')
                   ) : <p className="text-xs text-gray-500 italic uppercase mb-6">Sin directorio interno.</p>}
 
                   <h3 className="font-bold text-sm mb-3 mt-6 uppercase tracking-wider text-[#1c1c19]">&bull; Directorio Externo (Contactos)</h3>
                   {contacts.length > 0 ? (
-                    renderDirectorioTable(contacts)
+                    renderDirectorioTable(contacts, 'directorio_contactos')
                   ) : <p className="text-xs text-gray-500 italic uppercase mb-6">Sin contactos externos.</p>}
 
                   <h3 className="font-bold text-sm mb-3 mt-6 uppercase tracking-wider text-[#1c1c19]">&bull; Catálogo de Especialidades</h3>
                   {specialties.length > 0 ? (
+                    <div className="mb-8 w-full">
+                      {renderTableTitle('directorio_especialidades')}
                     <table className="w-full text-xs border-collapse border border-gray-300 table-fixed mb-6">
                       <thead className="bg-[#f6f3ee]">
                         <tr>
@@ -1416,6 +1913,7 @@ export default function PreBEPView() {
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   ) : <p className="mb-8 text-xs text-gray-500 italic uppercase">Sin especialidades registradas.</p>}
 
                   <EditableTabLink projectId={projectId} sectionId="directorio" defaultLabel="DIRECTORIO" defaultUrl="?tab=directorio" />
@@ -1464,7 +1962,40 @@ export default function PreBEPView() {
                       {renderLodTable()}
                     </>
                   ) : <p className="text-xs text-gray-500 italic uppercase">Sin entregables registrados.</p>}
+                  
+                  {renderTdiReferenceMatrix()}
+
                   <EditableTabLink projectId={projectId} sectionId="lod_tdi" defaultLabel="DATOS DEL PROYECTO - LOD/TDI" defaultUrl="?tab=datos&subtab=lod_tdi" />
+                </section>
+              );
+              break;
+
+            case 'cde':
+              chapterContent = (
+                <section className="w-full break-inside-avoid">
+                  <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">
+                    {getChapterNum('cde')}. ENTORNO COMÚN DE DATOS (CDE)
+                  </h2>
+                  <p className="text-[9px] text-gray-500 mb-4 uppercase tracking-widest border-l-2 border-amber-400 pl-3">
+                    ESTRUCTURA DEL ENTORNO COMÚN DE DATOS (CDE) BASADO EN ISO 19650 ASOCIADO A ESTE PROYECTO.
+                  </p>
+                  
+                  {plans.length > 0 ? (
+                    <div className="space-y-6 w-full">
+                      {plans.map((plan, i) => (
+                        <div key={i} className="w-full">
+                          <h3 className="font-bold text-sm mb-2 uppercase tracking-wider text-[#1c1c19]">&bull; {plan.name}</h3>
+                          <PreBEPCdeTree plan={plan} />
+                          <a href={`/planner/${plan.id}?tab=explorer`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-[#0f4369] hover:underline font-bold uppercase flex items-center gap-2">
+                             Abrir Explorador Interactivo en nueva pestaña
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500 italic uppercase">No se encontró un plan o esquema CDE asociado al proyecto.</p>
+                  )}
+                  <EditableTabLink projectId={projectId} sectionId="cde" defaultLabel="EXPLORADOR CDE" defaultUrl="/planner" />
                 </section>
               );
               break;
@@ -1534,8 +2065,7 @@ export default function PreBEPView() {
                             ) : (
                               <div className="text-[11px] leading-relaxed font-sans text-slate-700 markdown-content prose max-w-none break-words">
                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                  {(p.content || p.body || p.description || '').replace(/\n/g, '
-')}
+                                  {(p.content || p.body || p.description || '').replace(/\\n/g, '\n')}
                                 </ReactMarkdown>
                               </div>
                             )}
@@ -1555,8 +2085,7 @@ export default function PreBEPView() {
                                   ) : (
                                     <div className="text-[11px] leading-relaxed font-sans text-slate-700 markdown-content prose max-w-none break-words">
                                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                        {(m.content || m.body || m.description || '').replace(/\n/g, '
-')}
+                                        {(m.content || m.body || m.description || '').replace(/\\n/g, '\n')}
                                       </ReactMarkdown>
                                     </div>
                                   )}
@@ -1709,6 +2238,7 @@ export default function PreBEPView() {
             default:
               return null;
           }
+          }
 
           return (
             <React.Fragment key={key}>
@@ -1728,7 +2258,7 @@ export default function PreBEPView() {
   const renderedDocument = React.useMemo(() => renderContinuousDocument(), [
     project, bepTeam, staff, contacts, requirements, lodTdi, protocols, 
     spaces, materials, documents, tasks, plans, chapterVisibility, 
-    showIndex, lodVisibleColumns
+    showIndex, lodVisibleColumns, dbData, customSections, chapterOrder
   ]);
 
   if (loading) {
@@ -1965,7 +2495,7 @@ export default function PreBEPView() {
                     <span className="text-[10px] font-bold uppercase">Índice de Contenido</span>
                   </label>
                   {chapterOrder.map((key, index) => {
-                    const labelText = CHAPTER_LABELS[key];
+                    const labelText = getChapterLabel(key);
                     return (
                       <div key={key} className="flex items-center gap-3 p-2 border border-gray-200 hover:bg-gray-50 transition-colors">
                         <input
@@ -2003,6 +2533,115 @@ export default function PreBEPView() {
                         <span className="text-[9px] text-gray-500 uppercase">Mostrar todo el contenido o solo la lista resumida</span>
                       </div>
                     </label>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white border-2 border-[#1c1c19] p-6 shadow-[4px_4px_0_0_rgba(28,28,25,1)] mb-8">
+                <h2 className="text-xl font-black uppercase mb-4 text-[#0f4369] flex items-center gap-2 border-b-2 border-gray-200 pb-2">
+                  <Database size={20} /> Importador de Secciones Adicionales
+                </h2>
+                <p className="text-xs text-gray-600 mb-6 uppercase">Busca entradas en tu proyecto para añadirlas como secciones independientes en el documento continuo.</p>
+                
+                <div className="flex flex-col md:flex-row gap-4 mb-6">
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-bold uppercase text-[#0f4369] mb-1">Tabla Origen</label>
+                    <select 
+                      value={customImportTable} 
+                      onChange={(e) => {
+                        setCustomImportTable(e.target.value);
+                        setCustomImportSelectedIds([]);
+                        setCustomImportSearchQuery('');
+                      }}
+                      className="w-full p-2 border border-[#1c1c19] text-xs font-bold uppercase bg-white outline-none"
+                    >
+                      <option value="">Seleccione una tabla...</option>
+                      {availableTables.map(t => (
+                        <option key={t} value={t}>{TABLE_METADATA[t]?.displayName || t}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {customImportTable && (
+                  <div className="mb-6 border border-[#1c1c19] bg-white p-4">
+                    <div className="flex justify-between items-center mb-4">
+                      <label className="block text-[10px] font-bold uppercase text-[#0f4369]">Selecciona los registros a importar</label>
+                      <button 
+                        onClick={handleAddCustomSection}
+                        disabled={customImportSelectedIds.length === 0}
+                        className="py-1.5 px-4 bg-[#1c1c19] text-white text-[9px] font-black uppercase tracking-widest hover:bg-[#0f4369] transition-colors disabled:opacity-50"
+                      >
+                        Añadir Seleccionados ({customImportSelectedIds.length})
+                      </button>
+                    </div>
+
+                    <div className="relative mb-4">
+                      <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400" size={14} />
+                      <input 
+                        type="text" 
+                        placeholder="Buscar por nombre o descripción..."
+                        value={customImportSearchQuery}
+                        onChange={(e) => setCustomImportSearchQuery(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 border border-[#1c1c19] text-xs outline-none focus:border-[#0f4369]"
+                      />
+                    </div>
+
+                    <div className="max-h-60 overflow-y-auto space-y-1 pr-2">
+                      {(dbData[customImportTable]?.records || []).filter(r => {
+                        if (!customImportSearchQuery) return true;
+                        const label = String(r.name || r.title || r.Nombre || r.tarea || r.descripcion || r.id).toLowerCase();
+                        return label.includes(customImportSearchQuery.toLowerCase());
+                      }).map(r => {
+                        const isSelected = customImportSelectedIds.includes(r.id);
+                        return (
+                          <label key={r.id} className={`flex items-start gap-3 p-2 border cursor-pointer transition-colors ${isSelected ? 'border-[#0f4369] bg-[#eef4f9]' : 'border-gray-200 hover:bg-gray-50'}`}>
+                            <input 
+                              type="checkbox" 
+                              checked={isSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setCustomImportSelectedIds(prev => [...prev, r.id]);
+                                } else {
+                                  setCustomImportSelectedIds(prev => prev.filter(id => id !== r.id));
+                                }
+                              }}
+                              className="mt-0.5 w-4 h-4 accent-[#0f4369]"
+                            />
+                            <div className="flex flex-col flex-1 min-w-0">
+                              <span className="text-[11px] font-bold uppercase text-[#1c1c19] truncate">
+                                {r.name || r.title || r.Nombre || r.tarea || r.descripcion || r.id}
+                              </span>
+                              <span className="text-[9px] text-gray-500 font-mono truncate">{r.id}</span>
+                            </div>
+                          </label>
+                        );
+                      })}
+                      {(dbData[customImportTable]?.records || []).filter(r => {
+                        if (!customImportSearchQuery) return true;
+                        const label = String(r.name || r.title || r.Nombre || r.tarea || r.descripcion || r.id).toLowerCase();
+                        return label.includes(customImportSearchQuery.toLowerCase());
+                      }).length === 0 && (
+                        <p className="text-xs text-gray-500 italic p-2">No se encontraron registros.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {customSections.length > 0 && (
+                  <div className="mt-6 border-t border-gray-200 pt-4">
+                    <h3 className="text-[10px] font-black uppercase text-[#1c1c19] mb-2">Secciones Importadas</h3>
+                    <ul className="space-y-2">
+                      {customSections.map(sec => (
+                        <li key={sec.id} className="flex items-center justify-between p-2 bg-gray-50 border border-gray-200">
+                          <span className="text-[10px] font-bold uppercase text-[#0f4369] truncate flex-1 pr-4">{sec.title}</span>
+                          <span className="text-[9px] uppercase text-gray-500 font-mono px-2 hidden md:block">{TABLE_METADATA[sec.table]?.displayName || sec.table}</span>
+                          <button onClick={() => handleRemoveCustomSection(sec.id)} className="text-red-600 hover:text-red-800 p-1 flex-shrink-0" title="Eliminar sección">
+                            <X size={14} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
               </div>
