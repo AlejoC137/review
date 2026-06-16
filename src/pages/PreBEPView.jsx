@@ -2757,7 +2757,13 @@ export default function PreBEPView() {
               </div>
             </div>
 
-            {/* RENDERIZADO DE LAS PÁGINAS COMO VIEWPORTS */}
+            {/* VISTA NATIVA SOLO PARA IMPRESIÓN */}
+            <div className="hidden print:block w-[215.9mm] mx-auto bg-white" style={{ paddingLeft: '20mm', paddingRight: '20mm', boxSizing: 'border-box' }}>
+              {renderedDocument}
+            </div>
+
+            {/* RENDERIZADO DE LAS PÁGINAS COMO VIEWPORTS (Solo Pantalla) */}
+            <div className="print:hidden w-full flex flex-col items-center">
             {(() => {
               // Calcular offsets acumulados de contenido visible
               const offsets = [];
@@ -2841,6 +2847,7 @@ export default function PreBEPView() {
                 );
               });
             })()}
+            </div>
 
             {/* BOTÓN PARA AGREGAR PÁGINA AL FINAL */}
             <div className="no-print mb-10 w-[215.9mm]">
@@ -3335,7 +3342,7 @@ export default function PreBEPView() {
         /* ── IMPRESIÓN ── */
         @media print {
           @page {
-            margin: 0 !important;
+            margin: 20mm 0mm !important;
             size: letter portrait;
           }
 
