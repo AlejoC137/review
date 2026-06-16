@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   X, Download, Database, AlertTriangle, Loader2, Search, Printer, LayoutGrid,
-  ChevronRight, RefreshCw, Info, Save, CheckCircle2, CloudOff, Book, FileText
+  ChevronRight, ChevronUp, ChevronDown, RefreshCw, Info, Save, CheckCircle2, CloudOff, Book, FileText
 } from 'lucide-react';
 import { databaseReportService, TABLE_METADATA } from '../services/databaseReportService';
 import { projectService } from '../services/projectService';
@@ -12,6 +12,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import ContentBlockEditor from '../components/modules/ContentBlockEditor';
 import PreBEPCdeTree from '../components/project/PreBEPCdeTree';
+import PreBEPEsquemaDetails from '../components/project/PreBEPEsquemaDetails';
 
 // Helper para limpiar objetos de cualquier UUID o campo ID
 const cleanObjectFromUuids = (obj) => {
@@ -153,6 +154,7 @@ const PROJECT_TABS_OPTIONS = [
   { label: 'REQUISITOS DE INFORMACION', url: '?tab=requisitos' },
   { label: 'EQUIPO', url: '?tab=equipo' },
   { label: 'DIRECTORIO', url: '?tab=directorio' },
+  { label: 'HERRAMIENTAS BIM', url: '?tab=herramientas' },
   
   // Adicionales
   { label: 'NIVELES', url: '/levels' },
@@ -280,7 +282,8 @@ export default function PreBEPView() {
       esquemas: true,
       software: true,
       objetivos: true,
-      cronograma_entregas: true
+      cronograma_entregas: true,
+      herramientas: true
     };
     const saved = localStorage.getItem(`prebep_chapter_visibility_${projectId}`);
     if (saved) {
@@ -317,13 +320,14 @@ export default function PreBEPView() {
     calendario: "Calendario Sem/Mes (Tasks)",
     esquemas: "BEP (Esquemas / Organizador)",
     objetivos: "Objetivos del Proyecto",
-    cronograma_entregas: "Cronograma de Entregas"
+    cronograma_entregas: "Cronograma de Entregas",
+    herramientas: "Herramientas BIM"
   };
 
   const defaultChapterOrder = [
     'datos', 'unidades', 'directorio', 'software', 'requisitos', 'lod_tdi',
     'cde', 'protocolos', 'materiales', 'documentos', 'calendario', 'esquemas',
-    'objetivos', 'cronograma_entregas'
+    'objetivos', 'cronograma_entregas', 'herramientas'
   ];
 
   const [chapterOrder, setChapterOrder] = useState(() => {
@@ -475,7 +479,7 @@ export default function PreBEPView() {
   // LOD Columns state
   const [lodVisibleColumns, setLodVisibleColumns] = useState(() => {
     const saved = localStorage.getItem(`prebep_lod_columns_${projectId}`);
-    return saved ? JSON.parse(saved) : ['discipline', 'element_name', 'esquema_basico', 'anteproyecto', 'proy_finales', 'notas'];
+    return saved ? JSON.parse(saved) : ['discipline', 'element_name', 'esquema_basico', 'anteproyecto', 'proy_finales', 'construccion', 'contratacion', 'notas'];
   });
 
   const handleLodColumnToggle = (col) => {
@@ -484,6 +488,11 @@ export default function PreBEPView() {
       : [...lodVisibleColumns, col];
     setLodVisibleColumns(nextCols);
     localStorage.setItem(`prebep_lod_columns_${projectId}`, JSON.stringify(nextCols));
+  };
+
+  const [lodExpandedDisciplines, setLodExpandedDisciplines] = useState({});
+  const toggleLodDiscipline = (disc) => {
+    setLodExpandedDisciplines(prev => ({ ...prev, [disc]: prev[disc] === false ? true : false }));
   };
 
   // Materiales Columns state
@@ -505,6 +514,84 @@ export default function PreBEPView() {
     const saved = localStorage.getItem(`prebep_show_full_protocols_${projectId}`);
     return saved !== null ? JSON.parse(saved) : true;
   });
+  const [expandedProtocols, setExpandedProtocols] = useState(() => {
+    const saved = localStorage.getItem(`prebep_expanded_protocols_${projectId}`);
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [expandedSubItems, setExpandedSubItems] = useState(() => {
+    const saved = localStorage.getItem(`prebep_expanded_subitems_${projectId}`);
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const toggleProtocol = (protocolId) => {
+    setExpandedProtocols(prev => {
+      const next = {
+        ...prev,
+        [protocolId]: !(prev[protocolId] !== undefined ? prev[protocolId] : showFullProtocols)
+      };
+      localStorage.setItem(`prebep_expanded_protocols_${projectId}`, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const toggleSubItem = (subItemId) => {
+    setExpandedSubItems(prev => {
+      const next = {
+        ...prev,
+        [subItemId]: !(prev[subItemId] !== undefined ? prev[subItemId] : true)
+      };
+      localStorage.setItem(`prebep_expanded_subitems_${projectId}`, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const [protocolOrder, setProtocolOrder] = useState(() => {
+    const saved = localStorage.getItem(`prebep_protocol_order_${projectId}`);
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const handleProtocolOrderChange = (protocolId, newIndex) => {
+    if (isNaN(newIndex)) return;
+    let targetIndex = newIndex - 1;
+    if (targetIndex < 0) targetIndex = 0;
+    
+    setProtocolOrder(prev => {
+      // make sure prev has all protocols
+      let currentOrder = [...prev];
+      const missing = protocols.map(p => p.id).filter(id => !currentOrder.includes(id));
+      currentOrder = [...currentOrder, ...missing];
+      
+      if (targetIndex >= currentOrder.length) targetIndex = currentOrder.length - 1;
+
+      const currentIndex = currentOrder.indexOf(protocolId);
+      if (currentIndex === targetIndex) return prev;
+      
+      const newOrder = [...currentOrder];
+      newOrder.splice(currentIndex, 1);
+      newOrder.splice(targetIndex, 0, protocolId);
+      
+      localStorage.setItem(`prebep_protocol_order_${projectId}`, JSON.stringify(newOrder));
+      return newOrder;
+    });
+  };
+
+  const orderedProtocols = React.useMemo(() => {
+    if (!protocols || protocols.length === 0) return [];
+    if (!protocolOrder || protocolOrder.length === 0) return protocols;
+    
+    const ordered = [];
+    const remaining = [...protocols];
+    
+    protocolOrder.forEach(id => {
+      const idx = remaining.findIndex(p => p.id === id);
+      if (idx !== -1) {
+        ordered.push(remaining[idx]);
+        remaining.splice(idx, 1);
+      }
+    });
+    
+    return [...ordered, ...remaining];
+  }, [protocols, protocolOrder]);
 
   const [subproyectosVisibleColumns, setSubproyectosVisibleColumns] = useState(() => {
     const saved = localStorage.getItem(`prebep_subproyectos_columns_${projectId}`);
@@ -582,7 +669,11 @@ export default function PreBEPView() {
   const toggleProtocolsDisplay = () => {
     const nextVal = !showFullProtocols;
     setShowFullProtocols(nextVal);
+    setExpandedProtocols({});
+    setExpandedSubItems({});
     localStorage.setItem(`prebep_show_full_protocols_${projectId}`, JSON.stringify(nextVal));
+    localStorage.removeItem(`prebep_expanded_protocols_${projectId}`);
+    localStorage.removeItem(`prebep_expanded_subitems_${projectId}`);
   };
 
   // Database metadata explorer states
@@ -799,9 +890,12 @@ export default function PreBEPView() {
                 esquema_basico: formatPhase(parsedNotes.esquema),
                 anteproyecto: formatPhase(parsedNotes.anteproyecto),
                 proy_finales: formatPhase(parsedNotes.finales),
+                construccion: formatPhase(parsedNotes.construccion),
+                contratacion: formatPhase(parsedNotes.contratacion),
                 lod: item.lod,
                 tdi: item.tdi,
-                notas: parsedNotes.text || ''
+                notas: parsedNotes.text || '',
+                notes: item.notes
               };
             });
           })
@@ -1119,6 +1213,9 @@ export default function PreBEPView() {
               case 'cronograma_entregas':
                   if (deliverables.length > 0) activeTables.push({ id: 'entregas_tabla', title: 'CRONOGRAMA DE ENTREGAS', number: tableCounter++ });
                   break;
+              case 'herramientas':
+                  activeTables.push({ id: 'herramientas_tabla', title: 'HERRAMIENTAS BIM', number: tableCounter++ });
+                  break;
           }
       }
   });
@@ -1335,6 +1432,8 @@ export default function PreBEPView() {
         esquema: { aem: '', lod: defaultLods?.esq || '' },
         anteproyecto: { aem: '', lod: defaultLods?.ant || '' },
         finales: { aem: '', lod: defaultLods?.proy || '' },
+        construccion: { aem: '', lod: defaultLods?.const || '' },
+        contratacion: { aem: '', lod: defaultLods?.contra || '' },
         text: '',
         abbreviation: ''
       };
@@ -1356,6 +1455,8 @@ export default function PreBEPView() {
           esquema: parsed.esquema || def.esquema,
           anteproyecto: parsed.anteproyecto || def.anteproyecto,
           finales: parsed.finales || def.finales,
+          construccion: parsed.construccion || def.construccion,
+          contratacion: parsed.contratacion || def.contratacion,
           text: parsed.text || '',
           abbreviation: parsed.abbreviation || ''
         };
@@ -1369,81 +1470,164 @@ export default function PreBEPView() {
         {renderTableTitle('lod_tdi_matriz')}
       <div className="bg-white border-2 border-[#1c1c19] overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[900px]">
+          <table className="w-full text-left border-collapse table-fixed text-[9px]">
             <thead>
               <tr>
-                <th colSpan="2" className="bg-[#fcf9f4] border-b-2 border-r-2 border-[#1c1c19] p-2 text-center text-[10px] font-black text-transparent select-none">-</th>
-                <th colSpan="6" className="bg-[#e5e2dd] border-b-2 border-r-2 border-[#1c1c19] p-2 text-center text-[10px] font-black tracking-widest text-[#0f4369] uppercase border-l-2">
-                  Fases del Proyecto
-                </th>
-                <th className="bg-[#fcf9f4] border-b-2 border-[#1c1c19] p-2 text-center text-[10px] font-black text-transparent select-none">-</th>
+                <th colSpan={(lodVisibleColumns.includes('element_name') ? 1 : 0) + 1} className="bg-[#fcf9f4] border-b-2 border-r-2 border-[#1c1c19] p-2 text-center text-[10px] font-black text-transparent select-none">-</th>
+                {(() => {
+                  let phaseColsCount = 0;
+                  if (lodVisibleColumns.includes('esquema_basico')) phaseColsCount += 2;
+                  if (lodVisibleColumns.includes('anteproyecto')) phaseColsCount += 2;
+                  if (lodVisibleColumns.includes('proy_finales')) phaseColsCount += 2;
+                  if (lodVisibleColumns.includes('construccion')) phaseColsCount += 2;
+                  if (lodVisibleColumns.includes('contratacion')) phaseColsCount += 2;
+                  if (phaseColsCount > 0) {
+                    return (
+                      <th colSpan={phaseColsCount} className="bg-[#e5e2dd] border-b-2 border-r-2 border-[#1c1c19] p-2 text-center text-[10px] font-black tracking-widest text-[#0f4369] uppercase border-l-2">
+                        Fases del Proyecto
+                      </th>
+                    );
+                  }
+                  return null;
+                })()}
+                {lodVisibleColumns.includes('notas') && <th className="bg-[#fcf9f4] border-b-2 border-[#1c1c19] p-2 text-center text-[10px] font-black text-transparent select-none">-</th>}
               </tr>
-              <tr className="bg-[#1c1c19] text-white font-mono text-[10px] tracking-wider uppercase">
-                <th className="p-3 w-[22%] border-r-2 border-[#1c1c19] align-bottom" rowSpan="2">Elemento del modelo</th>
-                <th className="p-3 w-[8%] border-r-2 border-[#1c1c19] align-bottom text-center" rowSpan="2">Código</th>
-                <th className="p-2 border-r-2 border-[#1c1c19] text-center border-b border-white/20" colSpan="2">Esquema Básico</th>
-                <th className="p-2 border-r-2 border-[#1c1c19] text-center border-b border-white/20" colSpan="2">Anteproyecto</th>
-                <th className="p-2 border-r-2 border-[#1c1c19] text-center border-b border-white/20" colSpan="2">Proy/Finales</th>
-                <th className="p-3 w-[22%] align-bottom" rowSpan="2">Notas</th>
+              <tr className="bg-[#1c1c19] text-white font-mono text-[8px] tracking-wider uppercase leading-tight">
+                {lodVisibleColumns.includes('element_name') && <th className="p-1.5 w-[16%] border-r-2 border-[#1c1c19] align-bottom" rowSpan="2">Elemento del modelo</th>}
+                <th className="p-1.5 w-[6%] border-r-2 border-[#1c1c19] align-bottom text-center" rowSpan="2">Código</th>
+                {lodVisibleColumns.includes('esquema_basico') && <th className="p-1 border-r-2 border-[#1c1c19] text-center border-b border-white/20" colSpan="2">Esq.<br/>Básico</th>}
+                {lodVisibleColumns.includes('anteproyecto') && <th className="p-1 border-r-2 border-[#1c1c19] text-center border-b border-white/20" colSpan="2">Ante<br/>proy.</th>}
+                {lodVisibleColumns.includes('proy_finales') && <th className="p-1 border-r-2 border-[#1c1c19] text-center border-b border-white/20" colSpan="2">Proy.<br/>Finales</th>}
+                {lodVisibleColumns.includes('construccion') && <th className="p-1 border-r-2 border-[#1c1c19] text-center border-b border-white/20" colSpan="2">Constru<br/>cción</th>}
+                {lodVisibleColumns.includes('contratacion') && <th className="p-1 border-r-2 border-[#1c1c19] text-center border-b border-white/20" colSpan="2">Contra<br/>tación</th>}
+                {lodVisibleColumns.includes('notas') && <th className="p-1.5 w-[16%] align-bottom" rowSpan="2">Notas</th>}
               </tr>
-              <tr className="bg-[#2c2c29] text-white/80 font-mono text-[9px] tracking-widest uppercase">
-                <th className="p-1.5 w-[6%] border-r border-[#1c1c19]/30 text-center">AEM</th>
-                <th className="p-1.5 w-[6%] border-r-2 border-[#1c1c19] text-center">LOD</th>
-                <th className="p-1.5 w-[6%] border-r border-[#1c1c19]/30 text-center">AEM</th>
-                <th className="p-1.5 w-[6%] border-r-2 border-[#1c1c19] text-center">LOD</th>
-                <th className="p-1.5 w-[6%] border-r border-[#1c1c19]/30 text-center">AEM</th>
-                <th className="p-1.5 w-[6%] border-r-2 border-[#1c1c19] text-center">LOD</th>
+              <tr className="bg-[#2c2c29] text-white/80 font-mono text-[7px] sm:text-[8px] tracking-widest uppercase">
+                {lodVisibleColumns.includes('esquema_basico') && (
+                  <>
+                    <th className="p-1 w-[4%] border-r border-[#1c1c19]/30 text-center">AEM</th>
+                    <th className="p-1 w-[4%] border-r-2 border-[#1c1c19] text-center">LOD</th>
+                  </>
+                )}
+                {lodVisibleColumns.includes('anteproyecto') && (
+                  <>
+                    <th className="p-1 w-[4%] border-r border-[#1c1c19]/30 text-center">AEM</th>
+                    <th className="p-1 w-[4%] border-r-2 border-[#1c1c19] text-center">LOD</th>
+                  </>
+                )}
+                {lodVisibleColumns.includes('proy_finales') && (
+                  <>
+                    <th className="p-1 w-[4%] border-r border-[#1c1c19]/30 text-center">AEM</th>
+                    <th className="p-1 w-[4%] border-r-2 border-[#1c1c19] text-center">LOD</th>
+                  </>
+                )}
+                {lodVisibleColumns.includes('construccion') && (
+                  <>
+                    <th className="p-1 w-[4%] border-r border-[#1c1c19]/30 text-center">AEM</th>
+                    <th className="p-1 w-[4%] border-r-2 border-[#1c1c19] text-center">LOD</th>
+                  </>
+                )}
+                {lodVisibleColumns.includes('contratacion') && (
+                  <>
+                    <th className="p-1 w-[4%] border-r border-[#1c1c19]/30 text-center">AEM</th>
+                    <th className="p-1 w-[4%] border-r-2 border-[#1c1c19] text-center">LOD</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1c1c19]/15">
               {Object.keys(grouped).map(discipline => (
                 <React.Fragment key={discipline}>
-                  <tr className="bg-[#e5e2dd] border-y-2 border-[#1c1c19]">
-                    <td colSpan="9" className="p-2 pl-4 text-xs font-black uppercase text-[#1c1c19] tracking-wider">
-                      {discipline}
+                  <tr 
+                    className="bg-[#e5e2dd] border-y-2 border-[#1c1c19] cursor-pointer hover:bg-[#d5d2cd] transition-colors"
+                    onClick={() => toggleLodDiscipline(discipline)}
+                  >
+                    <td colSpan="20" className="p-1.5 pl-2 text-[10px] font-black uppercase text-[#1c1c19] tracking-wider flex items-center justify-between">
+                      <span>{discipline}</span>
+                      <span className="text-[10px] font-mono pr-4">{lodExpandedDisciplines[discipline] === false ? '[+]' : '[-]'}</span>
                     </td>
                   </tr>
-                  {grouped[discipline].map((item, index) => {
+                  {lodExpandedDisciplines[discipline] !== false && grouped[discipline].map((item, index) => {
                     const staticEl = STATIC_ELEMENTS.find(el => el.discipline === discipline && el.element === item.element_name);
                     const cfg = parseNotes(item.notes, staticEl);
                     return (
                       <tr key={index} className="hover:bg-[#f6f3ee]/50 transition-colors bg-white">
-                        <td className="p-2 border-r-2 border-[#1c1c19]/30 text-[10px] font-bold uppercase tracking-tight text-[#1c1c19]">
-                          {item.element_name}
-                        </td>
-                        <td className="p-1.5 border-r-2 border-[#1c1c19]/30 text-center text-[10px] font-bold uppercase text-[#1c1c19]">
-                          <span className="px-1.5 py-0.5 border border-[#1c1c19]/20 bg-white">
+                        {lodVisibleColumns.includes('element_name') && (
+                          <td className="p-1 border-r-2 border-[#1c1c19]/30 text-[8px] sm:text-[9px] font-bold uppercase tracking-tight text-[#1c1c19]">
+                            {item.element_name}
+                          </td>
+                        )}
+                        <td className="p-1 border-r-2 border-[#1c1c19]/30 text-center text-[8px] sm:text-[9px] font-bold uppercase text-[#1c1c19]">
+                          <span className="px-1 py-0.5 border border-[#1c1c19]/20 bg-white">
                             {cfg.abbreviation || '-'}
                           </span>
                         </td>
                         
                         {/* Esquema */}
-                        <td className={`p-1.5 border-r border-[#1c1c19]/20 text-center text-[10px] font-bold uppercase text-[#1c1c19] ${getPhaseColor(item.discipline, cfg.esquema.lod)}`}>
-                          {cfg.esquema.aem || ''}
-                        </td>
-                        <td className="p-1.5 border-r-2 border-[#1c1c19]/30 text-center text-[11px] font-mono font-black text-[#0f4369]">
-                          {cfg.esquema.lod || ''}
-                        </td>
+                        {lodVisibleColumns.includes('esquema_basico') && (
+                          <>
+                            <td className={`p-1 border-r border-[#1c1c19]/20 text-center text-[8px] sm:text-[9px] font-bold uppercase text-[#1c1c19] ${getPhaseColor(item.discipline, cfg.esquema.lod)}`}>
+                              {cfg.esquema.aem || ''}
+                            </td>
+                            <td className="p-1 border-r-2 border-[#1c1c19]/30 text-center text-[8px] sm:text-[9px] font-mono font-black text-[#0f4369]">
+                              {cfg.esquema.lod || ''}
+                            </td>
+                          </>
+                        )}
                         
                         {/* Anteproyecto */}
-                        <td className={`p-1.5 border-r border-[#1c1c19]/20 text-center text-[10px] font-bold uppercase text-[#1c1c19] ${getPhaseColor(item.discipline, cfg.anteproyecto.lod)}`}>
-                          {cfg.anteproyecto.aem || ''}
-                        </td>
-                        <td className="p-1.5 border-r-2 border-[#1c1c19]/30 text-center text-[11px] font-mono font-black text-[#0f4369]">
-                          {cfg.anteproyecto.lod || ''}
-                        </td>
+                        {lodVisibleColumns.includes('anteproyecto') && (
+                          <>
+                            <td className={`p-1 border-r border-[#1c1c19]/20 text-center text-[8px] sm:text-[9px] font-bold uppercase text-[#1c1c19] ${getPhaseColor(item.discipline, cfg.anteproyecto.lod)}`}>
+                              {cfg.anteproyecto.aem || ''}
+                            </td>
+                            <td className="p-1 border-r-2 border-[#1c1c19]/30 text-center text-[8px] sm:text-[9px] font-mono font-black text-[#0f4369]">
+                              {cfg.anteproyecto.lod || ''}
+                            </td>
+                          </>
+                        )}
                         
                         {/* Finales */}
-                        <td className={`p-1.5 border-r border-[#1c1c19]/20 text-center text-[10px] font-bold uppercase text-[#1c1c19] ${getPhaseColor(item.discipline, cfg.finales.lod)}`}>
-                          {cfg.finales.aem || ''}
-                        </td>
-                        <td className="p-1.5 border-r-2 border-[#1c1c19]/30 text-center text-[11px] font-mono font-black text-[#0f4369]">
-                          {cfg.finales.lod || ''}
-                        </td>
+                        {lodVisibleColumns.includes('proy_finales') && (
+                          <>
+                            <td className={`p-1 border-r border-[#1c1c19]/20 text-center text-[8px] sm:text-[9px] font-bold uppercase text-[#1c1c19] ${getPhaseColor(item.discipline, cfg.finales.lod)}`}>
+                              {cfg.finales.aem || ''}
+                            </td>
+                            <td className="p-1 border-r-2 border-[#1c1c19]/30 text-center text-[8px] sm:text-[9px] font-mono font-black text-[#0f4369]">
+                              {cfg.finales.lod || ''}
+                            </td>
+                          </>
+                        )}
 
-                        <td className="p-2 text-[9px] text-[#1c1c19] italic">
-                          {cfg.text || ''}
-                        </td>
+                        {/* Construccion */}
+                        {lodVisibleColumns.includes('construccion') && (
+                          <>
+                            <td className={`p-1 border-r border-[#1c1c19]/20 text-center text-[8px] sm:text-[9px] font-bold uppercase text-[#1c1c19] ${getPhaseColor(item.discipline, cfg.construccion.lod)}`}>
+                              {cfg.construccion.aem || ''}
+                            </td>
+                            <td className="p-1 border-r-2 border-[#1c1c19]/30 text-center text-[8px] sm:text-[9px] font-mono font-black text-[#0f4369]">
+                              {cfg.construccion.lod || ''}
+                            </td>
+                          </>
+                        )}
+
+                        {/* Contratacion */}
+                        {lodVisibleColumns.includes('contratacion') && (
+                          <>
+                            <td className={`p-1 border-r border-[#1c1c19]/20 text-center text-[8px] sm:text-[9px] font-bold uppercase text-[#1c1c19] ${getPhaseColor(item.discipline, cfg.contratacion.lod)}`}>
+                              {cfg.contratacion.aem || ''}
+                            </td>
+                            <td className="p-1 border-r-2 border-[#1c1c19]/30 text-center text-[8px] sm:text-[9px] font-mono font-black text-[#0f4369]">
+                              {cfg.contratacion.lod || ''}
+                            </td>
+                          </>
+                        )}
+
+                        {lodVisibleColumns.includes('notas') && (
+                          <td className="p-1 text-[8px] text-[#1c1c19] italic">
+                            {cfg.text || ''}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -1516,6 +1700,61 @@ export default function PreBEPView() {
         ))}
       </tbody>
     </table>
+    </div>
+  );
+
+  const renderHerramientasTable = () => (
+    <div className="w-full mb-8">
+      {renderTableTitle('herramientas_tabla')}
+      <div className="bg-white border-2 border-[#1c1c19] overflow-hidden shadow-[4px_4px_0_0_rgba(28,28,25,0.15)]">
+        <table className="w-full text-xs border-collapse">
+          <thead className="bg-[#1c1c19] text-white">
+            <tr>
+              <th className="p-3 text-left border-r border-gray-600 w-1/4 font-black uppercase">Herramienta</th>
+              <th className="p-3 text-left border-r border-gray-600 w-1/3 font-black uppercase">Resumen y Función</th>
+              <th className="p-3 text-left font-black uppercase w-5/12">Ejemplo Práctico</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-b border-[#1c1c19]/20 hover:bg-[#fcf9f4]">
+              <td className="p-3 font-bold text-[#0f4369] uppercase border-r border-[#1c1c19]/20 align-top">RevitToSupabase Plugin</td>
+              <td className="p-3 text-[10px] uppercase border-r border-[#1c1c19]/20 align-top leading-relaxed text-gray-700">
+                Sincronización bidireccional entre el modelo BIM y la base de datos centralizada del proyecto.
+              </td>
+              <td className="p-3 text-[10px] italic text-gray-600 bg-gray-50 align-top">
+                Ej: Actualizar los estados de construcción (Aprobado/Rechazado) desde la plataforma web y verlos reflejados en Revit instantáneamente.
+              </td>
+            </tr>
+            <tr className="border-b border-[#1c1c19]/20 hover:bg-[#fcf9f4]">
+              <td className="p-3 font-bold text-[#0f4369] uppercase border-r border-[#1c1c19]/20 align-top">Descargador Keynotes</td>
+              <td className="p-3 text-[10px] uppercase border-r border-[#1c1c19]/20 align-top leading-relaxed text-gray-700">
+                Exporta la base de datos de materiales a un archivo de texto plano estructurado, directamente compatible con Revit Keynotes.
+              </td>
+              <td className="p-3 text-[10px] italic text-gray-600 bg-gray-50 align-top">
+                Ej: Presionar un botón para descargar `keynotes.txt` y enlazarlo a Revit para automatizar las etiquetas de material de los entregables.
+              </td>
+            </tr>
+            <tr className="border-b border-[#1c1c19]/20 hover:bg-[#fcf9f4]">
+              <td className="p-3 font-bold text-[#0f4369] uppercase border-r border-[#1c1c19]/20 align-top">Protocolo Nomenclatura</td>
+              <td className="p-3 text-[10px] uppercase border-r border-[#1c1c19]/20 align-top leading-relaxed text-gray-700">
+                Sistema interactivo generador de códigos estándar ISO 19650 para mantener consistencia en archivos y documentos.
+              </td>
+              <td className="p-3 text-[10px] italic text-gray-600 bg-gray-50 align-top">
+                Ej: Seleccionar Proyecto, Creador, Volumen y Nivel, generando "PRO-ARQ-01-00-MOD" automáticamente y validando que no se repita.
+              </td>
+            </tr>
+            <tr className="hover:bg-[#fcf9f4]">
+              <td className="p-3 font-bold text-[#0f4369] uppercase border-r border-[#1c1c19]/20 align-top">Importadores IA (JSON)</td>
+              <td className="p-3 text-[10px] uppercase border-r border-[#1c1c19]/20 align-top leading-relaxed text-gray-700">
+                Herramienta para generar estructuras complejas de proyectos y requisitos usando Inteligencia Artificial a partir de JSONs.
+              </td>
+              <td className="p-3 text-[10px] italic text-gray-600 bg-gray-50 align-top">
+                Ej: Pegar un JSON con la matriz de requerimientos y la IA creará automáticamente todas las secciones en la base de datos sin ingreso manual.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 
@@ -1854,6 +2093,32 @@ export default function PreBEPView() {
               chapterContent = (
                 <section className="w-full">
                   <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">{getChapterNum('unidades')}. SUB PROYECTOS / UNIDADES</h2>
+                  
+                  <div className="mb-6 space-y-4 text-xs text-slate-700 font-medium break-words w-full">
+                    <div>
+                      <h4 className="font-black text-[#1c1c19] uppercase mb-1">Sistema de Unidades.</h4>
+                      <p>
+                        El proyecto se desarrollará en sistema METRICO. A continuación, se lista la configuración obligatoria de los archivos de los modelos de Revit en el apartado “Unidades de Proyecto”:
+                      </p>
+                      <p className="text-[10px] italic mt-2 text-slate-600">
+                        *Excepción: Los elementos que por su presentación comercial manejen otro tipo de unidades podrán conservar las mismas en los modelos BIM. Ejemplo: Tuberías, Ductos, Perfiles metálicos (Su sección transversal se maneja habitualmente en sistema imperial).
+                      </p>
+                    </div>
+                    <div>
+                      <h4 className="font-black text-[#1c1c19] uppercase mb-1">8.4. Gestión de Documentación planimétrica.</h4>
+                      <p>
+                        Toda la información planimétrica deberá ser extraída directamente desde los modelos BIM y deberá seguir las indicaciones en el documento “Guía y estándares para el desarrollo gráfico del proyecto” publicada por el CPNAA.
+                        A modo de poder visualizar la planimetría contenida en los modelos desde el visor de ACC, la configuración del set de impresión para los sheets se debe mantener en formato vectorial.
+                      </p>
+                    </div>
+                    <div>
+                      <h4 className="font-black text-[#1c1c19] uppercase mb-1">8.5. Extracción de cantidades y codificación para presupuesto.</h4>
+                      <p>
+                        A partir de los modelos debe extraerse las cantidades de cada una de las disciplinas del proyecto. Para ello, se deben sacar tablas de cantidades de cada uno de los modelos con el fin de ser verificadas por el presupuestador. Adicionalmente, el presupuestador definirá los parámetros bajo los cuales los diseñadores deberán entregar los elementos codificados mediante un Keynote o parámetro con el fin de identificarlos en el modelo.
+                      </p>
+                    </div>
+                  </div>
+
                   {spaces.length > 0 ? (
                     renderSubproyectosTable()
                   ) : (
@@ -1933,6 +2198,16 @@ export default function PreBEPView() {
               );
               break;
 
+            case 'herramientas':
+              chapterContent = (
+                <section className="w-full">
+                  <h2 className="text-2xl font-black mb-4 border-b-2 border-[#1c1c19] pb-2 uppercase tracking-tight text-[#0f4369]">{getChapterNum('herramientas')}. HERRAMIENTAS BIM</h2>
+                  {renderHerramientasTable()}
+                  <EditableTabLink projectId={projectId} sectionId="herramientas" defaultLabel="HERRAMIENTAS BIM" defaultUrl="?tab=herramientas" />
+                </section>
+              );
+              break;
+
             case 'requisitos':
               chapterContent = (
                 <section className="w-full">
@@ -2006,25 +2281,28 @@ export default function PreBEPView() {
                   <div className="flex items-center justify-between mb-4 border-b-2 border-[#1c1c19] pb-2">
                     <h2 className="text-2xl font-black uppercase tracking-tight text-[#0f4369] m-0 border-0 pb-0">{getChapterNum('protocolos')}. PROTOCOLOS</h2>
                   </div>
-                  {protocols.length > 0 ? (
+                  {orderedProtocols.length > 0 ? (
                     <div className="space-y-16 w-full">
-                      {protocols.map((p, i) => (
-                        <div key={i} className={`w-full break-inside-avoid pb-8 ${showFullProtocols ? 'border-b-2 border-dashed border-gray-300' : 'border-b border-gray-200 pb-4'} last:border-0`}>
+                      {orderedProtocols.map((p, i) => {
+                        const isExpanded = expandedProtocols[p.id] !== undefined ? expandedProtocols[p.id] : showFullProtocols;
+                        return (
+                        <div key={p.id} className={`w-full break-inside-avoid pb-8 ${isExpanded ? 'border-b-2 border-dashed border-gray-300' : 'border-b border-gray-200 pb-4'} last:border-0`}>
                           {/* Header Protocolo */}
-                          <div className={showFullProtocols ? "mb-6" : "mb-0"}>
+                          <div className={isExpanded ? "mb-6" : "mb-0"}>
                             <div className="flex items-center justify-between mb-3 border-b-2 border-[#1c1c19] pb-2">
-                              <div className="text-[10px] uppercase font-black tracking-[4px] text-[#0f4369]">Protocolo Maestro</div>
                               <div className="text-[9px] uppercase font-mono tracking-widest text-gray-400">REF_ID: {p.id?.substring(0,8).toUpperCase()}</div>
                             </div>
-                            <h3 className="font-black text-4xl uppercase tracking-tight break-words text-[#1c1c19]">{p.title || p.name}</h3>
+                            <h3 className="font-black text-4xl uppercase tracking-tight break-words text-[#1c1c19]">
+                              {getChapterNum('protocolos')}.{i + 1} {p.title || p.name}
+                            </h3>
                             {p.description && (
-                              <div className={`text-sm font-medium text-gray-700 italic border-l-4 border-[#0f4369] pl-4 ${showFullProtocols ? 'mt-4 mb-6' : 'mt-2 mb-0'}`}>
+                              <div className={`text-sm font-medium text-gray-700 italic border-l-4 border-[#0f4369] pl-4 ${isExpanded ? 'mt-4 mb-6' : 'mt-2 mb-0'}`}>
                                 {p.description}
                               </div>
                             )}
                           </div>
 
-                          {showFullProtocols && (
+                          {isExpanded && (
                             <>
                               {/* Estructura de documentos */}
                           { (p.manuals?.length > 0 || p.templates?.length > 0) && (
@@ -2072,10 +2350,10 @@ export default function PreBEPView() {
                           </div>
                           
                           {/* Manuales Full Content */}
-                          {p.manuals?.map((m, idx) => (
+                          {p.manuals?.filter(m => (expandedSubItems[m.id] !== undefined ? expandedSubItems[m.id] : true)).map((m, idx) => (
                             <div key={m.id} className="mt-8 break-inside-avoid">
                                 <div className="mb-4">
-                                  <div className="text-[9px] uppercase font-black tracking-widest text-[#0f4369] mb-1">MANUAL SECUNDARIO {idx + 1}</div>
+                                  <div className="text-[9px] uppercase font-black tracking-widest text-[#0f4369] mb-1">MANUAL SECUNDARIO</div>
                                   <h4 className="font-black text-2xl uppercase tracking-tight text-[#1c1c19]">{m.title}</h4>
                                   {m.description && <p className="text-xs mt-1 text-gray-500 italic uppercase">{m.description}</p>}
                                 </div>
@@ -2093,7 +2371,29 @@ export default function PreBEPView() {
                             </div>
                           ))}
 
-                          {showFullProtocols && (p.url || p.file_url) && (
+                          {/* Plantillas Full Content */}
+                          {p.templates?.filter(t => (expandedSubItems[t.id] !== undefined ? expandedSubItems[t.id] : true)).map((t, idx) => (
+                            <div key={t.id} className="mt-8 break-inside-avoid">
+                                <div className="mb-4">
+                                  <div className="text-[9px] uppercase font-black tracking-widest text-[#0f4369] mb-1">PLANTILLA / RECURSO</div>
+                                  <h4 className="font-black text-2xl uppercase tracking-tight text-[#1c1c19]">{t.title}</h4>
+                                  {t.description && <p className="text-xs mt-1 text-gray-500 italic uppercase">{t.description}</p>}
+                                </div>
+                                <div className="prose prose-sm max-w-none prose-headings:font-black prose-headings:uppercase pl-4 border-l-2 border-gray-100">
+                                  {t.blocks && t.blocks.length > 0 ? (
+                                    <ContentBlockEditor blocks={t.blocks} isEditing={false} onChange={() => {}} onUploadImage={() => {}} fontSize={13} />
+                                  ) : (
+                                    <div className="text-[11px] leading-relaxed font-sans text-slate-700 markdown-content prose max-w-none break-words">
+                                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                        {(t.content || t.body || t.description || '').replace(/\\n/g, '\n')}
+                                      </ReactMarkdown>
+                                    </div>
+                                  )}
+                                </div>
+                            </div>
+                          ))}
+
+                          {isExpanded && (p.url || p.file_url) && (
                             <div className="mt-8 pt-4 border-t border-gray-200">
                               <p className="text-[9px] text-blue-600 break-all font-mono">
                                 URL EXTERNA: <a href={p.url || p.file_url} target="_blank" rel="noopener noreferrer" className="underline">{p.url || p.file_url}</a>
@@ -2104,7 +2404,7 @@ export default function PreBEPView() {
                           </>
                           )}
 
-                          {!showFullProtocols && (
+                          {!isExpanded && (
                             <div className="mt-4 bg-[#f6f3ee] border-l-4 border-[#ba1a1a] p-3 flex flex-wrap items-center gap-2">
                               <span className="text-[10px] font-black uppercase text-[#0f4369] tracking-widest flex items-center gap-2">
                                 👉 PARA INFORMACION COMPLETA VEASE:
@@ -2115,7 +2415,7 @@ export default function PreBEPView() {
                             </div>
                           )}
                         </div>
-                      ))}
+                      );})}
                     </div>
                   ) : <p className="text-xs text-gray-500 italic uppercase">Sin protocolos registrados.</p>}
                   <EditableTabLink projectId={projectId} sectionId="protocolos" defaultLabel="PROTOCOLOS" defaultUrl="?tab=protocolos" />
@@ -2184,14 +2484,17 @@ export default function PreBEPView() {
                     Registro de los planes de implementación y esquemas conceptuales asociados al proyecto.
                   </p>
                   {plans.length > 0 ? (
-                    <div className="space-y-6 w-full">
+                    <div className="space-y-8 w-full">
                       {plans.map((plan, i) => (
-                        <div key={i} className="p-4 bg-[#fcf9f4] border-2 border-[#1c1c19] shadow-[3px_3px_0_0_rgba(28,28,25,1)] w-full overflow-hidden">
-                          <h4 className="font-bold text-xs uppercase mb-1 break-words">{plan.name}</h4>
-                          <p className="text-[10px] mb-3 uppercase text-gray-600 break-words">{plan.description}</p>
-                          <div className="bg-[#fcf9f4] border border-gray-300 p-4 text-[10px] rounded-sm w-full overflow-hidden">
-                            {renderObjectOrValue(plan.plan_data || plan.schema)}
-                          </div>
+                        <div key={i} className="p-5 bg-white border-2 border-[#1c1c19] shadow-[4px_4px_0_0_rgba(28,28,25,1)] w-full overflow-hidden">
+                          <h3 className="font-black text-lg uppercase mb-2 break-words text-[#1c1c19] flex items-center gap-2">
+                            <span className="bg-[#0f4369] text-white px-2 py-0.5 text-xs">PLAN</span> {plan.name}
+                          </h3>
+                          {plan.description && (
+                            <p className="text-xs mb-4 uppercase text-gray-600 break-words border-l-2 border-gray-300 pl-2">{plan.description}</p>
+                          )}
+                          
+                          <PreBEPEsquemaDetails plan={plan} />
                         </div>
                       ))}
                     </div>
@@ -2258,7 +2561,11 @@ export default function PreBEPView() {
   const renderedDocument = React.useMemo(() => renderContinuousDocument(), [
     project, bepTeam, staff, contacts, requirements, lodTdi, protocols, 
     spaces, materials, documents, tasks, plans, chapterVisibility, 
-    showIndex, lodVisibleColumns, dbData, customSections, chapterOrder
+    showIndex, lodVisibleColumns, dbData, customSections, chapterOrder,
+    showFullProtocols, expandedProtocols, expandedSubItems, protocolOrder,
+    subproyectosVisibleColumns, equipoVisibleColumns, directorioVisibleColumns,
+    softwareVisibleColumns, calendarioVisibleColumns, objetivosVisibleColumns,
+    entregasVisibleColumns, materialesVisibleColumns
   ]);
 
   if (loading) {
@@ -2335,9 +2642,72 @@ export default function PreBEPView() {
         
         {/* VISTA 1: IMPRESIÓN PRE BEP (ESTRUCTURA DE ENCUADRE DINÁMICO) */}
         {activeView === 'document' && (
-          <div className="flex-1 overflow-y-auto w-full py-10 px-4 flex flex-col items-center print:p-0 print:block print:overflow-visible prebep-pages-scroll">
-            
-            {/* PANEL DE CONTROL DE ENCUADRE (PÁGINAS) */}
+          <>
+            {/* PANEL LATERAL DE MINIATURAS (PREVIEW VERTICAL) */}
+            <div className="no-print w-[80px] md:w-[100px] bg-[#2c2c29] border-r-2 border-[#1c1c19] flex flex-col items-center py-6 gap-6 overflow-y-auto shrink-0 z-10 custom-scrollbar shadow-[4px_0_15px_rgba(0,0,0,0.15)]">
+              <div className="text-[9px] md:text-[10px] font-black uppercase text-white tracking-widest text-center px-2 mb-2">
+                Páginas
+                <br />
+                <span className="text-gray-400 font-mono">({pageHeights.length})</span>
+              </div>
+              {(() => {
+                const offsets = [];
+                let currentOffset = 0;
+                for (let i = 0; i < pageHeights.length; i++) {
+                  offsets.push(currentOffset);
+                  currentOffset += pageHeights[i];
+                }
+                return pageHeights.map((h, i) => {
+                  const offsetY = offsets[i];
+                  const isEmpty = contentHeightMm > 0 && offsetY >= contentHeightMm + 20;
+                  // width 60px, aspect ratio 215.9 : h
+                  const thumbWidth = 60;
+                  const ratio = h / 215.9;
+                  const thumbHeight = thumbWidth * ratio;
+
+                  return (
+                    <div 
+                      key={i} 
+                      className="flex flex-col items-center gap-1.5 cursor-pointer transition-transform hover:scale-105 group" 
+                      onClick={() => {
+                        const el = document.getElementById(`page-${i}`);
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }}
+                      title={`Ir a página ${i + 1}`}
+                    >
+                      <div 
+                        className={`bg-white shadow-[3px_3px_0_0_rgba(28,28,25,1)] border-2 ${isEmpty ? 'border-[#ba1a1a] opacity-60' : 'border-gray-300 group-hover:border-[#0f4369]'} transition-colors relative`} 
+                        style={{
+                          width: `${thumbWidth}px`, 
+                          height: `${thumbHeight}px`,
+                          overflow: 'hidden'
+                        }}
+                      >
+                        <div className="absolute inset-1.5 flex flex-col gap-[3px] opacity-10 pointer-events-none">
+                          <div className="h-[2px] bg-black w-3/4"></div>
+                          <div className="h-[2px] bg-black w-full"></div>
+                          <div className="h-[2px] bg-black w-5/6"></div>
+                          <div className="h-[2px] bg-black w-full"></div>
+                          <div className="h-[2px] bg-black w-2/3"></div>
+                          <div className="h-[2px] bg-black w-4/5 mt-1"></div>
+                          <div className="h-[2px] bg-black w-full"></div>
+                        </div>
+                        {isEmpty && (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#ba1a1a]/5 backdrop-blur-[0.5px]">
+                            <span className="text-[7px] font-black text-[#ba1a1a] uppercase bg-white/90 px-1 py-0.5 rounded shadow-sm border border-[#ba1a1a]/20">Vacía</span>
+                          </div>
+                        )}
+                      </div>
+                      <span className={`text-[9px] font-mono font-bold ${isEmpty ? 'text-[#ba1a1a]' : 'text-gray-400 group-hover:text-white transition-colors'}`}>{i + 1}</span>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            <div className="flex-1 overflow-y-auto w-full py-10 px-4 flex flex-col items-center print:p-0 print:block print:overflow-visible prebep-pages-scroll scroll-smooth bg-[#f0ede6]">
+              
+              {/* PANEL DE CONTROL DE ENCUADRE (PÁGINAS) */}
             <div className="no-print bg-white border-2 border-[#1c1c19] p-4 mb-6 shadow-[4px_4px_0_0_rgba(28,28,25,1)] w-[215.9mm] flex justify-between items-center gap-4">
               <div className="flex flex-col gap-0.5">
                 <div className="flex items-center gap-2">
@@ -2405,6 +2775,7 @@ export default function PreBEPView() {
                 return (
                   <div 
                     key={idx} 
+                    id={`page-${idx}`}
                     className={`flex flex-col items-center page-container no-break ${isLast ? 'last-page' : 'normal-page'} ${isEmpty ? 'empty-page' : ''}`}
                     style={isEmpty ? { opacity: 0.4 } : undefined}
                   >
@@ -2435,6 +2806,11 @@ export default function PreBEPView() {
                         }}
                       >
                         {renderedDocument}
+                      </div>
+                      
+                      {/* Numeración de página n/n */}
+                      <div className="absolute bottom-[10mm] right-[20mm] text-[9px] font-bold text-gray-400 font-mono">
+                        Página {idx + 1} / {pageHeights.length}
                       </div>
                     </div>
 
@@ -2476,6 +2852,7 @@ export default function PreBEPView() {
               </button>
             </div>
           </div>
+          </>
         )}
 
         {/* VISTA 2: PANEL DE CONTROL PRE-BEP */}
@@ -2523,16 +2900,82 @@ export default function PreBEPView() {
                 {chapterVisibility.protocolos && (
                   <div className="mt-6 pt-6 border-t border-gray-200">
                     <h3 className="text-sm font-black uppercase text-[#1c1c19] mb-4">Configuración de Visualización</h3>
-                    <label className="flex items-center gap-3 p-3 border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors max-w-md">
-                      <div className={`relative w-10 h-5 rounded-full transition-colors ${showFullProtocols ? 'bg-green-500' : 'bg-gray-400'}`}>
-                        <div className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-transform ${showFullProtocols ? 'transform translate-x-5' : ''}`}></div>
+                    <div className="mb-4">
+                      <label className="flex items-center gap-3 p-3 border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors max-w-md">
+                        <div className={`relative w-10 h-5 rounded-full transition-colors ${showFullProtocols ? 'bg-green-500' : 'bg-gray-400'}`}>
+                          <div className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-transform ${showFullProtocols ? 'transform translate-x-5' : ''}`}></div>
+                        </div>
+                        <input type="checkbox" className="hidden" checked={showFullProtocols} onChange={toggleProtocolsDisplay} />
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-bold uppercase">Despliegue Completo de Protocolos</span>
+                          <span className="text-[9px] text-gray-500 uppercase">Mostrar todo el contenido o solo la lista resumida</span>
+                        </div>
+                      </label>
+                    </div>
+
+                    {orderedProtocols.length > 0 && (
+                      <div className="pl-4 border-l-2 border-gray-200 mt-2 space-y-2 max-w-md">
+                        <h4 className="text-[10px] font-black uppercase text-gray-500 tracking-widest mb-3">Protocolos Individuales (Ordenar y Expandir)</h4>
+                        {orderedProtocols.map((p, index) => {
+                          const isExpanded = expandedProtocols[p.id] !== undefined ? expandedProtocols[p.id] : showFullProtocols;
+                          return (
+                            <div key={p.id} className="mb-2">
+                              <div className="flex items-center gap-3 p-1 transition-colors">
+                                <input
+                                  type="number"
+                                  value={index + 1}
+                                  onChange={(e) => handleProtocolOrderChange(p.id, parseInt(e.target.value))}
+                                  className="w-12 p-1 text-center border border-gray-300 text-xs font-bold text-[#0f4369] bg-white outline-none focus:border-[#0f4369]"
+                                  min={1}
+                                  max={orderedProtocols.length}
+                                />
+                                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 flex-1">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={isExpanded} 
+                                    onChange={() => toggleProtocol(p.id)} 
+                                    className="w-4 h-4 accent-[#0f4369] flex-shrink-0" 
+                                  />
+                                  <span className="text-[10px] font-bold uppercase truncate">{p.title || p.name}</span>
+                                </label>
+                              </div>
+                              {isExpanded && (p.manuals?.length > 0 || p.templates?.length > 0) && (
+                                <div className="ml-6 pl-2 border-l border-gray-200 mt-1 space-y-1">
+                                  {p.manuals?.map(m => {
+                                    const isSubExpanded = expandedSubItems[m.id] !== undefined ? expandedSubItems[m.id] : true;
+                                    return (
+                                      <label key={m.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 transition-colors">
+                                        <input 
+                                          type="checkbox" 
+                                          checked={isSubExpanded} 
+                                          onChange={() => toggleSubItem(m.id)} 
+                                          className="w-3 h-3 accent-[#0f4369] flex-shrink-0" 
+                                        />
+                                        <span className="text-[9px] font-medium uppercase truncate text-gray-600">Manual: {m.title}</span>
+                                      </label>
+                                    );
+                                  })}
+                                  {p.templates?.map(t => {
+                                    const isSubExpanded = expandedSubItems[t.id] !== undefined ? expandedSubItems[t.id] : true;
+                                    return (
+                                      <label key={t.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 transition-colors">
+                                        <input 
+                                          type="checkbox" 
+                                          checked={isSubExpanded} 
+                                          onChange={() => toggleSubItem(t.id)} 
+                                          className="w-3 h-3 accent-[#0f4369] flex-shrink-0" 
+                                        />
+                                        <span className="text-[9px] font-medium uppercase truncate text-gray-600">Plantilla: {t.title}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
-                      <input type="checkbox" className="hidden" checked={showFullProtocols} onChange={toggleProtocolsDisplay} />
-                      <div className="flex flex-col">
-                        <span className="text-[10px] font-bold uppercase">Despliegue Completo de Protocolos</span>
-                        <span className="text-[9px] text-gray-500 uppercase">Mostrar todo el contenido o solo la lista resumida</span>
-                      </div>
-                    </label>
+                    )}
                   </div>
                 )}
               </div>

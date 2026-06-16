@@ -174,7 +174,7 @@ export const KNOWN_EXISTING_TABLES = [
   'subProjects',
   'project_units',
   'Espacio_Elemento',
-  'Componentes',
+  // 'Componentes' — tabla reemplazada por project_element_lod_tdi; no existe en Supabase
   'bep_team',
   'roles',
   'specialties',

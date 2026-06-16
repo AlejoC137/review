@@ -5,12 +5,16 @@ import {
 import { projectService } from '../../services/projectService';
 import { supabase } from '../../services/supabaseClient';
 import { levelsService } from '../../services/levelsService';
+import { spacesService } from '../../services/spacesService';
 
 export default function ProjectNamingProtocolModule({ project }) {
   const [specialties, setSpecialties] = useState([]);
   const [matrixElements, setMatrixElements] = useState([]);
   const [pebInfo, setPebInfo] = useState(null);
   const [levels, setLevels] = useState([]);
+  const [spacesData, setSpacesData] = useState([]);
+  const [subProjects, setSubProjects] = useState([]);
+  const [allMatrixElements, setAllMatrixElements] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [selectedSpecialty, setSelectedSpecialty] = useState('');
@@ -59,16 +63,20 @@ export default function ProjectNamingProtocolModule({ project }) {
         let pebResData = null;
 
         try {
-          const [specsRes, matrixRes, pebRes, levelsRes] = await Promise.all([
+          const [specsRes, matrixRes, pebRes, levelsRes, spacesRes, subProjectsRes] = await Promise.all([
             projectService.getSpecialties(project.id),
             projectService.getLodTdiMatrix(project.id),
             supabase.from('project_general_info').select('code').eq('project_id', project.id).maybeSingle(),
-            levelsService.getLevels(project.id).catch(() => [])
+            levelsService.getLevels(project.id).catch(() => []),
+            spacesService.getProjectSpaces(project.id).catch(() => []),
+            projectService.getSpaces(project.id).catch(() => [])
           ]);
           specs = specsRes || [];
           matrixData = matrixRes || [];
           pebResData = pebRes.data;
           setLevels(levelsRes || []);
+          setSpacesData(spacesRes || []);
+          setSubProjects(subProjectsRes || []);
           if (levelsRes && levelsRes.length > 0) {
             setNivel(levelsRes[0].nombre);
           }
@@ -106,27 +114,13 @@ export default function ProjectNamingProtocolModule({ project }) {
 
         setSpecialties(specs);
         
-        // Parse matrix elements to extract abbreviations
-        const parsedMatrix = matrixData.map(item => {
-          let abbr = '';
-          try {
-            if (item.notes && item.notes.trim().startsWith('{')) {
-              const parsed = JSON.parse(item.notes);
-              abbr = parsed.abbreviation || '';
-            }
-          } catch (e) {}
-          return {
-            discipline: item.discipline,
-            element: item.element_name,
-            abbreviation: abbr
-          };
-        }).filter(item => item.abbreviation); // Only those with abbreviation
+        setAllMatrixElements(matrixData);
         
+        // Extract unique disciplines for Categoría dropdown
+        const uniqueDisciplines = Array.from(new Set(matrixData.map(m => m.discipline).filter(Boolean)));
         
-        setMatrixElements(parsedMatrix);
-
         if (specs && specs.length > 0) setSelectedSpecialty(specs[0].abbreviation || 'ARQ');
-        if (parsedMatrix && parsedMatrix.length > 0) setSelectedCategory(parsedMatrix[0].abbreviation || 'FURN');
+        if (uniqueDisciplines.length > 0) setSelectedCategory(uniqueDisciplines[0]);
 
       } catch (err) {
         console.error("Error fetching nomenclature data:", err);
@@ -146,7 +140,13 @@ export default function ProjectNamingProtocolModule({ project }) {
   }
 
   const activeSpecialty = specialties.find(s => s.abbreviation === selectedSpecialty) || { abbreviation: 'ARQ', name: 'Arquitectura' };
-  const activeCategory = matrixElements.find(c => c.abbreviation === selectedCategory) || { abbreviation: 'FURN', element: 'Mobiliario' };
+  
+  // Categoría is now the selected discipline string. Generate a 3-letter abbreviation for the code.
+  const getCategoryAbbrev = (cat) => {
+    if (!cat) return 'YYY';
+    return cat.substring(0, 3).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  };
+  const categoryAbbrev = getCategoryAbbrev(selectedCategory);
 
   const getSpecialtyAbbrevForDiscipline = (discipline) => {
     const exact = specialties.find(s => 
@@ -181,7 +181,7 @@ export default function ProjectNamingProtocolModule({ project }) {
   };
 
   const centralCode = `${projectCode}-${activeSpecialty.abbreviation || 'XXX'}-${zona || 'ZZ'}-${nivel || 'ZZ'}-${tipo || 'M3'}-${disciplinaSec || 'A'}-${numero || '0001'}`;
-  const familiaCode = `${originCode}_${activeSpecialty.abbreviation || 'XXX'}_${activeCategory.abbreviation || 'YYY'}_${descripcion || 'Desc'}_${variante || 'Var'}`;
+  const familiaCode = `${originCode}_${activeSpecialty.abbreviation || 'XXX'}_${categoryAbbrev}_${descripcion || 'Desc'}_${variante || 'Var'}`;
 
   return (
     <div className="flex flex-col h-full bg-[#f6f3ee] overflow-y-auto p-4 md:p-8">
@@ -246,8 +246,49 @@ export default function ProjectNamingProtocolModule({ project }) {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-[10px] font-black uppercase text-[#72777f] mb-2 block">Volumen / Zona:</label>
-                  <input type="text" value={zona} onChange={e => setZona(e.target.value.toUpperCase())} className="w-full p-2 border-2 border-[#1c1c19] text-xs font-bold uppercase focus:outline-none focus:border-[#0f4369]" placeholder="ZZ" />
+                  <label className="text-[10px] font-black uppercase text-[#72777f] mb-2 block">Zona / Espacio:</label>
+                  {(spacesData && spacesData.filter(s => s.tipo !== 'COMPONENTE').length > 0) || (subProjects && subProjects.length > 0) ? (
+                    <div className="relative">
+                      <select 
+                        value={zona} 
+                        onChange={e => {
+                          const newZona = e.target.value;
+                          setZona(newZona.toUpperCase());
+                          
+                          // Check if it's a space and has a level
+                          if (spacesData) {
+                            const selectedSpace = spacesData.find(s => s.nombre === newZona);
+                            if (selectedSpace && selectedSpace.level_id) {
+                              const matchedLevel = levels.find(l => l.id === selectedSpace.level_id);
+                              if (matchedLevel) {
+                                setNivel(matchedLevel.nombre.toUpperCase());
+                              }
+                            }
+                          }
+                        }}
+                        className="w-full p-2 border-2 border-[#1c1c19] text-xs font-bold uppercase focus:outline-none focus:border-[#0f4369] appearance-none"
+                      >
+                        <option value="ZZ">ZZ (General)</option>
+                        {subProjects && subProjects.length > 0 && (
+                          <optgroup label="--- SUB UNIDADES ---">
+                            {subProjects.map(sp => (
+                              <option key={`sp-${sp.id}`} value={sp.name}>{sp.name}</option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {spacesData && spacesData.filter(s => s.tipo !== 'COMPONENTE').length > 0 && (
+                          <optgroup label="--- ESPACIOS ---">
+                            {spacesData.filter(s => s.tipo !== 'COMPONENTE').map(s => (
+                              <option key={`s-${s.id}`} value={s.nombre}>{s.nombre}</option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </select>
+                      <ChevronDown className="absolute right-2 top-2.5 h-4 w-4 pointer-events-none text-gray-500" />
+                    </div>
+                  ) : (
+                    <input type="text" value={zona} onChange={e => setZona(e.target.value.toUpperCase())} className="w-full p-2 border-2 border-[#1c1c19] text-xs font-bold uppercase focus:outline-none focus:border-[#0f4369]" placeholder="ZZ" />
+                  )}
                 </div>
                 <div>
                   <label className="text-[10px] font-black uppercase text-[#72777f] mb-2 block">Nivel:</label>
@@ -259,7 +300,7 @@ export default function ProjectNamingProtocolModule({ project }) {
                         className="w-full p-2 border-2 border-[#1c1c19] text-xs font-bold uppercase focus:outline-none focus:border-[#0f4369] appearance-none"
                       >
                         <option value="ZZ">ZZ (Múltiples / General)</option>
-                        {levels.map(l => (
+                        {levels.filter(l => !l.parent_id).map(l => (
                           <option key={l.id} value={l.nombre}>{l.nombre}</option>
                         ))}
                       </select>
@@ -330,9 +371,8 @@ export default function ProjectNamingProtocolModule({ project }) {
                       onChange={e => setSelectedCategory(e.target.value)}
                       className="w-full p-2 border-2 border-[#1c1c19] text-xs font-bold bg-white focus:outline-none appearance-none cursor-pointer uppercase h-[36px]"
                     >
-                      {matrixElements.length === 0 && <option value="">N/A</option>}
-                      {matrixElements.map((m, i) => (
-                        <option key={i} value={m.abbreviation}>{m.element} ({m.abbreviation})</option>
+                      {Array.from(new Set(allMatrixElements.map(m => m.discipline).filter(Boolean))).map((disc, i) => (
+                        <option key={i} value={disc}>{disc}</option>
                       ))}
                     </select>
                     <ChevronDown className="absolute right-2 top-2.5 h-4 w-4 pointer-events-none" />
@@ -341,8 +381,24 @@ export default function ProjectNamingProtocolModule({ project }) {
               </div>
 
               <div>
-                <label className="text-[10px] font-black uppercase text-[#72777f] mb-2 block">Descripción:</label>
-                <input type="text" value={descripcion} onChange={e => setDescripcion(e.target.value)} className="w-full p-2 border-2 border-[#1c1c19] text-xs font-bold focus:outline-none focus:border-[#0f4369]" placeholder="NombreDescriptivo" />
+                <label className="text-[10px] font-black uppercase text-[#72777f] mb-2 block">Descripción / Componente:</label>
+                {allMatrixElements && allMatrixElements.filter(m => m.discipline === selectedCategory).length > 0 ? (
+                  <div className="relative">
+                    <select 
+                      value={descripcion} 
+                      onChange={e => setDescripcion(e.target.value)}
+                      className="w-full p-2 border-2 border-[#1c1c19] text-xs font-bold focus:outline-none focus:border-[#0f4369] appearance-none uppercase"
+                    >
+                      <option value="NombreDescriptivo">NOMBRE DESCRIPTIVO (LIBRE)</option>
+                      {allMatrixElements.filter(m => m.discipline === selectedCategory).map((m, idx) => (
+                        <option key={`m-${idx}`} value={m.element_name}>{m.element_name}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-2.5 h-4 w-4 pointer-events-none text-gray-500" />
+                  </div>
+                ) : (
+                  <input type="text" value={descripcion} onChange={e => setDescripcion(e.target.value)} className="w-full p-2 border-2 border-[#1c1c19] text-xs font-bold focus:outline-none focus:border-[#0f4369]" placeholder="NombreDescriptivo" />
+                )}
               </div>
 
               <div>
@@ -369,7 +425,7 @@ export default function ProjectNamingProtocolModule({ project }) {
                   <Fingerprint size={12} className="text-[#0f4369]" /> Origen: <span className="text-[#1c1c19] bg-white px-1 border border-gray-300">{originCode}</span> (Auto-generado del Proyecto)
                 </div>
                 <div className="flex items-center gap-2 text-[10px] font-bold text-gray-600 uppercase">
-                  <Database size={12} className="text-[#0f4369]" /> Categoría: <span className="text-[#1c1c19] bg-white px-1 border border-gray-300">{activeCategory.abbreviation || 'N/A'}</span> (Viene de Matriz LOD)
+                  <Database size={12} className="text-[#0f4369]" /> Categoría: <span className="text-[#1c1c19] bg-white px-1 border border-gray-300">{categoryAbbrev}</span> (Derivado de: {selectedCategory || 'N/A'})
                 </div>
               </div>
             </div>
@@ -398,19 +454,20 @@ export default function ProjectNamingProtocolModule({ project }) {
                 </tr>
               </thead>
               <tbody className="divide-y-2 divide-[#1c1c19]">
-                {matrixElements.length === 0 && (
+                {allMatrixElements.length === 0 && (
                   <tr>
-                    <td colSpan="5" className="p-4 text-center text-xs font-bold text-gray-500 bg-[#f6f3ee]">No hay elementos con código en la matriz LOD.</td>
+                    <td colSpan="4" className="p-4 text-center text-xs font-bold text-gray-500 bg-[#f6f3ee]">No hay elementos en la matriz LOD.</td>
                   </tr>
                 )}
-                {matrixElements.map((m, idx) => {
+                {allMatrixElements.map((m, idx) => {
                   const specAbbrev = getSpecialtyAbbrevForDiscipline(m.discipline);
-                  const mCode = `${originCode}_${specAbbrev}_${m.abbreviation}_${descripcion || 'Desc'}_${variante || 'Var'}`;
+                  const mCategoryAbbrev = getCategoryAbbrev(m.discipline);
+                  const mCode = `${originCode}_${specAbbrev}_${mCategoryAbbrev}_${m.element_name}_${variante || 'Var'}`;
                   return (
                     <tr key={idx} className="hover:bg-[#f6f3ee] transition-colors">
                       <td className="p-3 border-r-2 border-[#1c1c19] text-[10px] font-bold uppercase">{m.discipline}</td>
-                      <td className="p-3 border-r-2 border-[#1c1c19] text-xs font-black text-[#0f4369]">{m.element}</td>
-                      <td className="p-3 border-r-2 border-[#1c1c19] text-xs font-mono font-bold bg-[#fcf9f4]">{m.abbreviation}</td>
+                      <td className="p-3 border-r-2 border-[#1c1c19] text-xs font-black text-[#0f4369]">{m.element_name}</td>
+                      <td className="p-3 border-r-2 border-[#1c1c19] text-xs font-mono font-bold bg-[#fcf9f4]">{mCategoryAbbrev}</td>
                       <td className="p-3 border-r-2 border-[#1c1c19] text-xs font-mono font-bold text-[#1c1c19] whitespace-nowrap">{mCode}</td>
                       <td className="p-2 text-center align-middle">
                         <button 

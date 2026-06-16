@@ -317,8 +317,30 @@ export default function ProjectUnitsTab({ project }) {
             />
             <span className="text-[11px] font-black uppercase tracking-wide text-[#1c1c19]">Permitir excepciones puntuales MEP</span>
           </label>
-          <p className="text-xs text-slate-600 mt-1.5 leading-relaxed font-medium">
+        </div>
+      </div>
+
+      <div className="mt-6 space-y-6 text-sm text-slate-700 font-medium">
+        <div>
+          <h4 className="font-black text-[#1c1c19] uppercase mb-1">Sistema de Unidades.</h4>
+          <p>
+            El proyecto se desarrollará en sistema METRICO. A continuación, se lista la configuración obligatoria de los archivos de los modelos de Revit en el apartado “Unidades de Proyecto”:
+          </p>
+          <p className="text-[11px] italic mt-2 text-slate-600">
             *Excepción: Los elementos que por su presentación comercial manejen otro tipo de unidades podrán conservar las mismas en los modelos BIM. Ejemplo: Tuberías, Ductos, Perfiles metálicos (Su sección transversal se maneja habitualmente en sistema imperial).
+          </p>
+        </div>
+        <div>
+          <h4 className="font-black text-[#1c1c19] uppercase mb-1">8.4. Gestión de Documentación planimétrica.</h4>
+          <p>
+            Toda la información planimétrica deberá ser extraída directamente desde los modelos BIM y deberá seguir las indicaciones en el documento “Guía y estándares para el desarrollo gráfico del proyecto” publicada por el CPNAA.
+            A modo de poder visualizar la planimetría contenida en los modelos desde el visor de ACC, la configuración del set de impresión para los sheets se debe mantener en formato vectorial.
+          </p>
+        </div>
+        <div>
+          <h4 className="font-black text-[#1c1c19] uppercase mb-1">8.5. Extracción de cantidades y codificación para presupuesto.</h4>
+          <p>
+            A partir de los modelos debe extraerse las cantidades de cada una de las disciplinas del proyecto. Para ello, se deben sacar tablas de cantidades de cada uno de los modelos con el fin de ser verificadas por el presupuestador. Adicionalmente, el presupuestador definirá los parámetros bajo los cuales los diseñadores deberán entregar los elementos codificados mediante un Keynote o parámetro con el fin de identificarlos en el modelo.
           </p>
         </div>
       </div>
