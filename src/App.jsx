@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './context/AuthContext';
 import { RoadmapProvider } from './context/RoadmapContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import LandingDemo from './pages/LandingDemo';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import ModuleView from './pages/ModuleView';
@@ -40,10 +41,10 @@ function App() {
       <RoadmapProvider>
         <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
+            <Route path="/" element={<LandingDemo />} />
             <Route path="/login" element={<Login />} />
 
             <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
-              <Route path="/" element={<Navigate to="/roadmap" replace />} />
               <Route path="/roadmap" element={<Dashboard />} />
 
               <Route path="/projects" element={<LifecycleDashboard />} />

@@ -92,5 +92,28 @@ ESTRUCTURA DE CADA OBJETO JSON:
 
 REGLAS CRÍTICAS:
 1. Genera los entregables basados en lo que el usuario pida.
-2. El output debe ser ÚNICAMENTE el JSON Array, sin texto adicional ni bloques de markdown. Ejemplo: [{"entregable_bim":"Modelo Arquitectura","responsable":"ARQ","fase":"EB","fecha":"2026-06-01","observaciones":"Preliminar","formato":".RVT"}]`)
+2. El output debe ser ÚNICAMENTE el JSON Array, sin texto adicional ni bloques de markdown. Ejemplo: [{"entregable_bim":"Modelo Arquitectura","responsable":"ARQ","fase":"EB","fecha":"2026-06-01","observaciones":"Preliminar","formato":".RVT"}]`),
+
+    monthlyTasks: (contextData) => getPrompt(`Actúa como un Asistente Experto en Gestión de Proyectos. Genera ÚNICAMENTE un arreglo JSON para importar tareas a un cronograma mensual.
+
+CONTEXTO DEL PROYECTO (BASES DE DATOS APROBADAS):
+
+EQUIPO (STAFF) - LISTA DE IDs y NOMBRES:
+${contextData.staff}
+
+ESPACIOS / UNIDADES (SUBPROYECTOS) - LISTA DE IDs y NOMBRES:
+${contextData.spaces}
+
+ESTRUCTURA DE CADA OBJETO JSON:
+- name: (String) Nombre corto de la tarea.
+- description: (String) Descripción detallada de la tarea.
+- fecha_inicio: (String) Fecha de inicio en formato YYYY-MM-DD.
+- fecha_fin_estimada: (String) Fecha fin estimada en formato YYYY-MM-DD.
+- priority: (String) Prioridad, DEBE SER "BAJA", "NORMAL", "ALTA" o "URGENTE".
+- subproject_id: (String) ID del Espacio/Unidad. DEBES usar EXACTAMENTE uno de los IDs listados arriba en el contexto. Si no aplica a ningún espacio en específico, déjalo como string vacío "".
+- staff_id: (String) ID del responsable. DEBES usar EXACTAMENTE uno de los IDs listados arriba en el contexto. Si no aplica a ningún miembro del equipo en específico, déjalo como string vacío "".
+
+REGLAS CRÍTICAS:
+1. Genera las tareas basándote estrictamente en la instrucción del usuario y utilizando los IDs exactos proporcionados en el contexto para asignar espacios y responsables.
+2. El output debe ser ÚNICAMENTE el JSON Array, sin texto adicional ni bloques de markdown. Ejemplo: [{"name":"Excavación","description":"Excavación de cimientos","fecha_inicio":"2026-06-01","fecha_fin_estimada":"2026-06-05","priority":"ALTA","subproject_id":"UUID","staff_id":"UUID"}]`)
 };

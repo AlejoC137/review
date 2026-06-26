@@ -4,18 +4,183 @@ import { useSearchParams } from 'react-router-dom';
 import { openInspector } from '../../store/uiSlice';
 import { parseISO, startOfDay, format, isSameDay, startOfMonth, endOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, Loader2, User } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, Loader2, User, Sparkles, Save, X, Check, Copy } from 'lucide-react';
 import { projectService } from '../../services/projectService';
+import { useAuth } from '../../context/AuthContext';
+import { PROMPTS } from '../../config/aiPrompts';
+
+// --- SUB-COMPONENT: AI IMPORT MODAL ---
+const AiTaskImportModal = ({ isOpen, onClose, onImport, staffMembers, subProjects }) => {
+  const [userInput, setUserInput] = useState('');
+  const [jsonInput, setJsonInput] = useState('');
+  const [previewData, setPreviewData] = useState(null);
+  const [error, setError] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleCopyPrompt = () => {
+    if (!userInput) {
+      alert("Por favor, ingresa primero qué tareas necesitas generar.");
+      return;
+    }
+
+    const staffContext = staffMembers.map(s => `- ID: ${s.id} | Nombre: ${s.name || s.nombre}`).join('\n');
+    const spacesContext = subProjects.map(sp => `- ID: ${sp.id} | Nombre: ${sp.name || sp.nombre}`).join('\n');
+
+    const masterPrompt = PROMPTS.monthlyTasks({ staff: staffContext, spaces: spacesContext });
+    const fullPrompt = `${masterPrompt}\n\nInstrucción del usuario:\n${userInput}`;
+
+    navigator.clipboard.writeText(fullPrompt).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const handleValidate = () => {
+    setError(null);
+    setPreviewData(null);
+    try {
+      let cleanJson = jsonInput.trim();
+      if (cleanJson.startsWith('\`\`\`json')) cleanJson = cleanJson.replace(/\`\`\`json/g, '').trim();
+      if (cleanJson.endsWith('\`\`\`')) cleanJson = cleanJson.replace(/\`\`\`/g, '').trim();
+      
+      const parsed = JSON.parse(cleanJson);
+      
+      if (!Array.isArray(parsed)) {
+        throw new Error("El JSON debe ser un arreglo de objetos (Array).");
+      }
+      if (parsed.length > 0 && !parsed[0].name) {
+        throw new Error("El JSON no tiene el formato correcto (falta 'name').");
+      }
+      
+      setPreviewData(parsed);
+    } catch (err) {
+      setError("Error al parsear JSON. Asegúrate de copiar solo el formato JSON válido. Detalles: " + err.message);
+    }
+  };
+
+  const handleCreate = async () => {
+    setIsImporting(true);
+    try {
+      await onImport(previewData);
+      onClose();
+    } catch (err) {
+      setError("Error al importar: " + err.message);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-[#fcf9f4]/95 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-white border-4 border-[#1c1c19] shadow-[16px_16px_0_0_rgba(28,28,25,0.2)] w-full max-w-3xl my-8 flex flex-col max-h-[90vh]">
+        
+        <div className="p-6 border-b-2 border-[#1c1c19] bg-[#0f4369] text-white flex justify-between items-center flex-none">
+          <div className="flex items-center gap-3">
+            <Sparkles size={24} className="text-yellow-400" />
+            <h3 className="text-xl font-black italic uppercase tracking-tighter">IMPORTADOR_TAREAS_IA</h3>
+          </div>
+          <button onClick={onClose} className="text-white hover:rotate-90 transition-transform"><X size={24} /></button>
+        </div>
+        
+        <div className="p-8 flex-1 overflow-y-auto custom-scrollbar space-y-8">
+          <div className="space-y-4">
+             <div className="flex items-center gap-2 border-b-2 border-[#1c1c19] pb-2">
+                <span className="bg-[#1c1c19] text-white font-black text-xs px-2 py-1">PASO 1</span>
+                <h4 className="text-sm font-black uppercase tracking-widest text-[#1c1c19]">Configurar y Copiar Prompt</h4>
+             </div>
+             
+             <div className="space-y-2">
+                <label className="block text-[10px] font-black uppercase tracking-widest text-[#72777f]">¿Qué tareas necesitas generar?</label>
+                <textarea 
+                  value={userInput}
+                  onChange={e => setUserInput(e.target.value)}
+                  placeholder="Ej: Necesito tareas de excavación y cimentación para la Torre A para la próxima semana..."
+                  className="w-full bg-[#f6f3ee] border-2 border-[#1c1c19]  p-3 text-sm focus:outline-none min-h-[80px]"
+                />
+             </div>
+             
+             <button 
+                onClick={handleCopyPrompt}
+                className={`w-full py-3 border-2 font-display font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${copied ? 'bg-green-600 text-white border-green-800' : 'bg-[#1c1c19] text-white border-[#1c1c19] shadow-[4px_4px_0_0_rgba(28,28,25,0.2)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]'}`}
+             >
+                {copied ? <Check size={16} /> : <Copy size={16} />}
+                {copied ? 'PROMPT COPIADO AL PORTAPAPELES' : 'COPIAR PROMPT MAESTRO A IA'}
+             </button>
+          </div>
+
+          <div className="space-y-4">
+             <div className="flex items-center gap-2 border-b-2 border-[#1c1c19] pb-2">
+                <span className="bg-[#1c1c19] text-white font-black text-xs px-2 py-1">PASO 2</span>
+                <h4 className="text-sm font-black uppercase tracking-widest text-[#1c1c19]">Pegar y Validar Resultado</h4>
+             </div>
+             
+             <div className="space-y-2">
+                <label className="block text-[10px] font-black uppercase tracking-widest text-[#72777f]">Pega el JSON generado por la IA aquí:</label>
+                <textarea 
+                  value={jsonInput}
+                  onChange={e => { setJsonInput(e.target.value); setPreviewData(null); setError(null); }}
+                  placeholder="[ { ... } ]"
+                  className="w-full bg-[#1c1c19] text-green-400 font-mono border-2 border-[#1c1c19] p-4 text-[10px] focus:outline-none min-h-[150px] custom-scrollbar"
+                />
+             </div>
+
+             {error && <div className="p-3 bg-red-100 text-red-700 text-xs font-bold uppercase border-l-4 border-red-500">{error}</div>}
+
+             {!previewData ? (
+                <button 
+                  onClick={handleValidate}
+                  disabled={!jsonInput.trim()}
+                  className="w-full py-3 bg-[#f6f3ee] text-[#1c1c19] border-2 border-[#1c1c19] font-display font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#e5e2dd] disabled:opacity-50"
+                >
+                  <Check size={16} /> VALIDAR JSON
+                </button>
+             ) : (
+                <div className="bg-[#f6f3ee] border-2 border-[#1c1c19] p-4 space-y-3">
+                   <h5 className="text-[10px] font-black uppercase bg-[#1c1c19] text-white px-2 py-1 inline-block mb-2">VISTA_PREVIA</h5>
+                   
+                   <div className="border border-[#1c1c19]/20 p-2 bg-white">
+                      <div className="text-[9px] font-black uppercase mb-1">{previewData.length} TAREAS ENCONTRADAS</div>
+                      <ul className="text-[9px] list-disc pl-4 opacity-70">
+                        {previewData.slice(0,5).map((item, i) => (
+                           <li key={i}>{item.name} - {item.fecha_inicio}</li>
+                        ))}
+                        {(previewData.length > 5) && <li>... y {previewData.length - 5} más</li>}
+                      </ul>
+                   </div>
+
+                   <button 
+                     onClick={handleCreate}
+                     disabled={isImporting}
+                     className="w-full mt-4 py-3 bg-[#0f4369] text-white border-2 border-[#1c1c19] font-display font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#1c1c19] transition-colors disabled:opacity-50"
+                   >
+                     {isImporting ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} 
+                     {isImporting ? 'IMPORTANDO...' : 'CONFIRMAR E IMPORTAR TAREAS'}
+                   </button>
+                </div>
+             )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function MonthlyModule({ project, onTabChange }) {
   const dispatch = useDispatch();
+  const { isAdmin, isBimManager } = useAuth();
+  const canEdit = isAdmin || isBimManager;
   const [searchParams, setSearchParams] = useSearchParams();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedSubProjectId, setSelectedSubProjectId] = useState('all');
   const [subProjects, setSubProjects] = useState([]);
+  const [staffMembers, setStaffMembers] = useState([]);
   const [hoveredTaskId, setHoveredTaskId] = useState(null);
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
 
   const month = currentDate.getMonth();
   const year = currentDate.getFullYear();
@@ -50,16 +215,41 @@ export default function MonthlyModule({ project, onTabChange }) {
     if (!project?.id) return;
     setLoading(true);
     try {
-      const [tasksData, spData] = await Promise.all([
+      const [tasksData, spData, staffData] = await Promise.all([
         projectService.getTasks(project.id),
-        projectService.getSpaces()
+        projectService.getSpaces(),
+        projectService.getStaff()
       ]);
       setTasks(tasksData || []);
       setSubProjects(spData || []);
+      setStaffMembers(staffData || []);
     } catch (error) {
       console.error("Error loading monthly tasks:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAiImport = async (parsedData) => {
+    try {
+      const createPromises = parsedData.map(item => {
+        const payload = {
+          name: item.name || '',
+          description: item.description || '',
+          fecha_inicio: item.fecha_inicio || null,
+          fecha_fin_estimada: item.fecha_fin_estimada || null,
+          priority: item.priority || 'NORMAL',
+          project_id: project.id,
+          subproject_id: item.subproject_id || null,
+          staff_id: item.staff_id || null,
+          finished: false
+        };
+        return projectService.createTask(payload);
+      });
+      await Promise.all(createPromises);
+      await loadData();
+    } catch (err) {
+      throw new Error('Error al guardar tareas en la base de datos: ' + err.message);
     }
   };
 
@@ -175,6 +365,17 @@ export default function MonthlyModule({ project, onTabChange }) {
 
         <div className="flex items-center gap-3">
           {loading && <Loader2 className="animate-spin text-[#0f4369]" size={16} />}
+          
+          {canEdit && (
+            <button
+              onClick={() => setIsAiModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2.5 bg-white text-[#1c1c19] border-2 border-[#1c1c19] font-black text-[10px] uppercase shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
+              title="Importador de Tareas IA"
+            >
+              <Sparkles size={12} className="text-yellow-500" fill="currentColor" /> IMPORTADOR AI
+            </button>
+          )}
+
           <button 
             onClick={() => setSearchParams({ tab: 'datos', subtab: 'cronograma' })}
             className="px-4 py-2.5 bg-white text-[#1c1c19] border-2 border-[#1c1c19] font-black text-[10px] uppercase shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
@@ -285,6 +486,14 @@ export default function MonthlyModule({ project, onTabChange }) {
           })}
         </div>
       </div>
+
+      <AiTaskImportModal
+        isOpen={isAiModalOpen}
+        onClose={() => setIsAiModalOpen(false)}
+        onImport={handleAiImport}
+        staffMembers={staffMembers}
+        subProjects={subProjects}
+      />
     </div>
   );
 }

@@ -10,10 +10,12 @@ import {
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import ContentBlockEditor from '../components/modules/ContentBlockEditor';
+import { Lock } from 'lucide-react';
 
 // --- SUB-COMPONENT: INLINE SUB-DOCUMENT VIEWER ---
 function InlineSubdocViewer({ resource }) {
   const { fetchResourceBlocks } = useResources();
+  const { isDemo } = useAuth();
   const [blocks, setBlocks] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -23,11 +25,24 @@ function InlineSubdocViewer({ resource }) {
       setLoading(true);
       const data = await fetchResourceBlocks(resource.id);
       if (isMounted) {
+        let activeBlocks = [];
         if (data && data.length > 0) {
-          setBlocks(data);
+          activeBlocks = data;
         } else if (resource.manual) {
-          setBlocks([{ type: 'text', content: resource.manual, id: 'migrated-manual' }]);
+          activeBlocks = [{ type: 'text', content: resource.manual, id: 'migrated-manual' }];
         }
+
+        if (isDemo && activeBlocks.length > 0) {
+          const textBlock = activeBlocks.find(b => b.type === 'text');
+          if (textBlock && textBlock.content) {
+            textBlock.content = textBlock.content.substring(0, 250) + '...\n\n> [!CAUTION]\n> Contenido truncado por restricciones del Modo Demo.';
+            activeBlocks = [textBlock];
+          } else {
+            activeBlocks = activeBlocks.slice(0, 1);
+          }
+        }
+
+        setBlocks(activeBlocks);
         setLoading(false);
       }
     }
@@ -53,7 +68,7 @@ function InlineSubdocViewer({ resource }) {
   }
 
   return (
-    <div className="bg-[#fcf9f4] px-6 py-8 border-t-2 border-[#1c1c19] animate-in fade-in duration-300">
+    <div className="bg-[#fcf9f4] px-6 py-8 border-t-2 border-[#1c1c19] animate-in fade-in duration-300 relative">
       <ContentBlockEditor
         blocks={blocks}
         onChange={() => {}}
@@ -61,6 +76,17 @@ function InlineSubdocViewer({ resource }) {
         isEditing={false}
         fontSize={14}
       />
+      {isDemo && (
+        <div className="mt-8 relative">
+          <div className="absolute bottom-full left-0 w-full h-24 bg-gradient-to-t from-[#fcf9f4] to-transparent pointer-events-none"></div>
+          <div className="bg-[#1c1c19] text-white p-6 border-2 border-[#0f4369] text-center shadow-[4px_4px_0_0_rgba(15,67,105,0.5)]">
+            <Lock className="w-8 h-8 text-[#0f4369] mx-auto mb-3" />
+            <h4 className="font-display font-black uppercase text-sm tracking-widest mb-2">Modo Demo Activo</h4>
+            <p className="text-xs opacity-80 mb-4 max-w-sm mx-auto">Adquiere una licencia de plataforma para desbloquear el 100% del contenido técnico, manuales y plantillas.</p>
+            <a href="mailto:contacto@arca.com" className="inline-block bg-[#0f4369] text-white font-bold px-6 py-2 text-[10px] tracking-widest uppercase hover:bg-white hover:text-[#1c1c19] transition-all">Solicitar Acceso Total</a>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -89,7 +115,7 @@ export default function ResourceDetailView() {
     fetchResourceById,
     fetchResourceBlocks
   } = useResources();
-  const { isAdmin, isBimManager } = useAuth();
+  const { isAdmin, isBimManager, isDemo } = useAuth();
   const isUnlocked = isAdmin || isBimManager;
 
   const [resource, setResource] = useState(null);
@@ -120,15 +146,22 @@ export default function ResourceDetailView() {
         const blockData = await fetchResourceBlocks(resourceId);
         let activeBlocks = [];
         if (blockData && blockData.length > 0) {
-          setBlocks(blockData);
           activeBlocks = blockData;
         } else if (data.manual) {
-          const migrated = [{ type: 'text', content: data.manual, id: 'migrated-manual' }];
-          setBlocks(migrated);
-          activeBlocks = migrated;
-        } else {
-          setBlocks([]);
+          activeBlocks = [{ type: 'text', content: data.manual, id: 'migrated-manual' }];
         }
+
+        if (isDemo && activeBlocks.length > 0) {
+          const textBlock = activeBlocks.find(b => b.type === 'text');
+          if (textBlock && textBlock.content) {
+            textBlock.content = textBlock.content.substring(0, 350) + '...\n\n> [!CAUTION]\n> Contenido ofuscado. Licencia requerida para continuar la lectura.';
+            activeBlocks = [textBlock];
+          } else {
+            activeBlocks = activeBlocks.slice(0, 1);
+          }
+        }
+
+        setBlocks(activeBlocks);
 
         // Fetch Associated Esquemas
         fetchAssociatedEsquemas(data.id);
@@ -496,8 +529,14 @@ export default function ResourceDetailView() {
                               <div className="flex items-center gap-1.5">
                                 {t.url ? (
                                   <a
-                                    href={t.url}
-                                    target="_blank"
+                                    href={isDemo ? "#" : t.url}
+                                    onClick={(e) => {
+                                      if (isDemo) {
+                                        e.preventDefault();
+                                        alert("La descarga de plantillas está reservada para usuarios con licencia.");
+                                      }
+                                    }}
+                                    target={isDemo ? "_self" : "_blank"}
                                     rel="noopener noreferrer"
                                     className="p-1 bg-[#1c1c19] text-white hover:bg-[#333] border border-[#1c1c19] transition-all"
                                     title="Descargar plantilla"
@@ -602,6 +641,22 @@ export default function ResourceDetailView() {
                     isEditing={false}
                     fontSize={15}
                   />
+
+                  {isDemo && (
+                    <div className="mt-12 relative w-full">
+                      <div className="absolute bottom-full left-0 w-full h-32 bg-gradient-to-t from-[#fcf9f4] to-transparent pointer-events-none"></div>
+                      <div className="bg-[#1c1c19] text-white p-8 md:p-12 border-4 border-[#0f4369] text-center shadow-[8px_8px_0_0_rgba(15,67,105,1)]">
+                        <Lock className="w-12 h-12 text-[#0f4369] mx-auto mb-4" />
+                        <h4 className="font-display font-black uppercase text-xl md:text-2xl tracking-widest mb-3">Modo Demo Restringido</h4>
+                        <p className="text-sm opacity-80 mb-6 max-w-lg mx-auto leading-relaxed">
+                          Has llegado al límite de la vista previa. Adquiere una licencia oficial para desbloquear la base de datos completa de protocolos, manuales operativos, plantillas descargables y esquemas BIM.
+                        </p>
+                        <a href="mailto:contacto@arca.com" className="inline-block bg-white text-[#1c1c19] font-black px-8 py-4 text-xs md:text-sm tracking-widest uppercase hover:bg-[#0f4369] hover:text-white border-2 border-transparent transition-all shadow-[4px_4px_0_0_rgba(255,255,255,0.3)]">
+                          Solicitar Licencia
+                        </a>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -638,8 +693,14 @@ export default function ResourceDetailView() {
               {/* Source/Drive URL */}
               {resource.url ? (
                 <a
-                  href={resource.url}
-                  target="_blank"
+                  href={isDemo ? "#" : resource.url}
+                  onClick={(e) => {
+                    if (isDemo) {
+                      e.preventDefault();
+                      alert("Los enlaces externos a Drive están restringidos en Modo Demo.");
+                    }
+                  }}
+                  target={isDemo ? "_self" : "_blank"}
                   rel="noopener noreferrer"
                   className="flex items-center justify-center gap-2 w-full text-[10px] font-display font-black tracking-widest uppercase text-white bg-[#1c1c19] border-2 border-[#1c1c19] py-3 hover:bg-[#333] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all shadow-[3px_3px_0_0_rgba(15,67,105,1)]"
                 >
@@ -655,7 +716,13 @@ export default function ResourceDetailView() {
               {/* Print Protocol Button */}
               {resource.category === 'Protocolo' && (
                 <button
-                  onClick={() => window.open(`/print/protocol/${resource.id}`, '_blank')}
+                  onClick={() => {
+                    if (isDemo) {
+                      alert("La impresión y exportación de protocolos está deshabilitada en el Modo Demo.");
+                    } else {
+                      window.open(`/print/protocol/${resource.id}`, '_blank');
+                    }
+                  }}
                   className="flex items-center justify-center gap-2 w-full text-[10px] font-display font-bold tracking-widest uppercase text-[#1c1c19] bg-[#f6f3ee] border-2 border-[#1c1c19] py-3 hover:bg-[#1c1c19] hover:text-white transition-all"
                 >
                   <Printer size={14} />

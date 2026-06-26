@@ -8,6 +8,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(window.location.hostname === 'localhost');
   const [isBimManager, setIsBimManager] = useState(false);
+  const [isDemo, setIsDemo] = useState(false);
 
   const setBimManager = (finished) => {
     setIsBimManager(finished);
@@ -47,6 +48,13 @@ export const AuthProvider = ({ children }) => {
           setIsAdmin(adminValue === true || adminValue === 'true' || adminValue === 1 || adminValue === 'TRUE');
           const bimManagerValue = data.bim_manager;
           setIsBimManager(bimManagerValue === true || bimManagerValue === 'true' || bimManagerValue === 1 || bimManagerValue === 'TRUE');
+          const demoMode = data.mail === 'demo@arca.com';
+          setIsDemo(demoMode);
+          if (demoMode) {
+            localStorage.setItem('isDemo', 'true');
+          } else {
+            localStorage.removeItem('isDemo');
+          }
         }
       } else {
         // Invalid session or user deleted
@@ -54,12 +62,16 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem('custom_user_id');
         setUser(null);
         setIsAdmin(false);
+        setIsDemo(false);
+        localStorage.removeItem('isDemo');
       }
     } catch (err) {
       console.error("Session check error:", err);
       localStorage.removeItem('custom_user_id');
       setUser(null);
       setIsAdmin(false);
+      setIsDemo(false);
+      localStorage.removeItem('isDemo');
     } finally {
       setLoading(false);
     }
@@ -69,6 +81,7 @@ export const AuthProvider = ({ children }) => {
     user,
     isAdmin,
     isBimManager,
+    isDemo,
     setBimManager,
     signIn: async (email, password) => {
       try {
@@ -94,6 +107,13 @@ export const AuthProvider = ({ children }) => {
         setIsAdmin(adminValue === true || adminValue === 'true' || adminValue === 1 || adminValue === 'TRUE');
         const bimManagerValue = data.bim_manager;
         setIsBimManager(bimManagerValue === true || bimManagerValue === 'true' || bimManagerValue === 1 || bimManagerValue === 'TRUE');
+        const demoMode = data.mail === 'demo@arca.com';
+        setIsDemo(demoMode);
+        if (demoMode) {
+          localStorage.setItem('isDemo', 'true');
+        } else {
+          localStorage.removeItem('isDemo');
+        }
 
         return { error: null };
       } catch (err) {
@@ -104,6 +124,8 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('custom_user_id');
       setUser(null);
       setIsAdmin(false);
+      setIsDemo(false);
+      localStorage.removeItem('isDemo');
       return { error: null };
     },
   };

@@ -441,10 +441,11 @@ export const projectService = {
   },
 
   async getProjects() {
-    const { data, error } = await supabase
-      .from('projects')
-      .select('*')
-      .order('name', { ascending: true });
+    let query = supabase.from('projects').select('*');
+    if (localStorage.getItem('isDemo') === 'true') {
+      query = query.ilike('name', '%demo%');
+    }
+    const { data, error } = await query.order('name', { ascending: true });
     if (error) throw error;
     return data;
   },
@@ -456,6 +457,11 @@ export const projectService = {
       .eq('id', projectId)
       .single();
     if (error) throw error;
+    
+    if (localStorage.getItem('isDemo') === 'true' && !data.name.toLowerCase().includes('demo')) {
+      throw new Error('Acceso denegado: El Modo Demo solo permite ver proyectos de prueba.');
+    }
+    
     return data;
   },
 
