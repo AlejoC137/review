@@ -20,7 +20,7 @@ export default function LoginForm() {
     try {
       const { error } = await signIn(email, password);
       if (error) throw error;
-      navigate('/');
+      navigate('/roadmap');
     } catch (err) {
       setError(err.message || "Authentication failed. Verify credentials.");
     } finally {

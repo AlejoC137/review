@@ -14,6 +14,12 @@ import AboutUs from './pages/AboutUs';
 import Documents from './pages/Documents';
 import DocumentComposerManager from './pages/DocumentComposerManager';
 import AdminProtectedRoute from './components/auth/AdminProtectedRoute';
+import { useAuth } from './context/AuthContext';
+
+const IndexRoute = () => {
+  const { user } = useAuth();
+  return user ? <Navigate to="/roadmap" replace /> : <LandingDemo />;
+};
 
 import LifecycleDashboard from './pages/LifecycleDashboard';
 import ProjectDetailView from './pages/ProjectDetailView';
@@ -41,7 +47,7 @@ function App() {
       <RoadmapProvider>
         <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
-            <Route path="/" element={<LandingDemo />} />
+            <Route path="/" element={<IndexRoute />} />
             <Route path="/login" element={<Login />} />
 
             <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
