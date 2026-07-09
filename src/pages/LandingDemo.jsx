@@ -12,8 +12,14 @@ import { useAuth } from '../context/AuthContext';
 
 const LandingDemo = () => {
   const navigate = useNavigate();
-  const { signIn } = useAuth();
+  const { signIn, user } = useAuth();
   const [isDemoLoading, setIsDemoLoading] = useState(false);
+
+  React.useEffect(() => {
+    if (user) {
+      navigate('/roadmap');
+    }
+  }, [user, navigate]);
 
   const handleDemoLogin = async () => {
     setIsDemoLoading(true);
