@@ -110,7 +110,7 @@ const ContentBlockEditorClassic = ({ blocks = [], onChange, onUploadImage, isEdi
                   <div className="absolute -inset-6 bg-[#0f4369]/3 opacity-0 group-hover:opacity-100 transition-opacity -z-10 border-x-2 border-[#1c1c19]/5"></div>
                   <div className="flex flex-col items-center">
                     <img 
-                      src={block.content} 
+                      src={(typeof block.content === 'string' && block.content.startsWith('blob:')) ? '' : block.content} 
                       alt="" 
                       className="w-full max-h-[1200px] object-contain border-2 border-[#1c1c19] shadow-[16px_16px_0_0_rgba(28,28,25,0.05)] transition-all duration-500 hover:shadow-[20px_20px_0_0_rgba(28,28,25,0.08)]" 
                       onError={(e) => e.target.style.display = 'none'}

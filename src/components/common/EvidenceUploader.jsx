@@ -40,7 +40,7 @@ export default function EvidenceUploader({ currentUrl, onUpload, pathPrefix = 't
       <div className="relative h-28 group">
         {currentUrl ? (
           <div className="h-full w-full border-2 border-[#1c1c19] overflow-hidden relative">
-            <img src={currentUrl} alt="Evidencia" className="w-full h-full object-cover" />
+            <img src={(typeof currentUrl === 'string' && currentUrl.startsWith('blob:')) ? '' : currentUrl} alt="Evidencia" className="w-full h-full object-cover" />
             <button 
               onClick={() => onUpload('')}
               className="absolute top-1 right-1 p-1 bg-red-600 text-white hover:scale-110 transition-all shadow-[2px_2px_0_0_rgba(0,0,0,1)]"

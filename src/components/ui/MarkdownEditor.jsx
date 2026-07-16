@@ -312,7 +312,14 @@ const MarkdownEditor = ({ value, onChange, isEditing = false, className = "", he
             />
           </div>
         ) : (
-          <div className={`flex-1 w-full h-full min-h-[400px] p-6 md:p-12 overflow-y-auto bg-white custom-scrollbar print:overflow-visible print:h-auto print:p-0 ${editorTailwindStyles}`}>
+          <div 
+            className={`flex-1 w-full h-full min-h-[400px] p-6 md:p-12 overflow-y-auto bg-white custom-scrollbar cursor-text print:overflow-visible print:h-auto print:p-0 ${editorTailwindStyles}`}
+            onClick={(e) => {
+              if (editor && !editor.isFocused) {
+                editor.commands.focus('end');
+              }
+            }}
+          >
             <EditorContent editor={editor} className="min-h-full" />
           </div>
         )}
