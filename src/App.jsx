@@ -1,4 +1,5 @@
 import React from 'react';
+import { getCustomFonts } from './utils/fontManager';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { RoadmapProvider } from './context/RoadmapContext';
@@ -41,9 +42,33 @@ import LevelsView from './pages/LevelsView';
 import SpecialtiesView from './pages/SpecialtiesView';
 import AreasManagerView from './pages/AreasManagerView';
 
+function GlobalFontStyles() {
+  const [fonts, setFonts] = React.useState(getCustomFonts());
+
+  React.useEffect(() => {
+    const handleUpdate = () => setFonts(getCustomFonts());
+    window.addEventListener('custom-fonts-updated', handleUpdate);
+    return () => window.removeEventListener('custom-fonts-updated', handleUpdate);
+  }, []);
+
+  if (fonts.length === 0) return null;
+
+  return (
+    <style>
+      {fonts.map(f => `
+        @font-face {
+          font-family: '${f.name}';
+          src: url('${f.url}');
+        }
+      `).join('\n')}
+    </style>
+  );
+}
+
 function App() {
   return (
     <AuthProvider>
+      <GlobalFontStyles />
       <RoadmapProvider>
         <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>

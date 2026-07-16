@@ -221,6 +221,26 @@ export default function AdminResourceDetailView() {
   const [blocks, setBlocks] = useState([]);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [useNewEditor, setUseNewEditor] = useState(() => {
+    return localStorage.getItem('global_use_new_editor') === 'true';
+  });
+
+  useEffect(() => {
+    if (blocks && blocks.length > 0) {
+      const hasAdvanced = blocks.some(b => 
+        b.type === 'page-break' || 
+        b.type === 'spacer' || 
+        (b.width && b.width !== '1' && b.width !== '100%') || 
+        b.padding || 
+        b.margin || 
+        (b.align && b.align !== 'justify' && b.align !== 'center') || 
+        b.caption
+      );
+      if (hasAdvanced) {
+        setUseNewEditor(true);
+      }
+    }
+  }, [blocks]);
 
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
@@ -398,6 +418,19 @@ export default function AdminResourceDetailView() {
     }
   };
 
+  const handleCancel = async () => {
+    setFormData(resource);
+    const blockData = await fetchResourceBlocks(resourceId);
+    if (blockData && blockData.length > 0) {
+      setBlocks(blockData);
+    } else if (resource.manual) {
+      setBlocks([{ type: 'text', content: resource.manual, id: 'migrated-manual' }]);
+    } else {
+      setBlocks([]);
+    }
+    setIsEditing(false);
+  };
+
   if (loading) {
     return (
       <div className="flex-1 flex justify-center items-center h-full">
@@ -411,26 +444,127 @@ export default function AdminResourceDetailView() {
   if (!resource) return null;
 
   return (
-    <div className="container mx-auto relative z-10 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20 pt-8 px-4 md:px-8">
-      <button
-        onClick={() => navigate(-1)}
-        className="flex items-center text-xs font-display font-bold tracking-widest uppercase text-[#1c1c19] hover:bg-[#e5e2dd] transition-colors mb-8 group border-2 border-[#1c1c19] px-4 py-3 bg-[#fcf9f4] shadow-[4px_4px_0_0_rgba(28,28,25,0.1)] active:translate-y-[2px]"
-      >
-        <ArrowLeft className="mr-3 group-hover:-translate-x-1 transition-transform" size={16} strokeWidth={2.5} />
-        Return_To_Admin_List
-      </button>
+    <div className="container mx-auto relative z-10 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20 px-4 md:px-8 pt-0">
+      
+      {/* STICKY TOOLBAR */}
+      <div className="sticky top-0 z-50 bg-[#fcf9f4]/95 backdrop-blur-md border-b-4 border-[#1c1c19] py-4 mb-8 flex flex-wrap items-center justify-between gap-4 print:hidden">
+        <div className="flex items-center gap-4 flex-wrap">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center text-xs font-display font-bold tracking-widest uppercase text-[#1c1c19] hover:bg-[#e5e2dd] transition-colors border-2 border-[#1c1c19] px-3 py-2 bg-white shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] active:translate-y-[2px]"
+          >
+            <ArrowLeft className="mr-2" size={14} strokeWidth={2.5} />
+            <span className="hidden sm:inline">Return_List</span>
+            <span className="sm:hidden">Back</span>
+          </button>
 
-      <div className="w-full bg-[#fcf9f4] border-2 border-[#1c1c19] shadow-[8px_8px_0_0_rgba(28,28,25,0.2)] relative overflow-visible mb-12">
+          <div className="h-6 w-px bg-[#1c1c19]/20" />
 
-        <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-40 flex items-center gap-2">
+          {/* ID label */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[9px] font-mono text-[#72777f]">ID:</span>
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#1c1c19] bg-[#e5e2dd] px-2 py-0.5 border border-[#1c1c19]/20">{resource.id.substring(0, 8)}</span>
+          </div>
+
+          <div className="h-6 w-px bg-[#1c1c19]/20" />
+
+          {/* Category drop selection / display */}
+          <div className="flex items-center gap-2">
+            <Box size={14} className="text-[#0f4369]" />
+            {isEditing ? (
+              <select
+                value={formData.category || ''}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                className="bg-white border-2 border-[#1c1c19] px-2 py-1 text-[10px] font-display font-bold uppercase tracking-widest cursor-pointer focus:outline-none"
+              >
+                {RESOURCE_CATEGORIES.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-[10px] font-display font-bold text-[#0f4369] tracking-widest uppercase bg-[#0f4369]/10 px-2.5 py-1 border border-[#0f4369]/20">{resource.category}</span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* View Mode Button */}
+          <button
+            type="button"
+            onClick={() => window.open(`/resource/${resourceId}`, '_blank')}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white text-[#1c1c19] border-2 border-[#1c1c19] font-display font-bold text-[10px] uppercase tracking-widest hover:bg-[#e5e2dd] transition-all shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px]"
+            title="Ver vista pública del recurso"
+          >
+            <Eye size={12} />
+            <span>VIEW / PREVIEW</span>
+          </button>
+
+          {/* Toggle Editor Mode Button */}
+          {isEditing && (
+            <div className="flex bg-[#1c1c19] p-0.5 border-2 border-[#1c1c19] self-start md:self-auto shrink-0 shadow-[2px_2px_0_0_rgba(28,28,25,1)]">
+              <button 
+                type="button" 
+                onClick={() => {
+                  if (useNewEditor) {
+                    if (window.confirm("¿Seguro que deseas volver al editor clásico? Los espaciados, layouts de columna y bloques avanzados podrían no mostrarse correctamente en la edición.")) {
+                      setUseNewEditor(false);
+                      localStorage.setItem('global_use_new_editor', 'false');
+                    }
+                  }
+                }} 
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-display font-bold tracking-widest uppercase transition-all ${!useNewEditor ? 'bg-[#fcf9f4] text-[#1c1c19]' : 'text-[#f6f3ee] hover:text-[#e5e2dd]'}`}
+              >
+                CLÁSICO
+              </button>
+              <button 
+                type="button" 
+                onClick={() => {
+                  if (!useNewEditor) {
+                    setUseNewEditor(true);
+                    localStorage.setItem('global_use_new_editor', 'true');
+                  }
+                }} 
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-display font-bold tracking-widest uppercase transition-all ${useNewEditor ? 'bg-[#fcf9f4] text-[#1c1c19]' : 'text-[#f6f3ee] hover:text-[#e5e2dd]'}`}
+              >
+                AVANZADO ✨
+              </button>
+            </div>
+          )}
+
+          {/* IA Import Button */}
+          {isEditing && (
+            <button 
+              onClick={() => setIsAiModalOpen(true)} 
+              className="flex items-center gap-1.5 px-3 py-2 bg-yellow-50 text-[#1c1c19] border-2 border-[#1c1c19] font-display font-bold text-[10px] uppercase tracking-widest hover:bg-yellow-100 transition-all shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px]"
+            >
+              <Sparkles size={12} className="text-yellow-500" />
+              <span>IA IMPORT</span>
+            </button>
+          )}
+
+          {/* Delete Button */}
           {isEditing && (
             <button
               onClick={handleDelete}
-              className="p-1.5 sm:px-4 flex items-center gap-2 border-2 border-[#1c1c19] font-display text-[10px] sm:text-xs font-bold tracking-widest uppercase transition-colors bg-[#ba1a1a] text-white hover:bg-[#1c1c19]"
+              className="px-3 py-2 flex items-center gap-1.5 border-2 border-[#1c1c19] font-display text-[10px] font-bold tracking-widest uppercase transition-colors bg-[#ba1a1a] text-white hover:bg-[#1c1c19]"
             >
-              <Trash2 size={14} className="sm:size-4" /> <span className="hidden sm:inline">DELETE</span>
+              <Trash2 size={12} />
+              <span>DELETE</span>
             </button>
           )}
+
+          {/* Cancel button when editing */}
+          {isEditing && (
+            <button
+              onClick={handleCancel}
+              className="px-3 py-2 flex items-center gap-1.5 border-2 border-[#1c1c19] font-display text-[10px] font-bold tracking-widest uppercase transition-colors bg-white text-[#1c1c19] hover:bg-[#e5e2dd]"
+            >
+              <X size={12} />
+              <span>CANCEL</span>
+            </button>
+          )}
+
+          {/* Save / Edit Toggle Button */}
           <button
             onClick={() => {
               if (isEditing) {
@@ -439,11 +573,18 @@ export default function AdminResourceDetailView() {
                 setIsEditing(true);
               }
             }}
-            className={`p-1.5 sm:px-4 flex items-center gap-2 border-2 border-[#1c1c19] font-display text-[10px] sm:text-xs font-bold tracking-widest uppercase transition-all active:translate-y-[1px] shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-y-[1px] ${isEditing ? 'bg-[#0f4369] text-white' : 'bg-[#e5e2dd] text-[#1c1c19] hover:bg-[#1c1c19] hover:text-white'}`}
+            className={`px-4 py-2 flex items-center gap-2 border-2 border-[#1c1c19] font-display text-[10px] font-bold tracking-widest uppercase transition-all shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] ${isEditing ? 'bg-[#0f4369] text-white' : 'bg-[#e5e2dd] text-[#1c1c19] hover:bg-[#1c1c19] hover:text-white'}`}
           >
-            {isEditing ? <><Save size={14} className="sm:size-4" /> <span className="hidden sm:inline">Save Edits</span></> : <><Edit2 size={14} className="sm:size-4" /> <span className="hidden sm:inline">Admin Edit</span></>}
+            {isEditing ? (
+              <><Save size={12} /> <span>Save Edits</span></>
+            ) : (
+              <><Edit2 size={12} /> <span>Admin Edit</span></>
+            )}
           </button>
         </div>
+      </div>
+
+      <div className="w-full bg-[#fcf9f4] border-2 border-[#1c1c19] shadow-[8px_8px_0_0_rgba(28,28,25,0.2)] relative overflow-visible mb-12">
 
         {/* Tape annotation */}
         <div className="absolute -top-4 -right-2 sm:-right-6 bg-[#0f4369] border-2 border-[#1c1c19] text-white font-display font-bold text-[8px] sm:text-[10px] py-0.5 sm:py-1 px-4 sm:px-8 rotate-12 tracking-[0.2em] uppercase shadow-[4px_4px_0_0_rgba(28,28,25,0.1)] z-20">
@@ -468,19 +609,7 @@ export default function AdminResourceDetailView() {
         <div className="border-b-2 border-[#1c1c19] p-5 md:p-12 pb-6 md:pb-8 relative z-10 bg-[#f6f3ee]">
           <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-4 md:mb-6 pr-12 md:pr-24">
             <Box size={14} className="text-[#0f4369] md:size-4" />
-            {isEditing ? (
-              <select
-                value={formData.category || ''}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                className="bg-white border-2 border-[#1c1c19] px-2 py-1 text-[10px] font-display font-bold uppercase tracking-widest cursor-pointer"
-              >
-                {RESOURCE_CATEGORIES.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            ) : (
-              <span className="text-[10px] md:text-xs font-display font-bold text-[#0f4369] tracking-widest uppercase">{resource.category}</span>
-            )}
+            <span className="text-[10px] md:text-xs font-display font-bold text-[#0f4369] tracking-widest uppercase bg-[#0f4369]/10 px-2 py-0.5 border border-[#0f4369]/20">{isEditing ? formData.category : resource.category}</span>
             <span className="text-[#72777f]">//</span>
             <span className="text-[10px] md:text-xs font-display font-bold text-[#1c1c19] tracking-widest uppercase">ID_{resource.id.substring(0, 6)}</span>
           </div>
@@ -735,6 +864,9 @@ export default function AdminResourceDetailView() {
             onChange={setBlocks}
             onUploadImage={uploadResourceImage}
             isEditing={isEditing}
+            useNewEditor={useNewEditor}
+            setUseNewEditor={setUseNewEditor}
+            hideModeSelector={true}
           />
         </div>
       </div>

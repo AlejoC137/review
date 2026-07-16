@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../services/supabaseClient';
+import { serializeBlocks, deserializeBlocks } from '../utils/blockSerializer';
 
 export const useResources = () => {
   const [resources, setResources] = useState([]);
@@ -224,7 +225,7 @@ export const useResources = () => {
         console.warn("Could not fetch resource_content_blocks, table might not exist yet:", error);
         return [];
       }
-      return data || [];
+      return deserializeBlocks(data || []);
     } catch (err) {
       console.error('Error fetching resource blocks:', err);
       return [];
@@ -243,7 +244,8 @@ export const useResources = () => {
 
       // 2. Insert new blocks
       if (blocks.length > 0) {
-        const blocksWithResourceId = blocks.map((b, i) => ({
+        const serialized = serializeBlocks(blocks);
+        const blocksWithResourceId = serialized.map((b, i) => ({
           resource_id: resourceId,
           type: b.type,
           content: b.content,

@@ -6,7 +6,8 @@ import ResourcePlaceholder from '../components/ui/ResourcePlaceholder';
 import { 
   ArrowLeft, ExternalLink, Box, Database, Eye, X, 
   BookOpen, FileText, Download, Printer, Edit3, 
-  ChevronDown, ChevronUp, Clock, Info, Compass, HelpCircle
+  ChevronDown, ChevronUp, Clock, Info, Compass, HelpCircle,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import ContentBlockEditor from '../components/modules/ContentBlockEditor';
@@ -122,6 +123,7 @@ export default function ResourceDetailView() {
   const [loading, setLoading] = useState(true);
   const [blocks, setBlocks] = useState([]);
   const [associatedEsquemas, setAssociatedEsquemas] = useState([]);
+  const [showSidebar, setShowSidebar] = useState(true);
   
   // Hierarchy state
   const [subdocs, setSubdocs] = useState({ manuals: [], templates: [], requirements: [] });
@@ -376,11 +378,36 @@ export default function ResourceDetailView() {
         )}
       </div>
 
-      {/* Main Grid Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      {/* Main Flex Layout */}
+      <div className="flex flex-col lg:flex-row items-start w-full relative">
         
-        {/* LEFT COLUMN: Main content reader (lg:col-span-8) */}
-        <div className="lg:col-span-8 space-y-8">
+        {/* LEFT COLUMN: Main content reader */}
+        <div className="flex-1 min-w-0 space-y-8 relative">
+          
+          {/* Sticky Toggler Container */}
+          <div 
+            className="hidden lg:block sticky z-40 pointer-events-none"
+            style={{ 
+              position: 'sticky', 
+              top: '320px', 
+              height: '0px',
+              width: '100%',
+              left: 0
+            }}
+          >
+            <button
+              onClick={() => setShowSidebar(!showSidebar)}
+              className="absolute bg-[#1c1c19] text-white p-1 z-50 hover:bg-[#0f4369] opacity-40 hover:opacity-100 transition-all duration-300 flex-col items-center justify-center border border-white/20 shadow-[2px_2px_0_0_rgba(0,0,0,0.2)] pointer-events-auto"
+              style={{ 
+                right: '-44px',
+                top: '0px',
+                transform: 'translateY(-50%)'
+              }}
+              title={showSidebar ? "Ocultar barra lateral" : "Mostrar barra lateral"}
+            >
+              {showSidebar ? <ChevronRight size={12} strokeWidth={3} /> : <ChevronLeft size={12} strokeWidth={3} />}
+            </button>
+          </div>
           
           <article className="w-full bg-[#fcf9f4] border-2 border-[#1c1c19] shadow-[8px_8px_0_0_rgba(28,28,25,0.15)] relative overflow-hidden p-6 md:p-12">
             
@@ -664,8 +691,132 @@ export default function ResourceDetailView() {
           </article>
         </div>
 
-        {/* RIGHT COLUMN: Sticky Sidebar tools & metadata (lg:col-span-4) */}
-        <div className="lg:col-span-4 space-y-6 lg:sticky lg:top-6">
+        {/* RIGHT COLUMN: Sticky Sidebar tools & metadata */}
+        <div 
+          className={`
+            space-y-6 lg:sticky lg:top-6 relative lg:border-l lg:border-[#1c1c19]/10 
+            transition-all duration-300 ease-in-out overflow-hidden shrink-0
+            ${showSidebar ? 'w-full lg:w-[360px] lg:max-w-[360px] lg:pl-8 lg:ml-8 opacity-100' : 'w-full lg:w-[72px] lg:max-w-[72px] lg:pl-4 lg:ml-8 opacity-100'}
+          `}
+        >
+          {!showSidebar ? (
+            /* COLLAPSED VERSION: Icons only */
+            <div className="flex flex-col items-center gap-4 w-full animate-in fade-in duration-200 pt-2 print:hidden">
+              {/* Parent Protocol Link */}
+              {parentProtocol && (
+                <Link
+                  to={`/resourceView/${parentProtocol.id}`}
+                  className="w-10 h-10 bg-white border-2 border-[#1c1c19] flex items-center justify-center text-[#1c1c19] hover:bg-[#e5e2dd] transition-colors shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px]"
+                  title={`Protocolo Maestro: ${parentProtocol.title}`}
+                >
+                  <Box size={16} className="text-[#0f4369]" />
+                </Link>
+              )}
+
+              {/* Source/Drive URL */}
+              {resource.url && (
+                <a
+                  href={isDemo ? "#" : resource.url}
+                  onClick={(e) => {
+                    if (isDemo) {
+                      e.preventDefault();
+                      alert("Los enlaces externos a Drive están restringidos en Modo Demo.");
+                    }
+                  }}
+                  target={isDemo ? "_self" : "_blank"}
+                  rel="noopener noreferrer"
+                  className="w-10 h-10 bg-[#1c1c19] text-white flex items-center justify-center hover:bg-[#333] transition-colors shadow-[2px_2px_0_0_rgba(15,67,105,1)]"
+                  title="Abrir enlace externo (Drive)"
+                >
+                  <ExternalLink size={16} />
+                </a>
+              )}
+
+              {/* Print Protocol Button */}
+              {resource.category === 'Protocolo' && (
+                <button
+                  onClick={() => {
+                    if (isDemo) {
+                      alert("La impresión y exportación de protocolos está deshabilitada en el Modo Demo.");
+                    } else {
+                      window.open(`/print/protocol/${resource.id}`, '_blank');
+                    }
+                  }}
+                  className="w-10 h-10 bg-[#f6f3ee] border-2 border-[#1c1c19] text-[#1c1c19] flex items-center justify-center hover:bg-[#1c1c19] hover:text-white transition-colors"
+                  title="Imprimir protocolo y anexos"
+                >
+                  <Printer size={16} />
+                </button>
+              )}
+              
+              {/* Table of Contents Trigger */}
+              {tocHeadings.length > 0 && (
+                <div className="relative group">
+                  <button
+                    className="w-10 h-10 bg-white border-2 border-[#1c1c19] text-[#1c1c19] flex items-center justify-center hover:bg-[#e5e2dd] transition-colors shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px]"
+                    title="Ver Índice de Lectura"
+                  >
+                    <Info size={16} />
+                  </button>
+                  {/* Hover dropdown list for TOC */}
+                  <div className="absolute right-12 top-0 z-50 bg-[#fcf9f4] border-2 border-[#1c1c19] p-4 shadow-[4px_4px_0_0_rgba(28,28,25,0.15)] w-64 hidden group-hover:block max-h-[300px] overflow-y-auto custom-scrollbar">
+                    <span className="block text-[8px] font-black text-[#72777f] uppercase tracking-widest mb-2 border-b border-[#1c1c19]/10">Índice de Lectura</span>
+                    <nav className="space-y-1">
+                      {tocHeadings.map((h, i) => (
+                        <button
+                          key={i}
+                          onClick={() => handleScrollToHeading(h.id)}
+                          className="w-full text-left py-1 px-1 border-l-2 hover:border-[#0f4369] border-[#1c1c19]/10 hover:bg-[#f6f3ee] text-[#1c1c19]/70 hover:text-[#0f4369] font-mono text-[8px] uppercase tracking-tight block transition-all"
+                          style={{ paddingLeft: `${(h.level - 1) * 6}px` }}
+                        >
+                          {h.text}
+                        </button>
+                      ))}
+                    </nav>
+                  </div>
+                </div>
+              )}
+
+              {/* Associated BIM Schemas Trigger */}
+              {associatedEsquemas.length > 0 && (
+                <div className="relative group">
+                  <button
+                    className="w-10 h-10 bg-white border-2 border-[#1c1c19] text-[#1c1c19] flex items-center justify-center hover:bg-[#e5e2dd] transition-colors shadow-[2px_2px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px]"
+                    title="Ver Vinculación Esquemas BIM"
+                  >
+                    <Database size={16} />
+                  </button>
+                  {/* Hover dropdown list for BIM schemas */}
+                  <div className="absolute right-12 top-0 z-50 bg-[#fcf9f4] border-2 border-[#1c1c19] p-4 shadow-[4px_4px_0_0_rgba(28,28,25,0.15)] w-64 hidden group-hover:block space-y-2">
+                    <span className="block text-[8px] font-black text-[#72777f] uppercase tracking-widest mb-2 border-b border-[#1c1c19]/10">Vinculaciones BIM</span>
+                    {associatedEsquemas.map((assoc, i) => (
+                      <div 
+                        key={i} 
+                        className="p-2 bg-white border border-[#1c1c19] flex flex-col gap-1 hover:border-[#0f4369] transition-all"
+                      >
+                        <div className="flex justify-between items-start gap-1">
+                          <span className="text-[6px] font-mono bg-[#f6f3ee] text-[#0f4369] px-1 border border-[#1c1c19]/10 font-bold uppercase">
+                            {assoc.esquema_name}
+                          </span>
+                          <button
+                            onClick={() => navigate(`/esquemas/${assoc.esquema_id}?selectedNode=${assoc.node_id}`)}
+                            className="text-[#0f4369] hover:text-[#1c1c19]"
+                          >
+                            <Eye size={10} />
+                          </button>
+                        </div>
+                        <span className="text-[8px] font-bold text-[#1c1c19] uppercase truncate">
+                          {assoc.node_name}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* EXPANDED VERSION: Full content cards */
+            <div className="w-full lg:w-[320px] space-y-6 animate-in fade-in duration-200">
           
           {/* Quick Actions Card */}
           <div className="bg-[#fcf9f4] border-2 border-[#1c1c19] p-6 shadow-[4px_4px_0_0_rgba(28,28,25,0.1)]">
@@ -830,7 +981,8 @@ export default function ResourceDetailView() {
               </div>
             )}
           </div>
-
+        </div>
+        )}
         </div>
 
       </div>

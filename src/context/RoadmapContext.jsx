@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { supabase } from '../services/supabaseClient';
 import { useAuth } from './AuthContext';
 import imageCompression from 'browser-image-compression';
+import { serializeBlocks, deserializeBlocks } from '../utils/blockSerializer';
+
 
 const RoadmapContext = createContext();
 
@@ -65,7 +67,7 @@ export const RoadmapProvider = ({ children }) => {
             sort_order: m.sort_order,
             image_url: m.image_url,
             finished: "not_started",
-            blocks: blocksData?.filter(b => b.module_id === m.id) || []
+            blocks: deserializeBlocks(blocksData?.filter(b => b.module_id === m.id) || [])
           }))
         }));
       }
@@ -302,7 +304,8 @@ export const RoadmapProvider = ({ children }) => {
 
       // 2. Insert new blocks
       if (blocks.length > 0) {
-        const blocksWithModuleId = blocks.map((b, i) => ({
+        const serialized = serializeBlocks(blocks);
+        const blocksWithModuleId = serialized.map((b, i) => ({
           module_id: moduleId,
           type: b.type,
           content: b.content,
