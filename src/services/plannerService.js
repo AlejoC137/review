@@ -2,31 +2,55 @@ import { supabase } from './supabaseClient';
 
 export const plannerService = {
   // Fetch all implementation plans from the dedicated 'bim_plans' table
-  async getPlans() {
-    const { data, error } = await supabase
+  async getPlans(projectId = null) {
+    let query = supabase
       .from('bim_plans')
-      .select('*, schema:esquemas(name)'); 
+      .select('*, schema:esquemas(name, project)'); 
+
+    if (projectId) {
+      query = query.eq('project_id', projectId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error("Error fetching plans:", error);
-      throw error;
+      return [];
     }
+
+    if (projectId && data) {
+      return data.filter(p => p.project_id === projectId || p.schema?.project === projectId);
+    }
+
     return data || [];
   },
 
   // Create a new plan in the 'bim_plans' table
-  async createPlan(name, description) {
+  async createPlan(name, description, projectId = null) {
+    const payload = {
+      name,
+      description: description || "",
+      plan_data: {},
+      ...(projectId ? { project_id: projectId } : {})
+    };
+
     const { data, error } = await supabase
       .from('bim_plans')
-      .insert({
-        name,
-        description: description || "",
-        plan_data: {} // Now stores a dictionary of { nodeId: { roles, url, etc } }
-      })
+      .insert(payload)
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      // Fallback if project_id column does not exist
+      delete payload.project_id;
+      const { data: fallback, error: err2 } = await supabase
+        .from('bim_plans')
+        .insert(payload)
+        .select()
+        .single();
+      if (err2) throw err2;
+      return fallback;
+    }
     return data;
   },
 

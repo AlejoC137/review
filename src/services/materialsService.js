@@ -4,39 +4,49 @@ import { supabase } from './supabaseClient';
  * Obtiene la lista de materiales con todas sus propiedades técnicas.
  * Usamos comillas dobles para columnas con mayúsculas según el esquema SQL.
  */
-export const getMaterials = async () => {
+/**
+ * Obtiene la lista de materiales:
+ * - Si hay projectId: materiales del proyecto + todos los globales (globalMaterial=true)
+ * - Si no hay projectId (vista admin global): todos los materiales
+ */
+export const getMaterials = async (projectId = null) => {
     try {
+        if (projectId) {
+            // Obtener materiales del proyecto y globales en paralelo
+            const [projectRes, globalRes] = await Promise.all([
+                supabase
+                    .from('Materiales')
+                    .select('*')
+                    .eq('project_id', projectId)
+                    .order('Nombre', { ascending: false }),
+                supabase
+                    .from('Materiales')
+                    .select('*')
+                    .eq('globalMaterial', true)
+                    .order('Nombre', { ascending: false })
+            ]);
+
+            if (projectRes.error) console.warn('❌ Error fetching project materials:', projectRes.error);
+            if (globalRes.error) console.warn('❌ Error fetching global materials:', globalRes.error);
+
+            const projectMaterials = projectRes.data || [];
+            const globalMaterials = globalRes.data || [];
+
+            // Fusionar, evitando duplicados (si un material global tiene project_id del proyecto activo)
+            const projectIds = new Set(projectMaterials.map(m => m.id));
+            const uniqueGlobals = globalMaterials.filter(m => !projectIds.has(m.id));
+
+            return [...projectMaterials, ...uniqueGlobals];
+        }
+
+        // Vista admin: obtener TODOS los materiales
         const { data, error } = await supabase
             .from('Materiales')
-            .select(`
-                id, 
-                "Nombre", 
-                categoria, 
-                tipo, 
-                unidad, 
-                stock, 
-                proveedor, 
-                "precio_COP", 
-                precio_por_m2, 
-                precio_por_m_lineal,
-                alto_mm, 
-                ancho_mm, 
-                espesor_mm, 
-                largo_m, 
-                area_mm2,
-                peso_kg_m, 
-                acabado, 
-                grado,
-                uso_recomendado, 
-                observaciones_tecnicas, 
-                notas,
-                foto_url, 
-                ultima_actualizacion
-            `)
+            .select('*')
             .order('Nombre', { ascending: false });
 
         if (error) {
-            console.error('❌ Error fetching materials:', error);
+            console.warn('❌ Error fetching materials:', error);
             return [];
         }
 
@@ -45,6 +55,24 @@ export const getMaterials = async () => {
         console.error('❌ Error inesperado al obtener materiales:', err);
         return [];
     }
+};
+
+/**
+ * Activa o desactiva el modo global de un material (solo para admin).
+ */
+export const toggleGlobalMaterial = async (materialId, currentValue) => {
+    const { data, error } = await supabase
+        .from('Materiales')
+        .update({ globalMaterial: !currentValue })
+        .eq('id', materialId)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error toggling globalMaterial:', error);
+        throw error;
+    }
+    return data;
 };
 
 /**

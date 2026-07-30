@@ -1,0 +1,36 @@
+{
+  "id": "c3b4a20b-04f7-4a0d-be94-1a92da6f0b81",
+  "name": "CICLO DE VIDA BIM INTEGRAL (ISO 19650)",
+  "category": "BIM Estándar",
+  "description": "Plantilla integral para gestión BIM según Estándar ISO 19650 con etapas de EIR, BEP, CDE y Entrega.",
+  "is_blank": false,
+  "stages": [
+    { "name": "EIR & Requisitos de Información", "order_index": 1, "estimated_days": 14 },
+    { "name": "Pre-BEP & Contratación", "order_index": 2, "estimated_days": 21 },
+    { "name": "Coordinación 3D & Detección de Interferencias", "order_index": 3, "estimated_days": 45 },
+    { "name": "Gestión CDE & Entrega As-Built", "order_index": 4, "estimated_days": 60 }
+  ],
+  "peb_info": {
+    "client": "Cliente General",
+    "code": "PROJ-BIM-01",
+    "location": "Medellín, Antioquia",
+    "department": "Antioquia",
+    "city": "Medellín",
+    "scope": "Coordinación BIM Integral y Modelado Multidisciplinar",
+    "typology": "Uso Mixto",
+    "modules": ["Arquitectura", "Estructura", "MEP"],
+    "lot_area": 3000,
+    "sales_area": 1500,
+    "built_area": 2500,
+    "circulation_area": 500,
+    "occupied_area": 1000,
+    "additional_info": "Plantilla estructurada según estándar ISO 19650 con matriz LOD/TDI precargada.",
+    "tdi_correlation": "TDI_A (General Project Info)",
+    "oir_pir_compliance": "ISO 19650-1 / ISO 19650-2",
+    "bim_uses": ["Coordinación 3D", "Detección de Interferencias", "Extracción de Cantidades"],
+    "software_principal": "Revit",
+    "version_software": "2025",
+    "uso_del_modelo": "Coordinación y Documentación",
+    "entorno_comun_de_datos_cde": "Autodesk Construction Cloud (ACC)"
+  }
+}

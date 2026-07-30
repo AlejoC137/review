@@ -7,7 +7,7 @@ import { supabase } from '../../services/supabaseClient';
 import { buildTreeFromFlatNodes } from '../../utils/schemaUtils';
 
 
-export const usePlannerLogic = (planId, isAdmin) => {
+export const usePlannerLogic = (planId, isAdmin, projectId = null) => {
   const [plans, setPlans] = useState([]);
   const [activePlan, setActivePlan] = useState(null);
   const [activeSchemaTree, setActiveSchemaTree] = useState(null);
@@ -26,14 +26,14 @@ export const usePlannerLogic = (planId, isAdmin) => {
         // We use a try-catch because the table might not exist yet
         let loadedPlans = [];
         try {
-          loadedPlans = await plannerService.getPlans();
+          loadedPlans = await plannerService.getPlans(projectId);
         } catch (e) {
           console.warn("bim_plans table likely not ready yet:", e);
         }
         
         setPlans(loadedPlans);
 
-        const { data: loadedEsquemas } = await bimService.getEsquemas();
+        const { data: loadedEsquemas } = await bimService.getEsquemas(projectId);
         setEsquemas(loadedEsquemas || []);
 
         if (planId) {
@@ -51,7 +51,7 @@ export const usePlannerLogic = (planId, isAdmin) => {
     };
 
     loadInitialData();
-  }, [planId]);
+  }, [planId, projectId]);
 
   useEffect(() => {
     const loadSchemaTree = async () => {
@@ -140,9 +140,9 @@ export const usePlannerLogic = (planId, isAdmin) => {
   }, [planId, activePlan?.id, activePlan?.schema_id]);
 
 
-  const handleCreatePlan = async (name, description) => {
+  const handleCreatePlan = async (name, description, targetProjectId = projectId) => {
     try {
-      const newPlan = await plannerService.createPlan(name, description);
+      const newPlan = await plannerService.createPlan(name, description, targetProjectId);
       setPlans([newPlan, ...plans]);
       return newPlan;
     } catch (error) {

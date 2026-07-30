@@ -1,5 +1,8 @@
 import { supabase } from './supabaseClient';
 import { databaseReportService } from './databaseReportService';
+import { filterProjectsByUser } from '../utils/projectAccess';
+
+const isValidUUID = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
 export const lifecycleService = {
   // Obtener todos los ciclos de vida
@@ -11,23 +14,79 @@ export const lifecycleService = {
     return data;
   },
 
-  // Obtener todos los proyectos
-  getProjects: async () => {
+  // Obtener todos los proyectos (filtrados según permisos del usuario)
+  getProjects: async (user, isAdmin) => {
     const { data, error } = await supabase
       .from('projects')
-      .select('*, lifecycles(*)');
+      // Usar FK explícita para evitar PGRST201 (ambigüedad entre lifecycle_id y project_id)
+      .select('*, lifecycles!lifecycle_id(*)');
     if (error) throw error;
-    return data;
+    return filterProjectsByUser(data, user, isAdmin);
   },
 
   // Crear un nuevo proyecto vinculado a un ciclo
   createProject: async (project) => {
-    const { data, error } = await supabase
+    const userId = project.id_user || (typeof window !== 'undefined' ? localStorage.getItem('custom_user_id') : null);
+    let payload = {
+      ...project,
+      ...(userId ? { id_user: userId } : {})
+    };
+    delete payload.finished;
+
+    if (payload.lifecycle_id && !isValidUUID(payload.lifecycle_id)) {
+      payload.lifecycle_id = null;
+    }
+
+    let retries = 5;
+    while (retries > 0) {
+      const { data, error } = await supabase
+        .from('projects')
+        .insert([payload])
+        .select();
+
+      if (!error && data && data.length > 0) {
+        return data[0];
+      }
+
+      const errorMsg = error?.message || '';
+      const match = errorMsg.match(/Could not find the '([^']+)' column/);
+      const isFkeyViolation = error?.code === '23503' || errorMsg.includes('foreign key constraint') || errorMsg.includes('_fkey');
+
+      if (match && match[1]) {
+        const missingColumn = match[1];
+        console.warn(`Removing missing column '${missingColumn}' from projects insert payload.`);
+        delete payload[missingColumn];
+        retries--;
+      } else if (isFkeyViolation) {
+        if (payload.lifecycle_id && (errorMsg.includes('lifecycle') || errorMsg.includes('projects_lifecycle_id_fkey'))) {
+          console.warn(`Lifecycle ID '${payload.lifecycle_id}' does not exist in DB 'lifecycles'. Retrying with null lifecycle_id.`);
+          payload.lifecycle_id = null;
+          retries--;
+        } else if (payload.id_user && (errorMsg.includes('user') || errorMsg.includes('id_user'))) {
+          console.warn(`User ID '${payload.id_user}' does not exist in DB. Retrying with null id_user.`);
+          payload.id_user = null;
+          retries--;
+        } else if (payload.lifecycle_id) {
+          console.warn(`Foreign key violation on insert. Retrying with null lifecycle_id.`);
+          payload.lifecycle_id = null;
+          retries--;
+        } else {
+          throw error;
+        }
+      } else {
+        throw error;
+      }
+    }
+  },
+
+  // Eliminar un proyecto (Solo Admin)
+  deleteProject: async (projectId) => {
+    const { error } = await supabase
       .from('projects')
-      .insert([project])
-      .select();
+      .delete()
+      .eq('id', projectId);
     if (error) throw error;
-    return data[0];
+    return true;
   },
 
   // Actualizar metadatos del proyecto
@@ -46,12 +105,18 @@ export const lifecycleService = {
         return data[0];
       }
       
-      const errorMsg = error.message || '';
+      const errorMsg = error?.message || '';
       const match = errorMsg.match(/Could not find the '([^']+)' column/);
+      const isFkeyViolation = error?.code === '23503' || errorMsg.includes('foreign key constraint') || errorMsg.includes('_fkey');
+
       if (match && match[1]) {
         const missingColumn = match[1];
         console.warn(`Removing missing column '${missingColumn}' from projects update payload.`);
         delete payload[missingColumn];
+        retries--;
+      } else if (isFkeyViolation && payload.lifecycle_id) {
+        console.warn(`Foreign key constraint on update. Retrying with null lifecycle_id.`);
+        payload.lifecycle_id = null;
         retries--;
       } else {
         throw error;
@@ -61,6 +126,7 @@ export const lifecycleService = {
 
   // Obtener etapas de un ciclo de vida específico
   getStages: async (lifecycleId) => {
+    if (!lifecycleId || !isValidUUID(lifecycleId)) return [];
     const { data, error } = await supabase
       .from('lifecycle_stages')
       .select('*')
@@ -82,13 +148,14 @@ export const lifecycleService = {
   },
 
   // Obtener proyectos asociados a un ciclo de vida
-  getProjectsByLifecycle: async (lifecycleId) => {
+  getProjectsByLifecycle: async (lifecycleId, user, isAdmin) => {
+    if (!lifecycleId || !isValidUUID(lifecycleId)) return [];
     const { data, error } = await supabase
       .from('projects')
       .select('*')
       .eq('lifecycle_id', lifecycleId);
     if (error) throw error;
-    return data;
+    return filterProjectsByUser(data, user, isAdmin);
   },
 
   // Obtener actividades de un proyecto
@@ -175,6 +242,7 @@ export const lifecycleService = {
 
   // Actualizar metadatos de un ciclo de vida
   updateLifecycle: async (id, updates) => {
+    if (!id || !isValidUUID(id)) return null;
     const { data, error } = await supabase
       .from('lifecycles')
       .update(updates)

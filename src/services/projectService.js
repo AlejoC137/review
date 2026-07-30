@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { filterProjectsByUser, canUserAccessProject } from '../utils/projectAccess';
 
 /**
  * Servicio centralizado para la gestión de funcionalidades de Proyecto
@@ -7,11 +8,17 @@ import { supabase } from './supabaseClient';
 export const projectService = {
   // --- GESTIÓN DE SUB-PROYECTOS (CASAS/UNIDADES) ---
   async getSpaces(projectId) {
-    const { data, error } = await supabase
+    let query = supabase
       .from('subProjects')
       .select('*')
       .order('name', { ascending: true });
 
+    // Filtrar por project_id si se proporciona
+    if (projectId) {
+      query = query.eq('project_id', projectId);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     return data;
   },
@@ -22,7 +29,8 @@ export const projectService = {
       responsable: spaceData.responsable || spaceData.responsible || null,
       Datos: spaceData.description || spaceData.Datos || null,
       espacios: spaceData.espacios || [],
-      Tasks: spaceData.Tasks || []
+      Tasks: spaceData.Tasks || [],
+      ...(spaceData.project_id ? { project_id: spaceData.project_id } : {})
     };
 
     const { data, error } = await supabase
@@ -68,11 +76,18 @@ export const projectService = {
   },
 
   // --- GESTIÓN DE ROLES ---
-  async getRoles() {
-    const { data, error } = await supabase
+  async getRoles(projectId = null) {
+    let query = supabase
       .from('roles')
       .select('*')
       .order('name', { ascending: true });
+
+    if (projectId) {
+      // Roles del proyecto actual
+      query = query.eq('project_id', projectId);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     return data;
   },
@@ -153,12 +168,17 @@ export const projectService = {
   },
 
   // ==================== STAFF (TEAM) ====================---
-  async getStaff() {
-    const { data, error } = await supabase
-      .from('staff')
-      .select('*');
+  async getStaff(projectId = null) {
+    let query = supabase.from('staff').select('*');
+    if (projectId) {
+      query = query.eq('project_id', projectId);
+    }
 
-    if (error) throw error;
+    const { data, error } = await query;
+    if (error) {
+      console.warn("Staff fetch error:", error);
+      return [];
+    }
 
     return (data || []).sort((a, b) => {
       const nameA = (a.name || a.nombre || '').toLowerCase();
@@ -440,17 +460,17 @@ export const projectService = {
     });
   },
 
-  async getProjects() {
+  async getProjects(user, isAdmin) {
     let query = supabase.from('projects').select('*');
     if (localStorage.getItem('isDemo') === 'true') {
       query = query.ilike('name', '%demo%');
     }
     const { data, error } = await query.order('name', { ascending: true });
     if (error) throw error;
-    return data;
+    return filterProjectsByUser(data, user, isAdmin);
   },
 
-  async getProjectById(projectId) {
+  async getProjectById(projectId, user, isAdmin) {
     const { data, error } = await supabase
       .from('projects')
       .select('*')
@@ -462,6 +482,10 @@ export const projectService = {
       throw new Error('Acceso denegado: El Modo Demo solo permite ver proyectos de prueba.');
     }
     
+    if (!canUserAccessProject(data, user, isAdmin)) {
+      throw new Error('Acceso denegado: No tienes permiso para acceder a este proyecto.');
+    }
+
     return data;
   },
 

@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext';
 const LevelsView = () => {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
-    const projectId = searchParams.get('projectId') || 'kengo-kuma';
+    const projectId = searchParams.get('projectId') || '';
 
     const { isBimManager } = useAuth();
     const [levels, setLevels] = useState([]);

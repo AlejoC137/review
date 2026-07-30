@@ -16,18 +16,24 @@ export const bimService = {
     return data;
   },
 
-  // Fetch all schemas
-  async getEsquemas() {
-    const { data, error } = await supabase
+  // Fetch all schemas (or filtered by projectId)
+  async getEsquemas(projectId = null) {
+    let query = supabase
       .from('esquemas')
       .select('*')
-      .order('name', { ascending: true }); // Use name instead of updated_at
+      .order('name', { ascending: true });
+
+    if (projectId) {
+      query = query.eq('project', projectId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error("Error fetching esquemas:", error);
-      throw error;
+      return { data: [] };
     }
-    return { data };
+    return { data: data || [] };
   },
 
   // Save the entire JSON structure (map_data)

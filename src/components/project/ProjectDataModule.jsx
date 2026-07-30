@@ -3,18 +3,20 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Info, Edit2, Save, X, Calendar, User, Briefcase, FileText, 
   Layers, Package, Users, Target, ClipboardList, Loader2, CheckCircle2, PlayCircle, AlertCircle, 
-  MapPin, HelpCircle, LayoutGrid, CheckSquare, Plus, Trash2, Award, Cpu, Database, Monitor, Star
+  MapPin, HelpCircle, LayoutGrid, CheckSquare, Plus, Trash2, Award, Cpu, Database, Monitor, Star, Download
 } from 'lucide-react';
 import { lifecycleService } from '../../services/lifecycleService';
 import { projectService } from '../../services/projectService';
 import { areasService } from '../../services/areasService';
 import { supabase } from '../../services/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
+import { projectExporterService } from '../../services/projectExporterService';
 import LodTdiMatrix from './LodTdiMatrix';
 import ProjectUnitsTab from './ProjectUnitsTab';
 import ProjectObjectivesModule from './ProjectObjectivesModule';
 import ProjectDeliveryScheduleTab from './ProjectDeliveryScheduleTab';
 import SpecialtiesProjectTab from './SpecialtiesProjectTab';
+import DeleteProjectModal from './DeleteProjectModal';
 
 const defaultPebInfo = {
   client: 'Grupo Attia',
@@ -39,14 +41,47 @@ const defaultPebInfo = {
   entorno_comun_de_datos_cde: 'Autodesk Construction Cloud'
 };
 
+const emptyPebInfo = {
+  client: '',
+  code: '',
+  location: '',
+  department: '',
+  city: '',
+  scope: '',
+  typology: '',
+  modules: [],
+  lot_area: 0,
+  sales_area: 0,
+  built_area: 0,
+  circulation_area: 0,
+  occupied_area: 0,
+  additional_info: '',
+  tdi_correlation: '',
+  oir_pir_compliance: '',
+  bim_uses: [],
+  software_principal: '',
+  version_software: '',
+  uso_del_modelo: '',
+  entorno_comun_de_datos_cde: ''
+};
+
 export default function ProjectDataModule({ project, onTabChange }) {
+  const navigate = useNavigate();
   const { isAdmin, isBimManager } = useAuth();
   const canEdit = isAdmin || isBimManager;
   const [searchParams, setSearchParams] = useSearchParams();
-  const [projectData, setProjectData] = useState(project);
+  const [projectData, setProjectData] = useState(project || {});
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [subTab, setSubTab] = useState(searchParams.get('subtab') || 'resumen');
+
+  useEffect(() => {
+    if (project) {
+      setProjectData(project);
+    }
+  }, [project]);
 
   useEffect(() => {
     const currentSubTab = searchParams.get('subtab');
@@ -209,7 +244,7 @@ export default function ProjectDataModule({ project, onTabChange }) {
     try {
       const [sp, staff, reqs, prot, cont, tasks] = await Promise.all([
         projectService.getSpaces(project.id).catch(() => []),
-        projectService.getStaff().catch(() => []),
+        projectService.getStaff(project.id).catch(() => []),
         projectService.getInformationRequirements(project.id).catch(() => []),
         projectService.getProtocols(project.id).catch(() => []),
         projectService.getDirectoryContacts(project.id).catch(() => []),
@@ -247,8 +282,10 @@ export default function ProjectDataModule({ project, onTabChange }) {
         .maybeSingle();
 
       if (error) throw error;
+      const isDemoProject = project?.id === 'kengo-kuma' || project?.name?.toLowerCase().includes('demo');
+      const fallbackInfo = isDemoProject ? defaultPebInfo : emptyPebInfo;
+
       if (data) {
-        // Enforce department and city defaults if they came back null
         let dept = data.department;
         let cityVal = data.city;
         if (!dept && !cityVal && data.location && data.location.includes(',')) {
@@ -257,31 +294,29 @@ export default function ProjectDataModule({ project, onTabChange }) {
           dept = parts[1]?.trim() || '';
         }
         setPebInfo({
+          ...fallbackInfo,
           ...data,
-          department: dept || 'Antioquia',
-          city: cityVal || 'Medellín',
-          additional_info: data.additional_info || '',
-          software_principal: data.software_principal || 'Revit',
-          version_software: data.version_software || '2025',
-          uso_del_modelo: data.uso_del_modelo || 'Coordinación 3D, Extracción de cantidades',
-          entorno_comun_de_datos_cde: data.entorno_comun_de_datos_cde || 'Autodesk Construction Cloud'
+          department: dept || data.department || '',
+          city: cityVal || data.city || ''
         });
       } else if (localSaved) {
         setPebInfo(JSON.parse(localSaved));
       } else {
         setPebInfo({
           project_id: project.id,
-          ...defaultPebInfo
+          ...fallbackInfo
         });
       }
     } catch (err) {
       console.warn("Using local fallback for PEB info:", err);
+      const isDemoProject = project?.id === 'kengo-kuma' || project?.name?.toLowerCase().includes('demo');
+      const fallbackInfo = isDemoProject ? defaultPebInfo : emptyPebInfo;
       if (localSaved) {
         setPebInfo(JSON.parse(localSaved));
       } else {
         setPebInfo({
           project_id: project.id,
-          ...defaultPebInfo
+          ...fallbackInfo
         });
       }
     }
@@ -814,7 +849,7 @@ export default function ProjectDataModule({ project, onTabChange }) {
                     <div className="space-y-1">
                       <span className="text-[9px] font-black tracking-widest text-[#72777f] uppercase font-mono">PROYECTO_ACTIVO</span>
                       <h3 className="text-3xl font-black uppercase tracking-tight text-[#1c1c19] leading-tight">
-                        {projectData.name}
+                        {projectData?.name || 'PROYECTO'}
                       </h3>
                     </div>
                     <div className="flex items-center gap-2">
@@ -826,7 +861,7 @@ export default function ProjectDataModule({ project, onTabChange }) {
                           <Edit2 size={10} /> Editar
                         </button>
                       )}
-                      {getStatusBadge(projectData.finished)}
+                      {getStatusBadge(projectData?.finished)}
                     </div>
                   </div>
 
@@ -861,13 +896,13 @@ export default function ProjectDataModule({ project, onTabChange }) {
                 </div>
 
                 {/* Template Lifecycle Details */}
-                {projectData.lifecycles && (
+                {projectData?.lifecycles && (
                   <div className="bg-[#f6f3ee] border-2 border-[#1c1c19] p-6 shadow-[6px_6px_0_0_rgba(28,28,25,0.05)]">
                     <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#72777f] mb-3">
                       <Layers size={14} className="text-[#0f4369]" /> Esquema de Ciclo de Vida Vinculado
                     </div>
-                    <h4 className="text-lg font-black uppercase">{projectData.lifecycles.name}</h4>
-                    {projectData.lifecycles.description && (
+                    <h4 className="text-lg font-black uppercase">{projectData.lifecycles?.name}</h4>
+                    {projectData.lifecycles?.description && (
                       <p className="text-xs text-slate-600 mt-1">{projectData.lifecycles.description}</p>
                     )}
                     <button 
@@ -1258,14 +1293,45 @@ export default function ProjectDataModule({ project, onTabChange }) {
                   <Award size={20} className="text-[#0f4369]" />
                   <h3 className="text-xl font-black uppercase tracking-tight italic">Ficha de Información General del Proyecto (PEB)</h3>
                 </div>
-                {canEdit && (
-                <button
-                  onClick={startEditPeb}
-                  className="flex items-center gap-2 px-4 py-2 bg-white text-[#1c1c19] border-2 border-[#1c1c19] font-black text-[10px] uppercase shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
-                >
-                  <Edit2 size={14} strokeWidth={2.5} /> Editar Ficha PEB
-                </button>
-              )}
+                <div className="flex items-center gap-2">
+                  {canEdit && (
+                    <button
+                      onClick={startEditPeb}
+                      className="flex items-center gap-2 px-4 py-2 bg-white text-[#1c1c19] border-2 border-[#1c1c19] font-black text-[10px] uppercase shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
+                    >
+                      <Edit2 size={14} strokeWidth={2.5} /> Editar Ficha PEB
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <>
+                      <button
+                        type="button"
+                        disabled={isExporting}
+                        onClick={async () => {
+                          try {
+                            setIsExporting(true);
+                            await projectExporterService.exportProjectToJson(projectData.id, projectData.name);
+                          } catch (e) {
+                            alert("Error al exportar plantilla: " + e.message);
+                          } finally {
+                            setIsExporting(false);
+                          }
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-[#0f4369] text-white border-2 border-[#1c1c19] font-black text-[10px] uppercase shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:bg-[#1c1c19] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all disabled:opacity-50"
+                        title="Descargar Plantilla JSON del Proyecto (Solo Admin)"
+                      >
+                        {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} strokeWidth={2.5} />}
+                        Descargar Plantilla (JSON)
+                      </button>
+                      <button
+                        onClick={() => setIsDeleteModalOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-red-700 text-white border-2 border-[#1c1c19] font-black text-[10px] uppercase shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:bg-black hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
+                      >
+                        <Trash2 size={14} strokeWidth={2.5} /> Eliminar Proyecto
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
               {/* Grid 4 Categorías de Información */}
@@ -1784,6 +1850,13 @@ export default function ProjectDataModule({ project, onTabChange }) {
           <SpecialtiesProjectTab project={projectData} />
         ) : null}
       </div>
+
+      <DeleteProjectModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        project={projectData}
+        onProjectDeleted={() => navigate('/projects')}
+      />
     </div>
   );
 }

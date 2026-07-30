@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { filterProjectsByUser } from '../utils/projectAccess';
 
 export const TABLE_METADATA = {
   projects: {
@@ -35,7 +36,7 @@ export const TABLE_METADATA = {
     displayName: 'subProjects (Fases / Sub-Proyectos)',
     chapter: '2. Sub Proyectos / Unidades',
     description: 'Sub-proyectos principales o bloques de construcción definidos.',
-    filterColumn: null
+    filterColumn: 'project_id'
   },
   project_units: {
     displayName: 'project_units (Unidades de Proyecto)',
@@ -65,19 +66,19 @@ export const TABLE_METADATA = {
     displayName: 'roles (Catálogo de Roles)',
     chapter: '3. Equipo y Roles',
     description: 'Catálogo de roles y permisos definidos para los proyectos.',
-    filterColumn: null
+    filterColumn: 'project_id'
   },
   specialties: {
     displayName: 'specialties (Especialidades)',
     chapter: '3. Equipo y Roles',
     description: 'Especialidades técnicas de ingeniería y arquitectura.',
-    filterColumn: null
+    filterColumn: 'project_id'
   },
   staff: {
     displayName: 'staff (Personal / Staff)',
     chapter: '3. Equipo y Roles',
-    description: 'Registro completo de personal interno disponible.',
-    filterColumn: null
+    description: 'Registro de personal asociado al proyecto activo.',
+    filterColumn: 'project_id'
   },
   directory_contacts: {
     displayName: 'directory_contacts (Directorio Externo)',
@@ -107,7 +108,7 @@ export const TABLE_METADATA = {
     displayName: 'Materiales (Base de Datos de Materiales)',
     chapter: '7. Materiales',
     description: 'Base de datos maestra de especificaciones de materiales y costos.',
-    filterColumn: null
+    filterColumn: 'project_id'
   },
   tasks: {
     displayName: 'tasks (Tareas y Calendario)',
@@ -119,7 +120,7 @@ export const TABLE_METADATA = {
     displayName: 'actions (Sub-Tareas / Acciones)',
     chapter: '8. Tareas y Cronograma',
     description: 'Acciones de control y listas de verificación internas.',
-    filterColumn: null
+    filterColumn: 'project_id'
   },
   incidents: {
     displayName: 'incidents (Llamados e Incidentes)',
@@ -131,25 +132,25 @@ export const TABLE_METADATA = {
     displayName: 'esquemas (Esquemas Base BIM)',
     chapter: '9. Esquemas y Planes',
     description: 'Ecosistemas o esquemas conceptuales base definidos.',
-    filterColumn: null
+    filterColumn: 'project_id'
   },
   bim_plans: {
     displayName: 'bim_plans (Planes de Implementación)',
     chapter: '9. Esquemas y Planes',
     description: 'Instancias y planes de implementación BIM organizados.',
-    filterColumn: null
+    filterColumn: 'project_id'
   },
   lifecycles: {
     displayName: 'lifecycles (Ciclos de Vida)',
     chapter: '10. Gestión de Ciclo de Vida',
     description: 'Estructuras de fases del ciclo de vida general del proyecto.',
-    filterColumn: null
+    filterColumn: 'project_id'
   },
   lifecycle_stages: {
     displayName: 'lifecycle_stages (Etapas de Ciclo)',
     chapter: '10. Gestión de Ciclo de Vida',
     description: 'Etapas ordenadas asociadas a cada ciclo de vida.',
-    filterColumn: null
+    filterColumn: 'project_id'
   },
   activities: {
     displayName: 'activities (Actividades de Ciclo)',
@@ -219,33 +220,22 @@ export const databaseReportService = {
     // Aplicar filtros específicos de proyecto
     if (projectId) {
       if (meta.filterColumn) {
+        // Filtrado directo por columna project_id (incluye actions, staff, esquemas, etc.)
         query = query.eq(meta.filterColumn, projectId);
       } else if (tableName === 'Espacio_Elemento') {
-        // Para espacios, primero obtenemos los subproyectos del proyecto para filtrar
+        // Para espacios, obtenemos los subproyectos del proyecto para filtrar
         const { data: subProjs } = await supabase
           .from('subProjects')
-          .select('id');
+          .select('id')
+          .eq('project_id', projectId);
         
         // Si hay subproyectos, filtramos los espacios que pertenezcan a ellos
         if (subProjs && subProjs.length > 0) {
           const subProjIds = subProjs.map(sp => sp.id);
           query = query.in('subProject_id', subProjIds);
         } else {
-          // Si no hay subproyectos, devolvemos vacío o no aplicamos filtro
+          // Si no hay subproyectos, devolvemos vacío
           query = query.is('subProject_id', null);
-        }
-      } else if (tableName === 'actions') {
-        // Para sub-tareas, primero obtenemos las tareas de ese proyecto
-        const { data: projTasks } = await supabase
-          .from('tasks')
-          .select('id')
-          .eq('project_id', projectId);
-        
-        if (projTasks && projTasks.length > 0) {
-          const taskIds = projTasks.map(t => t.id);
-          query = query.in('task_id', taskIds);
-        } else {
-          return [];
         }
       }
     }
@@ -264,6 +254,10 @@ export const databaseReportService = {
       console.warn(`Error al consultar tabla ${tableName}:`, error.message);
       throw error;
     }
-    return data || [];
+    const result = data || [];
+    if (tableName === 'projects') {
+      return filterProjectsByUser(result);
+    }
+    return result;
   }
 };

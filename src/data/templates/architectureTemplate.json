@@ -1,0 +1,36 @@
+{
+  "id": "5e4d3c2b-1a0f-9e8d-7c6b-5a4f3e2d1c0b",
+  "name": "PLANTILLA DE ARQUITECTURA Y EDIFICACIÓN",
+  "category": "Arquitectura",
+  "description": "Plantilla especializada para diseño arquitectónico, gestión de áreas y proyectos de edificación.",
+  "is_blank": false,
+  "stages": [
+    { "name": "Anteproyecto & Estudios Previos", "order_index": 1, "estimated_days": 20 },
+    { "name": "Proyecto Básico & Licencias", "order_index": 2, "estimated_days": 40 },
+    { "name": "Proyecto Ejecutivo & Especificaciones", "order_index": 3, "estimated_days": 60 },
+    { "name": "Supervisión de Obra", "order_index": 4, "estimated_days": 90 }
+  ],
+  "peb_info": {
+    "client": "Firma Arquitectura",
+    "code": "ARQ-2026",
+    "location": "Bogotá, Cundinamarca",
+    "department": "Cundinamarca",
+    "city": "Bogotá",
+    "scope": "Diseño Arquitectónico y Cuadro de Áreas",
+    "typology": "Residencial / Comercial",
+    "modules": ["Áreas Privadas", "Áreas Comunes", "Parqueaderos"],
+    "lot_area": 2000,
+    "sales_area": 1200,
+    "built_area": 1800,
+    "circulation_area": 400,
+    "occupied_area": 800,
+    "additional_info": "Plantilla orientada a la gestión de áreas útiles, construidas y licenciamiento.",
+    "tdi_correlation": "TDI_A (General Project Info)",
+    "oir_pir_compliance": "NSR-10 / Licenciamiento Urbano",
+    "bim_uses": ["Modelado 3D", "Visualización & Renders"],
+    "software_principal": "Revit / ArchiCAD",
+    "version_software": "2025",
+    "uso_del_modelo": "Diseño y Licenciamiento",
+    "entorno_comun_de_datos_cde": "Autodesk Construction Cloud (ACC)"
+  }
+}

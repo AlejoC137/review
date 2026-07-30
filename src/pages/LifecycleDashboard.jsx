@@ -1,24 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Briefcase, Calendar, ChevronRight, User } from 'lucide-react';
+import { Plus, Briefcase, Calendar, ChevronRight, User, Trash2 } from 'lucide-react';
 import { lifecycleService } from '../services/lifecycleService';
 import { useTranslation } from 'react-i18next';
 import Header from '../components/layout/Header';
 import Sidebar from '../components/layout/Sidebar';
-
-
+import { useAuth } from '../context/AuthContext';
+import CreateProjectModal from '../components/project/CreateProjectModal';
+import DeleteProjectModal from '../components/project/DeleteProjectModal';
 
 function LifecycleDashboard() {
+  const { user, isAdmin } = useAuth();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [selectedProjectToDelete, setSelectedProjectToDelete] = useState(null);
   const navigate = useNavigate();
   const { t } = useTranslation();
 
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const data = await lifecycleService.getProjects();
+        const data = await lifecycleService.getProjects(user, isAdmin);
         setProjects(data);
       } catch (err) {
         console.error("Error loading projects:", err);
@@ -27,28 +31,18 @@ function LifecycleDashboard() {
       }
     };
     fetchProjects();
-  }, []);
+  }, [user, isAdmin]);
 
-  const handleCreateProject = async () => {
-    const name = window.prompt(t('project.prompts.new_project_name'));
-    if (!name) return;
+  const handleCreateProject = () => {
+    setIsCreateModalOpen(true);
+  };
 
+  const handleProjectCreated = async (newProject) => {
     try {
-      const lifecycles = await lifecycleService.getLifecycles();
-      if (lifecycles.length === 0) {
-        alert(t('project.prompts.no_templates'));
-        return;
-      }
-
-      const newProject = await lifecycleService.createProject({
-        name,
-        lifecycle_id: lifecycles[0].id,
-        finished: 'active',
-        responsible_party: 'BIM Team - Unassigned'
-      });
-      setProjects([...projects, { ...newProject, lifecycles: lifecycles[0] }]);
+      const data = await lifecycleService.getProjects(user, isAdmin);
+      setProjects(data);
     } catch (err) {
-      console.error("Error creating project:", err);
+      console.error("Error refreshing projects after creation:", err);
     }
   };
 
@@ -102,9 +96,24 @@ function LifecycleDashboard() {
                     <div className="bg-[#f6f3ee] border-2 border-[#1c1c19] p-3 text-[#0f4369]">
                       <Briefcase size={28} strokeWidth={2.5} />
                     </div>
-                    <span className="font-mono text-[10px] font-black bg-[#1c1c19] text-white px-2 py-1 leading-none uppercase">
-                      {project.id.split('-')[0]}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedProjectToDelete(project);
+                          }}
+                          className="bg-red-50 hover:bg-red-700 text-red-700 hover:text-white p-1.5 border-2 border-red-700 transition-all shadow-[2px_2px_0_0_rgba(185,28,28,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+                          title="Eliminar Proyecto (Solo Admin)"
+                        >
+                          <Trash2 size={13} strokeWidth={2.5} />
+                        </button>
+                      )}
+                      <span className="font-mono text-[10px] font-black bg-[#1c1c19] text-white px-2 py-1 leading-none uppercase">
+                        {project.id.split('-')[0]}
+                      </span>
+                    </div>
                   </div>
 
                   <h3 className="text-2xl font-black mb-4 group-hover:text-[#0f4369] transition-colors uppercase leading-none tracking-tight">
@@ -136,14 +145,44 @@ function LifecycleDashboard() {
               ))}
 
               {projects.length === 0 && (
-                <div className="col-span-full py-24 text-center border-4 border-dashed border-[#e5e2dd] bg-white/50">
-                  <p className="font-mono font-black text-[#72777f] uppercase tracking-widest text-lg opacity-40">{t('project.system_empty')}</p>
+                <div className="col-span-full py-20 px-8 text-center border-4 border-dashed border-[#1c1c19]/20 bg-white/80 flex flex-col items-center justify-center gap-6 shadow-[8px_8px_0_0_rgba(28,28,25,0.05)]">
+                  <div className="w-16 h-16 bg-[#f6f3ee] border-2 border-[#1c1c19] flex items-center justify-center text-[#0f4369]">
+                    <Briefcase size={36} strokeWidth={2.5} />
+                  </div>
+                  <div className="max-w-md">
+                    <h3 className="text-xl font-black uppercase text-[#1c1c19] mb-2 tracking-tight">
+                      No tienes proyectos asignados
+                    </h3>
+                    <p className="font-mono text-xs text-[#72777f] uppercase tracking-wider mb-6">
+                      Actualmente no cuentas con ningún proyecto visible en tu cuenta. Puedes crear un nuevo proyecto para comenzar.
+                    </p>
+                    <button
+                      onClick={handleCreateProject}
+                      className="inline-flex items-center gap-2 bg-[#0f4369] text-white border-2 border-[#1c1c19] px-6 py-3 font-black text-sm transition-all hover:bg-[#1c1c19] shadow-[4px_4px_0_0_rgba(28,28,25,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+                    >
+                      <Plus size={18} strokeWidth={3} />
+                      {t('project.new_project_btn')}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
           </>
         )}
       </div>
+
+      <CreateProjectModal 
+        isOpen={isCreateModalOpen} 
+        onClose={() => setIsCreateModalOpen(false)} 
+        onProjectCreated={handleProjectCreated} 
+      />
+
+      <DeleteProjectModal
+        isOpen={Boolean(selectedProjectToDelete)}
+        onClose={() => setSelectedProjectToDelete(null)}
+        project={selectedProjectToDelete}
+        onProjectDeleted={handleProjectCreated}
+      />
     </>
   );
 }

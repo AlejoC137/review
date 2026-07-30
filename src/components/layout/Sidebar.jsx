@@ -4,13 +4,16 @@ import {
   LayoutDashboard, BookOpen, Settings, Hexagon,
   Layers, Info, X, FileText, Activity,
   HelpCircle, Book, ChevronLeft, ChevronRight, ChevronDown, Lock as LockIcon,
-  User, LogOut, ClipboardList, Folder, Calendar, Users, Target, Package, Database
+  User, LogOut, ClipboardList, Folder, Calendar, Users, Target, Package, Database, Plus, Trash2, Download
 } from 'lucide-react';
+import { projectExporterService } from '../../services/projectExporterService';
 import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import SiteLogo from '../ui/SiteLogo';
 import LanguageSwitcher from '../ui/LanguageSwitcher';
 import AdminModal from '../admin/AdminModal';
+import CreateProjectModal from '../project/CreateProjectModal';
+import DeleteProjectModal from '../project/DeleteProjectModal';
 import { useAuth } from '../../context/AuthContext';
 import { useRoadmap } from '../../context/RoadmapContext';
 import { startTutorial } from '../../config/tutorialConfig';
@@ -71,37 +74,51 @@ const NavItem = ({ item, depth = 0 }) => {
   );
 };
 
-const NavGroup = ({ id, label, icon: Icon, children, depth = 0, path, hash }) => {
+const NavGroup = ({ id, label, icon: Icon, children, depth = 0, path, hash, actionButton }) => {
   const { expandedSections, toggleSection, isCollapsed, handleNavClick } = useContext(SidebarContext);
   const isExpanded = expandedSections[id];
   return (
     <div className="flex flex-col w-full">
-      <button
-        onClick={(e) => {
-          toggleSection(id);
-          if (path || hash) {
-            handleNavClick(e, { path, hash });
-          }
-        }}
+      <div
         style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
         className={`
           flex items-center w-full p-2 group/item relative transition-all duration-200 font-mono text-[#1c1c19] hover:bg-[#e5e2dd]
           ${isCollapsed ? 'justify-center h-10 px-0' : 'justify-between h-9'}
         `}
-        title={isCollapsed ? label : ''}
       >
-        <div className="flex items-center gap-3 overflow-hidden">
+        <button
+          onClick={(e) => {
+            toggleSection(id);
+            if (path || hash) {
+              handleNavClick(e, { path, hash });
+            }
+          }}
+          className="flex items-center gap-3 overflow-hidden flex-1 text-left"
+          title={isCollapsed ? label : ''}
+        >
           <Icon size={16} className="shrink-0 text-[#0f4369]" />
           {!isCollapsed && (
             <span className="text-[10px] font-bold tracking-wider whitespace-nowrap uppercase truncate">
               {label}
             </span>
           )}
-        </div>
+        </button>
         {!isCollapsed && (
-          <ChevronDown size={14} className={`shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+          <div className="flex items-center gap-1 shrink-0">
+            {actionButton}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleSection(id);
+              }}
+              className="p-0.5 hover:bg-[#1c1c19]/10 rounded"
+            >
+              <ChevronDown size={14} className={`shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+            </button>
+          </div>
         )}
-      </button>
+      </div>
       {(!isCollapsed && isExpanded) && (
         <div className="flex flex-col w-full">
           {children}
@@ -116,6 +133,8 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
   const navigate = useNavigate();
   const { isAdmin, user, signOut, isBimManager, setBimManager } = useAuth();
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [selectedProjectToDelete, setSelectedProjectToDelete] = useState(null);
   const currentPlan = useSelector(state => state.bim.currentPlan);
   const { roadmapData } = useRoadmap();
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -139,23 +158,36 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
       try {
         // We do a dynamic import here to avoid circular dependency issues if any
         const { lifecycleService } = await import('../../services/lifecycleService');
-        const data = await lifecycleService.getProjects();
+        const data = await lifecycleService.getProjects(user, isAdmin);
         if (data && data.length > 0) {
           setProjectsList(data);
-
-          // Expand the first project by default
-          setExpandedSections(prev => ({
-            ...prev,
-            [`proj-${data[0].id}`]: true,
-            [`bep-${data[0].id}`]: true
-          }));
+          // Removed default expansion as requested by user to keep project tabs collapsed by default
+        } else {
+          setProjectsList([]);
         }
       } catch (err) {
         console.error("Failed to fetch sidebar projects", err);
       }
     };
     fetchSidebarProjects();
-  }, []);
+  }, [user, isAdmin]);
+
+  const handleCreateProject = () => {
+    setIsCreateModalOpen(true);
+  };
+
+  const handleProjectCreated = async (newProject) => {
+    try {
+      const { lifecycleService } = await import('../../services/lifecycleService');
+      const updated = await lifecycleService.getProjects(user, isAdmin);
+      setProjectsList(updated);
+      if (newProject?.id) {
+        navigate(`/project/${newProject.id}?tab=datos`);
+      }
+    } catch (err) {
+      console.error("Error refreshing sidebar projects:", err);
+    }
+  };
 
   const { t } = useTranslation();
 
@@ -257,65 +289,96 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
 
           <NavGroup id="proyectos" label="Proyectos" icon={Folder} depth={0}>
             {projectsList.length > 0 ? (
-              projectsList.map(proj => (
-                <NavGroup key={proj.id} id={`proj-${proj.id}`} label={proj.name} icon={Activity} depth={1}>
-                  <NavGroup id={`datos-${proj.id}`} label="Datos del Proyecto" icon={Info} depth={2}>
-                    <NavItem item={{ id: `nav-datos-resumen-${proj.id}`, label: 'Resumen Operativo', path: `/project/${proj.id}?tab=datos&subtab=resumen` }} depth={3} />
-                    <NavItem item={{ id: `nav-datos-peb-${proj.id}`, label: 'Información General', path: `/project/${proj.id}?tab=datos&subtab=peb_info` }} depth={3} />
-                    <NavItem item={{ id: `nav-datos-software-${proj.id}`, label: 'Software y Plataformas', path: `/project/${proj.id}?tab=datos&subtab=software` }} depth={3} />
-                    <NavItem item={{ id: `nav-datos-lod-${proj.id}`, label: 'Matriz LOD y TDI', path: `/project/${proj.id}?tab=datos&subtab=lod_tdi` }} depth={3} />
-                    <NavItem item={{ id: `nav-datos-objetivos-${proj.id}`, label: 'Objetivos del Proyecto', path: `/project/${proj.id}?tab=datos&subtab=objetivos` }} depth={3} />
-                    <NavItem item={{ id: `nav-datos-unidades-${proj.id}`, label: 'Unidades y Formatos', path: `/project/${proj.id}?tab=datos&subtab=unidades` }} depth={3} />
-                    <NavItem item={{ id: `nav-datos-cronograma-${proj.id}`, label: 'Cronograma Entregas', path: `/project/${proj.id}?tab=datos&subtab=cronograma` }} depth={3} />
+              <>
+                {projectsList.map(proj => (
+                  <NavGroup 
+                    key={proj.id} 
+                    id={`proj-${proj.id}`} 
+                    label={proj.name} 
+                    icon={Activity} 
+                    depth={1}
+                    actionButton={
+                      isAdmin ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                await projectExporterService.exportProjectToJson(proj.id, proj.name);
+                              } catch (err) {
+                                alert("Error al descargar plantilla: " + err.message);
+                              }
+                            }}
+                            className="p-1 text-[#0f4369] hover:text-white hover:bg-[#0f4369] transition-all rounded"
+                            title="Descargar Plantilla JSON (Solo Admin)"
+                          >
+                            <Download size={13} strokeWidth={2.5} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedProjectToDelete(proj);
+                            }}
+                            className="p-1 text-red-600 hover:text-white hover:bg-red-600 transition-all rounded"
+                            title="Eliminar Proyecto (Solo Admin)"
+                          >
+                            <Trash2 size={13} strokeWidth={2.5} />
+                          </button>
+                        </div>
+                      ) : null
+                    }
+                  >
+                    <NavGroup id={`datos-${proj.id}`} label="Datos del Proyecto" icon={Info} depth={2}>
+                      <NavItem item={{ id: `nav-datos-resumen-${proj.id}`, label: 'Resumen Operativo', path: `/project/${proj.id}?tab=datos&subtab=resumen` }} depth={3} />
+                      <NavItem item={{ id: `nav-datos-peb-${proj.id}`, label: 'Información General', path: `/project/${proj.id}?tab=datos&subtab=peb_info` }} depth={3} />
+                      <NavItem item={{ id: `nav-datos-software-${proj.id}`, label: 'Software y Plataformas', path: `/project/${proj.id}?tab=datos&subtab=software` }} depth={3} />
+                      <NavItem item={{ id: `nav-datos-lod-${proj.id}`, label: 'Matriz LOD y TDI', path: `/project/${proj.id}?tab=datos&subtab=lod_tdi` }} depth={3} />
+                      <NavItem item={{ id: `nav-datos-objetivos-${proj.id}`, label: 'Objetivos del Proyecto', path: `/project/${proj.id}?tab=datos&subtab=objetivos` }} depth={3} />
+                      <NavItem item={{ id: `nav-datos-unidades-${proj.id}`, label: 'Unidades y Formatos', path: `/project/${proj.id}?tab=datos&subtab=unidades` }} depth={3} />
+                      <NavItem item={{ id: `nav-datos-cronograma-${proj.id}`, label: 'Cronograma Entregas', path: `/project/${proj.id}?tab=datos&subtab=cronograma` }} depth={3} />
+                    </NavGroup>
+                    <NavGroup id={`bep-${proj.id}`} label="BEP" icon={FileText} depth={2}>
+                      <NavItem item={{ id: `nav-esquemas-${proj.id}`, label: 'Esquema', path: `/esquemas?projectId=${proj.id}`, icon: Hexagon }} depth={3} />
+                      <NavItem item={{ id: `nav-planner-${proj.id}`, label: 'Organizador / Deployer', path: `/planner?projectId=${proj.id}`, icon: ClipboardList }} depth={3} />
+                      <NavItem item={{ id: `nav-protocolos-${proj.id}`, label: 'Protocolos', path: `/project/${proj.id}?tab=protocolos`, icon: FileText }} depth={3} />
+                      <NavItem item={{ id: `nav-bep-equipo-${proj.id}`, label: 'Equipo y Roles', path: `/project/${proj.id}?tab=equipo&subtab=roles`, icon: Users }} depth={3} />
+                      <NavItem item={{ id: `nav-herramientas-${proj.id}`, label: 'Herramientas BIM', path: `/project/${proj.id}?tab=herramientas`, icon: Settings }} depth={3} />
+                      <NavItem item={{ id: `nav-db-report-${proj.id}`, label: 'PRE BEP', path: `/pre-bep?projectId=${proj.id}`, icon: Database }} depth={3} />
+                    </NavGroup>
+                    <NavItem item={{ id: `nav-proyecto-${proj.id}`, label: 'Sub Proyecto / Unidades', path: `/project/${proj.id}?tab=proyecto`, icon: Layers }} depth={2} />
+                    <NavItem item={{ id: `nav-niveles-${proj.id}`, label: 'Niveles', path: `/levels?projectId=${proj.id}`, icon: Layers }} depth={2} />
+                    <NavItem item={{ id: `nav-areas-${proj.id}`, label: 'Gestor de Áreas', path: `/areas?projectId=${proj.id}`, icon: Layers }} depth={2} />
+                    <NavItem item={{ id: `nav-materiales-${proj.id}`, label: 'Materiales', path: `/materials?projectId=${proj.id}`, icon: Package }} depth={2} />
+                    <NavItem item={{ id: `nav-documentos-${proj.id}`, label: 'Documentos', path: `/documents?projectId=${proj.id}`, icon: FileText }} depth={2} />
+                    <NavItem item={{ id: `nav-calendario-${proj.id}`, label: 'Calendario Sem/Mes', path: `/project/${proj.id}?tab=mes`, icon: Calendar }} depth={2} />
+                    <NavItem item={{ id: `nav-requisitos-${proj.id}`, label: 'Requisitos de informacion', path: `/project/${proj.id}?tab=requisitos`, icon: Layers }} depth={2} />
+                    <NavItem item={{ id: `nav-equipo-${proj.id}`, label: 'Equipo', path: `/project/${proj.id}?tab=equipo`, icon: Users }} depth={2} />
+                    <NavItem item={{ id: `nav-directorio-${proj.id}`, label: 'Directorio', path: `/project/${proj.id}?tab=directorio`, icon: Target }} depth={2} />
                   </NavGroup>
-                  <NavGroup id={`bep-${proj.id}`} label="BEP" icon={FileText} depth={2}>
-                    <NavItem item={{ id: `nav-esquemas-${proj.id}`, label: 'Esquema', path: `/esquemas?projectId=${proj.id}`, icon: Hexagon }} depth={3} />
-                    <NavItem item={{ id: `nav-planner-${proj.id}`, label: 'Organizador / Deployer', path: `/planner?projectId=${proj.id}`, icon: ClipboardList }} depth={3} />
-                    <NavItem item={{ id: `nav-protocolos-${proj.id}`, label: 'Protocolos', path: `/project/${proj.id}?tab=protocolos`, icon: FileText }} depth={3} />
-                    <NavItem item={{ id: `nav-bep-equipo-${proj.id}`, label: 'Equipo y Roles', path: `/project/${proj.id}?tab=equipo&subtab=roles`, icon: Users }} depth={3} />
-                    <NavItem item={{ id: `nav-herramientas-${proj.id}`, label: 'Herramientas BIM', path: `/project/${proj.id}?tab=herramientas`, icon: Settings }} depth={3} />
-                    <NavItem item={{ id: `nav-db-report-${proj.id}`, label: 'PRE BEP', path: `/pre-bep?projectId=${proj.id}`, icon: Database }} depth={3} />
-                  </NavGroup>
-                  <NavItem item={{ id: `nav-proyecto-${proj.id}`, label: 'Sub Proyecto / Unidades', path: `/project/${proj.id}?tab=proyecto`, icon: Layers }} depth={2} />
-                  <NavItem item={{ id: `nav-niveles-${proj.id}`, label: 'Niveles', path: `/levels?projectId=${proj.id}`, icon: Layers }} depth={2} />
-                  <NavItem item={{ id: `nav-areas-${proj.id}`, label: 'Gestor de Áreas', path: `/areas?projectId=${proj.id}`, icon: Layers }} depth={2} />
-                  <NavItem item={{ id: `nav-materiales-${proj.id}`, label: 'Materiales', path: `/materials?projectId=${proj.id}`, icon: Package }} depth={2} />
-                  <NavItem item={{ id: `nav-documentos-${proj.id}`, label: 'Documentos', path: `/documents?projectId=${proj.id}`, icon: FileText }} depth={2} />
-                  <NavItem item={{ id: `nav-calendario-${proj.id}`, label: 'Calendario Sem/Mes', path: `/project/${proj.id}?tab=mes`, icon: Calendar }} depth={2} />
-                  <NavItem item={{ id: `nav-requisitos-${proj.id}`, label: 'Requisitos de informacion', path: `/project/${proj.id}?tab=requisitos`, icon: Layers }} depth={2} />
-                  <NavItem item={{ id: `nav-equipo-${proj.id}`, label: 'Equipo', path: `/project/${proj.id}?tab=equipo`, icon: Users }} depth={2} />
-                  <NavItem item={{ id: `nav-directorio-${proj.id}`, label: 'Directorio', path: `/project/${proj.id}?tab=directorio`, icon: Target }} depth={2} />
-                </NavGroup>
-              ))
+                ))}
+                <div className="px-3 py-1 my-1">
+                  <button
+                    onClick={handleCreateProject}
+                    className="w-full flex items-center justify-center gap-2 bg-[#0f4369] text-white border border-[#1c1c19] py-1.5 px-2 text-[11px] font-black uppercase tracking-wider hover:bg-[#1c1c19] transition-all shadow-[2px_2px_0_0_rgba(28,28,25,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+                  >
+                    <Plus size={13} strokeWidth={3} />
+                    <span>+ Crear Proyecto</span>
+                  </button>
+                </div>
+              </>
             ) : (
-              <NavGroup id="proyecto1" label="Proyecto 1" icon={Activity} depth={1}>
-                <NavGroup id="kengo-datos" label="Datos del Proyecto" icon={Info} depth={2}>
-                  <NavItem item={{ id: 'nav-kengo-datos-resumen', label: 'Resumen Operativo', path: '/project/kengo-kuma?tab=datos&subtab=resumen' }} depth={3} />
-                  <NavItem item={{ id: 'nav-kengo-datos-peb', label: 'Información General', path: '/project/kengo-kuma?tab=datos&subtab=peb_info' }} depth={3} />
-                  <NavItem item={{ id: 'nav-kengo-datos-software', label: 'Software y Plataformas', path: '/project/kengo-kuma?tab=datos&subtab=software' }} depth={3} />
-                  <NavItem item={{ id: 'nav-kengo-datos-lod', label: 'Matriz LOD y TDI', path: '/project/kengo-kuma?tab=datos&subtab=lod_tdi' }} depth={3} />
-                  <NavItem item={{ id: 'nav-kengo-datos-objetivos', label: 'Objetivos del Proyecto', path: '/project/kengo-kuma?tab=datos&subtab=objetivos' }} depth={3} />
-                  <NavItem item={{ id: 'nav-kengo-datos-unidades', label: 'Unidades y Formatos', path: '/project/kengo-kuma?tab=datos&subtab=unidades' }} depth={3} />
-                  <NavItem item={{ id: 'nav-kengo-datos-cronograma', label: 'Cronograma Entregas', path: '/project/kengo-kuma?tab=datos&subtab=cronograma' }} depth={3} />
-                </NavGroup>
-                <NavItem item={{ id: 'nav-kengo-proyecto', label: 'Sub Proyecto / Unidades', path: '/project/kengo-kuma?tab=proyecto', icon: Layers }} depth={2} />
-                <NavItem item={{ id: 'nav-kengo-niveles', label: 'Niveles', path: '/levels?projectId=kengo-kuma', icon: Layers }} depth={2} />
-                <NavItem item={{ id: 'nav-kengo-areas', label: 'Gestor de Áreas', path: '/areas?projectId=kengo-kuma', icon: Layers }} depth={2} />
-                <NavItem item={{ id: 'nav-kengo-materiales', label: 'Materiales', path: '/materials?projectId=kengo-kuma', icon: Package }} depth={2} />
-                <NavGroup id="bep" label="BEP" icon={FileText} depth={2}>
-                  <NavItem item={{ id: 'nav-esquemas', label: 'Esquema', path: currentPlan ? `/esquemas/${currentPlan.id}` : '/esquemas', icon: Hexagon }} depth={3} />
-                  <NavItem item={{ id: 'nav-planner', label: 'Organizador', path: currentPlan ? `/planner/${currentPlan.id}` : '/planner', icon: ClipboardList }} depth={3} />
-                  <NavItem item={{ id: 'nav-protocolos', label: 'Protocolos', path: '/project/kengo-kuma?tab=protocolos', icon: FileText }} depth={3} />
-                  <NavItem item={{ id: 'nav-bep-equipo', label: 'Equipo y Roles', path: '/project/kengo-kuma?tab=equipo&subtab=roles', icon: Users }} depth={3} />
-                  <NavItem item={{ id: 'nav-herramientas', label: 'Herramientas BIM', path: '/project/kengo-kuma?tab=herramientas', icon: Settings }} depth={3} />
-                  <NavItem item={{ id: 'nav-db-report', label: 'PRE BEP', path: '/pre-bep?projectId=kengo-kuma', icon: Database }} depth={3} />
-                </NavGroup>
-                <NavItem item={{ id: 'nav-documentos', label: 'Documentos', path: '/documents', icon: FileText }} depth={2} />
-                <NavItem item={{ id: 'nav-calendario', label: 'Calendario Sem/Mes', path: '/project/kengo-kuma?tab=mes', icon: Calendar }} depth={2} />
-                <NavItem item={{ id: 'nav-requisitos', label: 'Requisitos de informacion', path: '/project/kengo-kuma?tab=requisitos', icon: Layers }} depth={2} />
-                <NavItem item={{ id: 'nav-equipo', label: 'Equipo', path: '/project/kengo-kuma?tab=equipo', icon: Users }} depth={2} />
-                <NavItem item={{ id: 'nav-directorio', label: 'Directorio', path: '/project/kengo-kuma?tab=directorio', icon: Target }} depth={2} />
-              </NavGroup>
+              <div className="px-2 py-2 my-1 flex flex-col gap-2">
+                <div className="text-[10px] font-mono text-[#72777f] uppercase px-1 font-bold">Sin proyectos asignados</div>
+                <button
+                  onClick={handleCreateProject}
+                  className="w-full flex items-center justify-center gap-2 bg-[#0f4369] text-white border-2 border-[#1c1c19] py-2 px-3 text-xs font-black uppercase tracking-wider hover:bg-[#1c1c19] transition-all shadow-[3px_3px_0_0_rgba(28,28,25,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+                >
+                  <Plus size={14} strokeWidth={3} />
+                  <span>Crear Nuevo Proyecto</span>
+                </button>
+              </div>
             )}
           </NavGroup>
 
@@ -362,6 +425,7 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
             </NavGroup>
           )}
 
+          <NavItem item={{ id: 'nav-from-plugin', label: 'Plugin Revit (/fromPlugIn)', path: '/fromPlugIn', icon: Database }} depth={0} />
           <NavItem item={{ id: 'nav-about', label: t('nav.about'), path: '/about', icon: Info }} depth={0} />
 
         </nav>
@@ -404,6 +468,22 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
         </div>
 
         <AdminModal isOpen={isAdminModalOpen} onClose={() => setIsAdminModalOpen(false)} />
+        <CreateProjectModal 
+          isOpen={isCreateModalOpen} 
+          onClose={() => setIsCreateModalOpen(false)} 
+          onProjectCreated={handleProjectCreated} 
+        />
+        <DeleteProjectModal
+          isOpen={Boolean(selectedProjectToDelete)}
+          onClose={() => setSelectedProjectToDelete(null)}
+          project={selectedProjectToDelete}
+          onProjectDeleted={async () => {
+            await handleProjectCreated();
+            if (location.pathname.includes(selectedProjectToDelete?.id)) {
+              navigate('/projects');
+            }
+          }}
+        />
       </aside>
     </SidebarContext.Provider>
   );

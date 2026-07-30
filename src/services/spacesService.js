@@ -85,10 +85,11 @@ export const spacesService = {
         return data || [];
     },
     async getProjectSpaces(projectId) {
-        // First get all subProjects for this project (currently global)
+        // Filtrar subProjects por project_id (ahora que la columna existe)
         const { data: subProjs, error: subProjError } = await supabase
             .from('subProjects')
-            .select('id');
+            .select('id')
+            .eq('project_id', projectId);
         
         if (subProjError) throw subProjError;
         

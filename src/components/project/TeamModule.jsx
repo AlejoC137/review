@@ -57,7 +57,7 @@ export default function TeamModule({ project }) {
     const fetchStaff = async () => {
       try {
         setLoading(true);
-        const data = await projectService.getStaff();
+        const data = await projectService.getStaff(project?.id);
         setMembers(data || []);
       } catch (error) {
         console.error("Error fetching staff:", error);
@@ -66,7 +66,7 @@ export default function TeamModule({ project }) {
       }
     };
     fetchStaff();
-  }, []);
+  }, [project?.id]);
 
   useEffect(() => {
     if (selectedMember) {
@@ -111,7 +111,11 @@ export default function TeamModule({ project }) {
     }
     try {
       setLoading(true);
-      const newStaff = await projectService.createStaff(newStaffForm);
+      const payload = {
+        ...newStaffForm,
+        ...(project?.id ? { project_id: project.id } : {})
+      };
+      const newStaff = await projectService.createStaff(payload);
       setMembers(prev => [...prev, newStaff].sort((a, b) => {
         const nameA = (a.name || a.nombre || '').toLowerCase();
         const nameB = (b.name || b.nombre || '').toLowerCase();
@@ -649,6 +653,7 @@ export default function TeamModule({ project }) {
       <RolesModal 
         isOpen={isRolesModalOpen} 
         onClose={() => setIsRolesModalOpen(false)} 
+        projectId={project?.id}
         onSelectRole={(role) => {
           if (isAddingStaff) {
             setNewStaffForm(prev => ({ ...prev, role_description: role.name }));

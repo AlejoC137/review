@@ -4,7 +4,7 @@ import { projectService } from '../../services/projectService';
 import { useAuth } from '../../context/AuthContext';
 import { PROMPTS } from '../../config/aiPrompts';
 
-export default function RolesModal({ isOpen, onClose, onSelectRole }) {
+export default function RolesModal({ isOpen, onClose, onSelectRole, projectId }) {
   const { isAdmin } = useAuth();
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -47,10 +47,13 @@ export default function RolesModal({ isOpen, onClose, onSelectRole }) {
       if (!parsedData || !Array.isArray(parsedData)) return;
       try {
           setLoading(true);
-          // Insertar cada rol
           for (const role of parsedData) {
               if (role.name) {
-                  await projectService.createRole({ name: role.name, description: role.description || '' });
+                  await projectService.createRole({
+                    name: role.name,
+                    description: role.description || '',
+                    ...(projectId ? { project_id: projectId } : {})
+                  });
               }
           }
           setJsonInput('');
@@ -70,12 +73,12 @@ export default function RolesModal({ isOpen, onClose, onSelectRole }) {
     if (isOpen) {
       fetchRoles();
     }
-  }, [isOpen]);
+  }, [isOpen, projectId]);
 
   const fetchRoles = async () => {
     try {
       setLoading(true);
-      const data = await projectService.getRoles();
+      const data = await projectService.getRoles(projectId);
       setRoles(data || []);
     } catch (error) {
       console.error("Error fetching roles:", error);
@@ -90,7 +93,8 @@ export default function RolesModal({ isOpen, onClose, onSelectRole }) {
       if (editingId) {
         await projectService.updateRole(editingId, form);
       } else {
-        await projectService.createRole(form);
+        // Incluir project_id en el nuevo rol
+        await projectService.createRole({ ...form, ...(projectId ? { project_id: projectId } : {}) });
       }
       setForm({ name: '', description: '' });
       setIsAdding(false);
@@ -125,7 +129,14 @@ export default function RolesModal({ isOpen, onClose, onSelectRole }) {
       <div className="bg-white border-2 border-[#1c1c19] w-full max-w-2xl shadow-[8px_8px_0_0_rgba(28,28,25,1)] flex flex-col max-h-[80vh]">
         {/* Header */}
         <div className="p-4 border-b-2 border-[#1c1c19] flex justify-between items-center bg-[#f6f3ee]">
-          <h2 className="text-xl font-black uppercase italic tracking-tighter">Catálogo de Roles</h2>
+          <div>
+            <h2 className="text-xl font-black uppercase italic tracking-tighter">Catálogo de Roles</h2>
+            {projectId && (
+              <p className="text-[9px] font-mono uppercase text-[#0f4369] mt-0.5">
+                Roles de este proyecto — <span className="font-black">{projectId.slice(0, 8)}...</span>
+              </p>
+            )}
+          </div>
           <button onClick={onClose} className="p-1 hover:bg-white border-2 border-transparent hover:border-[#1c1c19] transition-all">
             <X size={20} />
           </button>

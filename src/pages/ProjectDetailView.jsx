@@ -4,11 +4,10 @@ import { lifecycleService } from '../services/lifecycleService';
 import LifecycleView from './LifecycleView';
 import MainProject from './MainProject';
 import { useTranslation } from 'react-i18next';
-
-
-
+import { useAuth } from '../context/AuthContext';
 
 function ProjectDetailView() {
+  const { user, isAdmin } = useAuth();
   const { projectId } = useParams();
   const [searchParams] = useSearchParams();
   const [project, setProject] = useState(null);
@@ -24,17 +23,18 @@ function ProjectDetailView() {
 
     const fetchProject = async () => {
       try {
-        const projects = await lifecycleService.getProjects();
+        const projects = await lifecycleService.getProjects(user, isAdmin);
         const found = projects.find(p => p.id === projectId);
-        setProject(found);
+        setProject(found || { id: projectId, name: 'PROYECTO' });
       } catch (err) {
         console.error("Error fetching project:", err);
+        setProject({ id: projectId, name: 'PROYECTO' });
       } finally {
         setLoading(false);
       }
     };
     fetchProject();
-  }, [projectId]);
+  }, [projectId, user, isAdmin]);
 
   if (loading) {
     return (

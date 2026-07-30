@@ -6,7 +6,7 @@ import { levelsService } from '../services/levelsService';
 const AreasManagerView = () => {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
-    const projectId = searchParams.get('projectId') || 'kengo-kuma';
+    const projectId = searchParams.get('projectId') || '';
 
     const [levels, setLevels] = useState([]);
     const [loading, setLoading] = useState(false);

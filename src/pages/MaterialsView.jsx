@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Package, Search, DollarSign, Building2, Edit,
   Loader2, X, Save, AlertCircle, Plus, Filter, ChevronRight, ArrowUpDown,
   Ruler, Weight, Tag, Clock, Trash2, Camera, ExternalLink, Info, Database, Eye, Edit3, Settings, Check, Download,
-  Sparkles, Copy
+  Sparkles, Copy, Globe, Lock
 } from 'lucide-react';
-import { getMaterials, getMaterialCategories, updateMaterial, createMaterial, deleteMaterial, createMaterialsBatch } from '../services/materialsService';
+import { getMaterials, getMaterialCategories, updateMaterial, createMaterial, deleteMaterial, createMaterialsBatch, toggleGlobalMaterial } from '../services/materialsService';
 import { useAuth } from '../context/AuthContext';
 
 
@@ -147,9 +148,9 @@ const MaterialModal = ({ material, isOpen, onClose, onSave }) => {
           <h3 className="text-sm font-black italic uppercase tracking-tighter">{material ? 'EDITAR_MATERIAL' : 'NUEVO_MATERIAL'}</h3>
           <div className="flex items-center gap-2">
             {canImport && (
-              <button 
-                onClick={() => setIsAiModalOpen(true)} 
-                className="p-1 hover:bg-[#1c1c19] hover:text-white border-2 border-[#1c1c19] bg-white text-[#0f4369] flex items-center justify-center transition-all" 
+              <button
+                onClick={() => setIsAiModalOpen(true)}
+                className="p-1 hover:bg-[#1c1c19] hover:text-white border-2 border-[#1c1c19] bg-white text-[#0f4369] flex items-center justify-center transition-all"
                 title="Autocompletar con IA"
               >
                 <Sparkles size={16} className="text-yellow-500" fill="currentColor" />
@@ -194,7 +195,7 @@ const KeynotesModal = ({ isOpen, onClose, materials }) => {
   const [textField, setTextField] = useState('Nombre');
   const [treeLayers, setTreeLayers] = useState([]);
   const [selectedFields, setSelectedFields] = useState(new Set(['categoria', 'tipo', 'acabado', 'uso_recomendado', 'dimensiones']));
-  
+
   if (!isOpen) return null;
 
   const fieldsForCondensation = [
@@ -216,113 +217,113 @@ const KeynotesModal = ({ isOpen, onClose, materials }) => {
 
   const handleExport = () => {
     let output = "";
-    
+
     // Árbol Dinámico
     const treeNodes = new Map();
     const childrenCount = new Map(); // Para contar hijos de cada nodo
 
     const getNodeCode = (pathArray) => {
-       const pathKey = JSON.stringify(pathArray);
-       if (!treeNodes.has(pathKey)) {
-          let pCode = '';
-          let parentPathKey = 'root';
-          
-          if (pathArray.length > 1) {
-             const parentPath = pathArray.slice(0, -1);
-             pCode = getNodeCode(parentPath);
-             parentPathKey = JSON.stringify(parentPath);
-          }
-          
-          const count = (childrenCount.get(parentPathKey) || 0) + 1;
-          childrenCount.set(parentPathKey, count);
-          
-          // Genera el sufijo (ej. 01, 02...)
-          const suffix = count.toString().padStart(2, '0');
-          // El código es "Padre.Hijo" o solo "Hijo" si es la raíz
-          const code = pCode ? `${pCode}.${suffix}` : suffix;
-          
-          treeNodes.set(pathKey, {
-             code,
-             text: pathArray[pathArray.length - 1],
-             parentCode: pCode
-          });
-       }
-       return treeNodes.get(pathKey).code;
+      const pathKey = JSON.stringify(pathArray);
+      if (!treeNodes.has(pathKey)) {
+        let pCode = '';
+        let parentPathKey = 'root';
+
+        if (pathArray.length > 1) {
+          const parentPath = pathArray.slice(0, -1);
+          pCode = getNodeCode(parentPath);
+          parentPathKey = JSON.stringify(parentPath);
+        }
+
+        const count = (childrenCount.get(parentPathKey) || 0) + 1;
+        childrenCount.set(parentPathKey, count);
+
+        // Genera el sufijo (ej. 01, 02...)
+        const suffix = count.toString().padStart(2, '0');
+        // El código es "Padre.Hijo" o solo "Hijo" si es la raíz
+        const code = pCode ? `${pCode}.${suffix}` : suffix;
+
+        treeNodes.set(pathKey, {
+          code,
+          text: pathArray[pathArray.length - 1],
+          parentCode: pCode
+        });
+      }
+      return treeNodes.get(pathKey).code;
     };
 
     if (treeLayers.length > 0) {
-       materials.forEach(m => {
-          let currentPath = [];
-          for (let layer of treeLayers) {
-             const val = m[layer];
-             if (!val) break; // Rompe si falta el valor en la cadena
-             currentPath.push(val.toString());
-             getNodeCode([...currentPath]);
-          }
-       });
+      materials.forEach(m => {
+        let currentPath = [];
+        for (let layer of treeLayers) {
+          const val = m[layer];
+          if (!val) break; // Rompe si falta el valor en la cadena
+          currentPath.push(val.toString());
+          getNodeCode([...currentPath]);
+        }
+      });
     }
 
     // Imprimir Nodos Padre
     treeNodes.forEach(node => {
-       output += `${node.code}\t${node.text}\t${node.parentCode}\r\n`;
+      output += `${node.code}\t${node.text}\t${node.parentCode}\r\n`;
     });
 
     const materialCount = new Map(); // Para enumerar los materiales dentro de su carpeta
 
     // Luego procesamos los materiales
     materials.forEach((m, index) => {
-       let text = '';
-       if (textField === 'CONDENSE') {
-          let parts = [m.Nombre || 'Sin Nombre'];
-          
-          if (selectedFields.has('categoria') && m.categoria) parts.push(m.categoria);
-          if (selectedFields.has('tipo') && m.tipo) parts.push(m.tipo);
-          if (selectedFields.has('acabado') && m.acabado) parts.push(m.acabado);
-          if (selectedFields.has('uso_recomendado') && m.uso_recomendado) parts.push(m.uso_recomendado);
-          if (selectedFields.has('grado') && m.grado) parts.push(m.grado);
-          if (selectedFields.has('proveedor') && m.proveedor) parts.push(m.proveedor);
-          
-          if (selectedFields.has('dimensiones')) {
-             const dimProps = [m.largo_m, m.ancho_mm, m.espesor_mm || m.alto_mm].filter(Boolean);
-             if (dimProps.length > 0) {
-                parts.push(`${dimProps.join('x')}mm`);
-             }
-          }
-          text = parts.join(' | ');
-       } else {
-          text = m[textField] || 'Sin Descripción';
-       }
+      let text = '';
+      if (textField === 'CONDENSE') {
+        let parts = [m.Nombre || 'Sin Nombre'];
 
-       let parentCode = '';
-       if (treeLayers.length > 0) {
-          let currentPath = [];
-          for (let layer of treeLayers) {
-             const val = m[layer];
-             if (!val) break;
-             currentPath.push(val.toString());
-          }
-          if (currentPath.length > 0) {
-             const pathKey = JSON.stringify(currentPath);
-             if (treeNodes.has(pathKey)) {
-                parentCode = treeNodes.get(pathKey).code;
-             }
-          }
-       }
+        if (selectedFields.has('categoria') && m.categoria) parts.push(m.categoria);
+        if (selectedFields.has('tipo') && m.tipo) parts.push(m.tipo);
+        if (selectedFields.has('acabado') && m.acabado) parts.push(m.acabado);
+        if (selectedFields.has('uso_recomendado') && m.uso_recomendado) parts.push(m.uso_recomendado);
+        if (selectedFields.has('grado') && m.grado) parts.push(m.grado);
+        if (selectedFields.has('proveedor') && m.proveedor) parts.push(m.proveedor);
 
-       let key = '';
-       if (keyField === 'auto') {
-         if (parentCode) {
-            const count = (materialCount.get(parentCode) || 0) + 1;
-            materialCount.set(parentCode, count);
-            key = `${parentCode}.${count.toString().padStart(2, '0')}`;
-         } else {
-            key = `MAT-${(index + 1).toString().padStart(4, '0')}`;
-         }
-       } else {
-         key = m[keyField] || `MAT-${(index + 1).toString().padStart(4, '0')}`;
-       }
+        if (selectedFields.has('dimensiones')) {
+          const dimProps = [m.largo_m, m.ancho_mm, m.espesor_mm || m.alto_mm].filter(Boolean);
+          if (dimProps.length > 0) {
+            parts.push(`${dimProps.join('x')}mm`);
+          }
+        }
+        text = parts.join(' | ');
+      } else {
+        text = m[textField] || 'Sin Descripción';
+      }
 
-       output += `${key}\t${text}\t${parentCode}\r\n`;
+      let parentCode = '';
+      if (treeLayers.length > 0) {
+        let currentPath = [];
+        for (let layer of treeLayers) {
+          const val = m[layer];
+          if (!val) break;
+          currentPath.push(val.toString());
+        }
+        if (currentPath.length > 0) {
+          const pathKey = JSON.stringify(currentPath);
+          if (treeNodes.has(pathKey)) {
+            parentCode = treeNodes.get(pathKey).code;
+          }
+        }
+      }
+
+      let key = '';
+      if (keyField === 'auto') {
+        if (parentCode) {
+          const count = (materialCount.get(parentCode) || 0) + 1;
+          materialCount.set(parentCode, count);
+          key = `${parentCode}.${count.toString().padStart(2, '0')}`;
+        } else {
+          key = `MAT-${(index + 1).toString().padStart(4, '0')}`;
+        }
+      } else {
+        key = m[keyField] || `MAT-${(index + 1).toString().padStart(4, '0')}`;
+      }
+
+      output += `${key}\t${text}\t${parentCode}\r\n`;
     });
 
     const blob = new Blob([output], { type: 'text/plain;charset=utf-8' });
@@ -369,75 +370,75 @@ const KeynotesModal = ({ isOpen, onClose, materials }) => {
           </button>
         </div>
         <div className="p-6 space-y-4">
-           <div className="space-y-2">
-              <label className="block text-[9px] font-black uppercase text-[#72777f]">1. Clave Principal (Key Value)</label>
-              <select value={keyField} onChange={e => setKeyField(e.target.value)} className="w-full p-2 border-2 border-[#1c1c19] font-black text-xs outline-none bg-white">
-                 <option value="auto">Autogenerar Secuencial (MAT-0001)</option>
-                 {fields.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
-              </select>
-           </div>
-           <div className="space-y-2">
-              <label className="block text-[9px] font-black uppercase text-[#72777f]">2. Texto Descriptivo (Keynote Text)</label>
-              <select value={textField} onChange={e => setTextField(e.target.value)} className="w-full p-2 border-2 border-[#1c1c19] font-black text-xs outline-none bg-white">
-                 <option value="CONDENSE">⭐ Condensar Múltiples Datos (Avanzado)</option>
-                 {fields.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
-              </select>
-           </div>
-           
-           {textField === 'CONDENSE' && (
-              <div className="p-3 bg-[#fcf9f4] border-2 border-[#1c1c19] space-y-2 animate-in slide-in-from-top-2">
-                 <label className="block text-[8px] font-black uppercase text-[#1c1c19]">Selecciona los datos a concatenar:</label>
-                 <div className="grid grid-cols-2 gap-2">
-                    {fieldsForCondensation.map(f => (
-                       <label key={f.id} className="flex items-center gap-2 cursor-pointer group">
-                          <div className={`w-3 h-3 flex-none border-2 border-[#1c1c19] flex items-center justify-center ${selectedFields.has(f.id) ? 'bg-[#1c1c19]' : 'bg-white'}`}>
-                             {selectedFields.has(f.id) && <Check size={8} className="text-white" />}
-                          </div>
-                          <input type="checkbox" className="hidden" checked={selectedFields.has(f.id)} onChange={() => toggleField(f.id)} />
-                          <span className="text-[8px] font-bold uppercase truncate">{f.label}</span>
-                       </label>
-                    ))}
-                 </div>
-              </div>
-           )}
+          <div className="space-y-2">
+            <label className="block text-[9px] font-black uppercase text-[#72777f]">1. Clave Principal (Key Value)</label>
+            <select value={keyField} onChange={e => setKeyField(e.target.value)} className="w-full p-2 border-2 border-[#1c1c19] font-black text-xs outline-none bg-white">
+              <option value="auto">Autogenerar Secuencial (MAT-0001)</option>
+              {fields.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="block text-[9px] font-black uppercase text-[#72777f]">2. Texto Descriptivo (Keynote Text)</label>
+            <select value={textField} onChange={e => setTextField(e.target.value)} className="w-full p-2 border-2 border-[#1c1c19] font-black text-xs outline-none bg-white">
+              <option value="CONDENSE">⭐ Condensar Múltiples Datos (Avanzado)</option>
+              {fields.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+            </select>
+          </div>
 
-           <div className="space-y-4 border-t-2 border-[#1c1c19] pt-4">
-              <div>
-                 <label className="block text-[9px] font-black uppercase text-[#72777f] mb-2">3. Estructura de Árbol (Jerarquía de Carpetas en Revit)</label>
-                 
-                 <div className="space-y-2 mb-3">
-                    {treeLayers.map((layer, index) => (
-                       <div key={index} className="flex items-center gap-2 animate-in slide-in-from-left-2">
-                          <div className="bg-[#1c1c19] text-white text-[8px] font-black px-2 py-1 flex-none">Nivel {index + 1}</div>
-                          <select 
-                             value={layer} 
-                             onChange={e => {
-                                const newLayers = [...treeLayers];
-                                newLayers[index] = e.target.value;
-                                setTreeLayers(newLayers);
-                             }} 
-                             className="flex-1 p-2 border-2 border-[#1c1c19] font-black text-xs outline-none bg-[#f6f3ee]"
-                          >
-                             {fields.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
-                          </select>
-                          <button 
-                             onClick={() => setTreeLayers(treeLayers.filter((_, i) => i !== index))}
-                             className="p-2 border-2 border-[#ba1a1a] text-[#ba1a1a] hover:bg-[#ba1a1a] hover:text-white transition-all flex-none"
-                          >
-                             <Trash2 size={14} />
-                          </button>
-                       </div>
-                    ))}
-                 </div>
-
-                 <button 
-                    onClick={() => setTreeLayers([...treeLayers, fields[1].id])}
-                    className="w-full py-2 border-2 border-dashed border-[#1c1c19] text-[#1c1c19] font-black text-[9px] uppercase hover:bg-[#1c1c19] hover:text-white transition-all flex items-center justify-center gap-2"
-                 >
-                    <Plus size={12} /> AÑADIR NIVEL JERÁRQUICO
-                 </button>
+          {textField === 'CONDENSE' && (
+            <div className="p-3 bg-[#fcf9f4] border-2 border-[#1c1c19] space-y-2 animate-in slide-in-from-top-2">
+              <label className="block text-[8px] font-black uppercase text-[#1c1c19]">Selecciona los datos a concatenar:</label>
+              <div className="grid grid-cols-2 gap-2">
+                {fieldsForCondensation.map(f => (
+                  <label key={f.id} className="flex items-center gap-2 cursor-pointer group">
+                    <div className={`w-3 h-3 flex-none border-2 border-[#1c1c19] flex items-center justify-center ${selectedFields.has(f.id) ? 'bg-[#1c1c19]' : 'bg-white'}`}>
+                      {selectedFields.has(f.id) && <Check size={8} className="text-white" />}
+                    </div>
+                    <input type="checkbox" className="hidden" checked={selectedFields.has(f.id)} onChange={() => toggleField(f.id)} />
+                    <span className="text-[8px] font-bold uppercase truncate">{f.label}</span>
+                  </label>
+                ))}
               </div>
-           </div>
+            </div>
+          )}
+
+          <div className="space-y-4 border-t-2 border-[#1c1c19] pt-4">
+            <div>
+              <label className="block text-[9px] font-black uppercase text-[#72777f] mb-2">3. Estructura de Árbol (Jerarquía de Carpetas en Revit)</label>
+
+              <div className="space-y-2 mb-3">
+                {treeLayers.map((layer, index) => (
+                  <div key={index} className="flex items-center gap-2 animate-in slide-in-from-left-2">
+                    <div className="bg-[#1c1c19] text-white text-[8px] font-black px-2 py-1 flex-none">Nivel {index + 1}</div>
+                    <select
+                      value={layer}
+                      onChange={e => {
+                        const newLayers = [...treeLayers];
+                        newLayers[index] = e.target.value;
+                        setTreeLayers(newLayers);
+                      }}
+                      className="flex-1 p-2 border-2 border-[#1c1c19] font-black text-xs outline-none bg-[#f6f3ee]"
+                    >
+                      {fields.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+                    </select>
+                    <button
+                      onClick={() => setTreeLayers(treeLayers.filter((_, i) => i !== index))}
+                      className="p-2 border-2 border-[#ba1a1a] text-[#ba1a1a] hover:bg-[#ba1a1a] hover:text-white transition-all flex-none"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setTreeLayers([...treeLayers, fields[1].id])}
+                className="w-full py-2 border-2 border-dashed border-[#1c1c19] text-[#1c1c19] font-black text-[9px] uppercase hover:bg-[#1c1c19] hover:text-white transition-all flex items-center justify-center gap-2"
+              >
+                <Plus size={12} /> AÑADIR NIVEL JERÁRQUICO
+              </button>
+            </div>
+          </div>
         </div>
         <div className="p-4 border-t-4 border-[#1c1c19] bg-[#f6f3ee] flex justify-end gap-3">
           <button onClick={onClose} className="px-6 py-2 border-4 border-[#1c1c19] font-black text-[9px] hover:bg-[#e5e2dd]">CANCELAR</button>
@@ -462,7 +463,7 @@ function AiMaterialImportModal({ isOpen, onClose, onImport, singleMode = false }
   if (!isOpen) return null;
 
   const handleCopyPrompt = () => {
-    const masterPrompt = singleMode 
+    const masterPrompt = singleMode
       ? `Actúa como un experto en presupuestos y bases de datos de materiales de construcción. Genera un ÚNICO material de construcción estándar y realista.
 
 ESTRUCTURA DEL OBJETO JSON (debes retornar un Arreglo con este único objeto y usar estos nombres de campos exactos):
@@ -531,19 +532,19 @@ REGLAS CRÍTICAS:
       let cleanJson = jsonInput.trim();
       if (cleanJson.startsWith('```json')) cleanJson = cleanJson.replace(/```json/g, '').trim();
       if (cleanJson.endsWith('```')) cleanJson = cleanJson.replace(/```/g, '').trim();
-      
+
       const parsed = JSON.parse(cleanJson);
-      
+
       if (!Array.isArray(parsed)) {
         throw new Error("El JSON debe ser un Arreglo (Array) de objetos.");
       }
-      
+
       parsed.forEach((item, index) => {
         if (!item.Nombre) {
           throw new Error(`El elemento en el índice ${index} no contiene el campo 'Nombre'.`);
         }
       });
-      
+
       setPreviewData(parsed);
     } catch (err) {
       setError("Error al parsear JSON. Detalles: " + err.message);
@@ -572,86 +573,86 @@ REGLAS CRÍTICAS:
           </div>
           <button onClick={onClose} className="text-white hover:rotate-90 transition-transform"><X size={24} /></button>
         </div>
-        
+
         <div className="p-8 flex-1 overflow-y-auto custom-scrollbar space-y-8 bg-white">
           <div className="space-y-4">
-             <div className="flex items-center gap-2 border-b-2 border-[#1c1c19] pb-2">
-                <span className="bg-[#1c1c19] text-white font-black text-xs px-2 py-1">PASO 1</span>
-                <h4 className="text-sm font-black uppercase tracking-widest text-[#1c1c19]">Copiar Prompt de Estructura</h4>
-             </div>
-             
-             <button 
-                onClick={handleCopyPrompt}
-                className={`w-full py-3 border-2 font-display font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${copied ? 'bg-green-600 text-white border-green-800' : 'bg-[#1c1c19] text-white border-[#1c1c19] shadow-[4px_4px_0_0_rgba(28,28,25,0.2)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]'}`}
-             >
-                {copied ? <Check size={16} /> : <Copy size={16} />}
-                {copied ? 'PROMPT COPIADO AL PORTAPAPELES' : 'COPIAR PROMPT DE ESTRUCTURA A IA'}
-             </button>
+            <div className="flex items-center gap-2 border-b-2 border-[#1c1c19] pb-2">
+              <span className="bg-[#1c1c19] text-white font-black text-xs px-2 py-1">PASO 1</span>
+              <h4 className="text-sm font-black uppercase tracking-widest text-[#1c1c19]">Copiar Prompt de Estructura</h4>
+            </div>
+
+            <button
+              onClick={handleCopyPrompt}
+              className={`w-full py-3 border-2 font-display font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${copied ? 'bg-green-600 text-white border-green-800' : 'bg-[#1c1c19] text-white border-[#1c1c19] shadow-[4px_4px_0_0_rgba(28,28,25,0.2)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]'}`}
+            >
+              {copied ? <Check size={16} /> : <Copy size={16} />}
+              {copied ? 'PROMPT COPIADO AL PORTAPAPELES' : 'COPIAR PROMPT DE ESTRUCTURA A IA'}
+            </button>
           </div>
 
           <div className="space-y-4">
-             <div className="flex items-center gap-2 border-b-2 border-[#1c1c19] pb-2">
-                <span className="bg-[#1c1c19] text-white font-black text-xs px-2 py-1">PASO 2</span>
-                <h4 className="text-sm font-black uppercase tracking-widest text-[#1c1c19]">Pegar y Validar Resultado</h4>
-             </div>
-             
-             <div className="space-y-2">
-                <label className="block text-[10px] font-black uppercase tracking-widest text-[#72777f]">Pega el JSON generado por la IA aquí:</label>
-                <textarea 
-                  value={jsonInput}
-                  onChange={e => { setJsonInput(e.target.value); setPreviewData(null); setError(null); }}
-                  placeholder="[ { ... } ]"
-                  className="w-full bg-[#1c1c19] text-green-400 font-mono border-2 border-[#1c1c19] p-4 text-[10px] focus:outline-none min-h-[150px] custom-scrollbar"
-                />
-             </div>
+            <div className="flex items-center gap-2 border-b-2 border-[#1c1c19] pb-2">
+              <span className="bg-[#1c1c19] text-white font-black text-xs px-2 py-1">PASO 2</span>
+              <h4 className="text-sm font-black uppercase tracking-widest text-[#1c1c19]">Pegar y Validar Resultado</h4>
+            </div>
 
-             {error && <div className="p-3 bg-red-100 text-red-700 text-xs font-bold uppercase border-l-4 border-red-500">{error}</div>}
+            <div className="space-y-2">
+              <label className="block text-[10px] font-black uppercase tracking-widest text-[#72777f]">Pega el JSON generado por la IA aquí:</label>
+              <textarea
+                value={jsonInput}
+                onChange={e => { setJsonInput(e.target.value); setPreviewData(null); setError(null); }}
+                placeholder="[ { ... } ]"
+                className="w-full bg-[#1c1c19] text-green-400 font-mono border-2 border-[#1c1c19] p-4 text-[10px] focus:outline-none min-h-[150px] custom-scrollbar"
+              />
+            </div>
 
-             {!previewData ? (
-                <button 
-                  onClick={handleValidate}
-                  disabled={!jsonInput.trim()}
-                  className="w-full py-3 bg-[#f6f3ee] text-[#1c1c19] border-2 border-[#1c1c19] font-display font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#e5e2dd] disabled:opacity-50"
-                >
-                  <Check size={16} /> VALIDAR JSON
-                </button>
-             ) : (
-                <div className="bg-[#f6f3ee] border-2 border-[#1c1c19] p-4 space-y-3">
-                   <h5 className="text-[10px] font-black uppercase bg-[#1c1c19] text-white px-2 py-1 inline-block mb-2">VISTA_PREVIA ({previewData.length} {singleMode ? 'MATERIAL' : 'MATERIALES'})</h5>
-                   
-                   <div className="max-h-60 overflow-y-auto border border-[#1c1c19]/20 bg-white">
-                      <table className="w-full text-left text-[9px] border-collapse">
-                         <thead>
-                            <tr className="bg-[#1c1c19] text-white">
-                               <th className="p-1.5 border border-white/20">NOMBRE</th>
-                               <th className="p-1.5 border border-white/20">CATEGORÍA</th>
-                               <th className="p-1.5 border border-white/20">UNIDAD</th>
-                               <th className="p-1.5 border border-white/20">PRECIO</th>
-                            </tr>
-                         </thead>
-                         <tbody>
-                            {previewData.map((m, i) => (
-                               <tr key={i} className="border-b border-[#1c1c19]/10">
-                                  <td className="p-1.5 font-bold">{m.Nombre}</td>
-                                  <td className="p-1.5">{m.categoria || '---'}</td>
-                                  <td className="p-1.5 font-mono">{m.unidad || 'UND'}</td>
-                                  <td className="p-1.5">{m.precio_COP ? `$${Number(m.precio_COP).toLocaleString('es-CO')}` : '---'}</td>
-                               </tr>
-                            ))}
-                         </tbody>
-                      </table>
-                   </div>
+            {error && <div className="p-3 bg-red-100 text-red-700 text-xs font-bold uppercase border-l-4 border-red-500">{error}</div>}
 
-                   <button 
-                     onClick={handleCreate}
-                     disabled={isImporting}
-                     className="w-full mt-4 py-3 bg-[#0f4369] text-white border-2 border-[#1c1c19] font-display font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#1c1c19] transition-colors disabled:opacity-50"
-                   >
-                     {isImporting ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} 
-                     {isImporting ? 'PROCESANDO...' : singleMode ? 'CONFIRMAR Y LLENAR FORMULARIO' : 'CONFIRMAR E IMPORTAR MATERIALES'}
-                   </button>
+            {!previewData ? (
+              <button
+                onClick={handleValidate}
+                disabled={!jsonInput.trim()}
+                className="w-full py-3 bg-[#f6f3ee] text-[#1c1c19] border-2 border-[#1c1c19] font-display font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#e5e2dd] disabled:opacity-50"
+              >
+                <Check size={16} /> VALIDAR JSON
+              </button>
+            ) : (
+              <div className="bg-[#f6f3ee] border-2 border-[#1c1c19] p-4 space-y-3">
+                <h5 className="text-[10px] font-black uppercase bg-[#1c1c19] text-white px-2 py-1 inline-block mb-2">VISTA_PREVIA ({previewData.length} {singleMode ? 'MATERIAL' : 'MATERIALES'})</h5>
+
+                <div className="max-h-60 overflow-y-auto border border-[#1c1c19]/20 bg-white">
+                  <table className="w-full text-left text-[9px] border-collapse">
+                    <thead>
+                      <tr className="bg-[#1c1c19] text-white">
+                        <th className="p-1.5 border border-white/20">NOMBRE</th>
+                        <th className="p-1.5 border border-white/20">CATEGORÍA</th>
+                        <th className="p-1.5 border border-white/20">UNIDAD</th>
+                        <th className="p-1.5 border border-white/20">PRECIO</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewData.map((m, i) => (
+                        <tr key={i} className="border-b border-[#1c1c19]/10">
+                          <td className="p-1.5 font-bold">{m.Nombre}</td>
+                          <td className="p-1.5">{m.categoria || '---'}</td>
+                          <td className="p-1.5 font-mono">{m.unidad || 'UND'}</td>
+                          <td className="p-1.5">{m.precio_COP ? `$${Number(m.precio_COP).toLocaleString('es-CO')}` : '---'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-             )}
+
+                <button
+                  onClick={handleCreate}
+                  disabled={isImporting}
+                  className="w-full mt-4 py-3 bg-[#0f4369] text-white border-2 border-[#1c1c19] font-display font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#1c1c19] transition-colors disabled:opacity-50"
+                >
+                  {isImporting ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  {isImporting ? 'PROCESANDO...' : singleMode ? 'CONFIRMAR Y LLENAR FORMULARIO' : 'CONFIRMAR E IMPORTAR MATERIALES'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -661,6 +662,8 @@ REGLAS CRÍTICAS:
 
 // --- MAIN VIEW ---
 const MaterialsView = () => {
+  const [searchParams] = useSearchParams();
+  const projectId = searchParams.get('projectId');
   const { isBimManager, isAdmin } = useAuth();
   const canImport = isBimManager || isAdmin;
 
@@ -680,6 +683,10 @@ const MaterialsView = () => {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
   const [isAiImportModalOpen, setIsAiImportModalOpen] = useState(false);
+  const [togglingGlobalId, setTogglingGlobalId] = useState(null);
+
+  // Vista admin global: sin projectId
+  const isGlobalAdminView = !projectId;
 
   // REORDERED COLUMNS BASED ON USER REQUEST
   const allColumns = [
@@ -705,12 +712,12 @@ const MaterialsView = () => {
 
   const [visibleColumns, setVisibleColumns] = useState(new Set(allColumns.map(c => c.id)));
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [projectId]);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [m, c] = await Promise.all([getMaterials(), getMaterialCategories()]);
+      const [m, c] = await Promise.all([getMaterials(projectId), getMaterialCategories()]);
       setMaterials(m || []);
       setLocalMaterials(m || []);
       setCategories(c || []);
@@ -785,7 +792,7 @@ const MaterialsView = () => {
   const handleSelectAllToggle = () => {
     const allProcessedIds = processedMaterials.map(m => m.id || m.Nombre);
     const areAllSelected = allProcessedIds.length > 0 && allProcessedIds.every(id => selectedIds.has(id));
-    
+
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (areAllSelected) {
@@ -799,6 +806,14 @@ const MaterialsView = () => {
 
   const handleDeleteSelected = async () => {
     if (selectedIds.size === 0) return;
+
+    // Bloquear eliminación de materiales globales para no-admins
+    const selectedMats = materials.filter(m => selectedIds.has(m.id || m.Nombre));
+    const hasGlobal = selectedMats.some(m => m.globalMaterial);
+    if (hasGlobal && !isAdmin) {
+      alert("No puedes eliminar materiales globales. Solo el administrador puede hacerlo.");
+      return;
+    }
 
     const key = window.prompt("Ingrese la clave de BIM Manager para confirmar la eliminación:");
     if (key !== "123123") {
@@ -819,6 +834,20 @@ const MaterialsView = () => {
       } finally {
         setIsDeleting(false);
       }
+    }
+  };
+
+  const handleToggleGlobal = async (material) => {
+    if (!isAdmin) return;
+    setTogglingGlobalId(material.id);
+    try {
+      const updated = await toggleGlobalMaterial(material.id, material.globalMaterial);
+      setMaterials(prev => prev.map(m => m.id === updated.id ? { ...m, globalMaterial: updated.globalMaterial } : m));
+      setLocalMaterials(prev => prev.map(m => m.id === updated.id ? { ...m, globalMaterial: updated.globalMaterial } : m));
+    } catch (err) {
+      alert('Error al cambiar estado global del material.');
+    } finally {
+      setTogglingGlobalId(null);
     }
   };
 
@@ -891,7 +920,7 @@ const MaterialsView = () => {
             {categories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
           {canImport && (
-            <button 
+            <button
               onClick={() => setIsAiImportModalOpen(true)}
               className="px-5 py-1.5 bg-[#0f4369] text-white font-black text-[9px] uppercase italic border-2 border-[#1c1c19] hover:bg-[#1c1c19] transition-all flex items-center gap-2 shadow-[3px_3px_0_0_rgba(28,28,25,1)] hover:shadow-none translate-x-[-2px] translate-y-[-2px] hover:translate-x-0 hover:translate-y-0"
             >
@@ -920,6 +949,15 @@ const MaterialsView = () => {
                   />
                 </div>
               </th>
+              {/* Columna GLOBAL solo visible en vista admin sin projectId */}
+              {isGlobalAdminView && isAdmin && (
+                <th className="p-2 border border-white/20 bg-[#0f4369] text-white w-20 text-center sticky top-0 z-20">
+                  <div className="flex items-center justify-center gap-1">
+                    <Globe size={8} className="text-yellow-400" />
+                    <span className="text-[7px] font-black uppercase tracking-widest">GLOBAL</span>
+                  </div>
+                </th>
+              )}
               {allColumns.filter(c => visibleColumns.has(c.id)).map(col => (
                 <Th key={col.id} label={col.label} field={col.id} align={isPriceField(col.id) ? 'right' : 'left'} />
               ))}
@@ -927,47 +965,100 @@ const MaterialsView = () => {
             </tr>
           </thead>
           <tbody>
-            {processedMaterials.map((m) => (
-              <tr key={m.id || m.Nombre} className="hover:bg-[#0f4369]/5 bg-white border-b border-[#1c1c19]/10 group">
-                <td className="p-1 text-center border border-[#1c1c19]/10 w-10">
-                  <div className="flex items-center justify-center">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(m.id || m.Nombre)}
-                      onChange={() => toggleSelect(m.id || m.Nombre)}
-                      className="w-3.5 h-3.5 cursor-pointer accent-[#1c1c19]"
-                    />
-                  </div>
-                </td>
-                {allColumns.filter(c => visibleColumns.has(c.id)).map(col => (
-                  <td key={col.id} className={`p-1 border border-[#1c1c19]/10 ${isEditMode ? 'bg-[#fcf9f4]' : ''}`}>
-                    {isEditMode ? (
-                      col.id === 'unidad' ? (
-                        <select value={m[col.id] || 'UND'} onChange={(e) => handleInputChange(m.id || m.Nombre, col.id, e.target.value)} className="w-full bg-transparent p-1 text-[8px] font-black outline-none border border-[#1c1c19]/30 focus:border-[#0f4369]">
-                          {CONSTRUCTION_UNITS.map(u => <option key={u} value={u}>{UNIT_LABELS[u]}</option>)}
-                        </select>
-                      ) : (
-                        <input type="text" value={m[col.id] || ''} onChange={(e) => handleInputChange(m.id || m.Nombre, col.id, e.target.value)} className="w-full bg-transparent p-1 text-[8px] font-black outline-none border border-transparent focus:border-[#0f4369]" />
-                      )
-                    ) : (
-                      <span title={col.id === 'unidad' ? UNIT_LABELS[m[col.id]] : undefined} className={`block p-1 text-[8px] relative ${col.id === 'Nombre' ? 'font-black' : 'font-bold'} ${isPriceField(col.id) ? 'text-right text-[#0f4369]' : ''}`}>
-                        {isPriceField(col.id) ? formatCurrency(m[col.id]) : (m[col.id] || '---')}
-                        {col.id === 'unidad' && m[col.id] && (
-                          <div className="absolute left-full top-0 ml-2 z-50 bg-[#1c1c19] text-white text-[7px] px-2 py-1 hidden group-hover:block whitespace-nowrap shadow-[4px_4px_0_0_rgba(15,67,105,1)] border border-white/20">
-                            {UNIT_LABELS[m[col.id]]}
-                          </div>
+            {processedMaterials.map((m) => {
+              const isGlobal = !!m.globalMaterial;
+              const canEditRow = isAdmin || (!isGlobal && (isBimManager || true));
+              const isToggling = togglingGlobalId === m.id;
+              return (
+                <tr
+                  key={m.id || m.Nombre}
+                  className={`hover:bg-[#0f4369]/5 border-b border-[#1c1c19]/10 group ${isGlobal
+                    ? 'bg-[#0f4369]/5 border-l-4 border-l-[#0f4369]'
+                    : 'bg-white'
+                    }`}
+                >
+                  <td className="p-1 text-center border border-[#1c1c19]/10 w-10">
+                    <div className="flex items-center justify-center">
+                      {/* No permitir seleccionar globales si no es admin */}
+                      {(!isGlobal || isAdmin) && (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(m.id || m.Nombre)}
+                          onChange={() => toggleSelect(m.id || m.Nombre)}
+                          className="w-3.5 h-3.5 cursor-pointer accent-[#1c1c19]"
+                        />
+                      )}
+                    </div>
+                  </td>
+                  {/* Celda GLOBAL con switch - solo admin en vista global */}
+                  {isGlobalAdminView && isAdmin && (
+                    <td className="p-1 text-center border border-[#1c1c19]/10">
+                      <div className="flex items-center justify-center">
+                        {isToggling ? (
+                          <Loader2 size={12} className="animate-spin text-[#0f4369]" />
+                        ) : (
+                          <button
+                            onClick={() => handleToggleGlobal(m)}
+                            title={isGlobal ? 'Desactivar material global' : 'Activar como material global'}
+                            className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none ${isGlobal
+                              ? 'bg-[#0f4369] border-[#0f4369]'
+                              : 'bg-gray-200 border-gray-300'
+                              }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-2.5 w-2.5 mt-[1px] rounded-full bg-white shadow transform transition duration-200 ease-in-out ${isGlobal ? 'translate-x-3.5' : 'translate-x-0.5'
+                                }`}
+                            />
+                          </button>
                         )}
-                      </span>
-                    )}
-                  </td>
-                ))}
-                {!isEditMode && (
-                  <td className="p-1 text-center border border-[#1c1c19]/10">
-                    <button onClick={() => { setSelectedMaterial(m); setIsModalOpen(true); }} className="p-1 border border-[#1c1c19] hover:bg-[#1c1c19] hover:text-white transition-all"><Edit size={10} /></button>
-                  </td>
-                )}
-              </tr>
-            ))}
+                      </div>
+                    </td>
+                  )}
+                  {/* Badge GLOBAL en la columna Nombre cuando se visualiza desde proyecto */}
+                  {allColumns.filter(c => visibleColumns.has(c.id)).map(col => (
+                    <td key={col.id} className={`p-1 border border-[#1c1c19]/10 ${isEditMode && canEditRow ? 'bg-[#fcf9f4]' : ''
+                      } ${isGlobal && col.id === 'Nombre' ? 'relative' : ''}`}>
+                      {isEditMode && canEditRow ? (
+                        col.id === 'unidad' ? (
+                          <select value={m[col.id] || 'UND'} onChange={(e) => handleInputChange(m.id || m.Nombre, col.id, e.target.value)} className="w-full bg-transparent p-1 text-[8px] font-black outline-none border border-[#1c1c19]/30 focus:border-[#0f4369]">
+                            {CONSTRUCTION_UNITS.map(u => <option key={u} value={u}>{UNIT_LABELS[u]}</option>)}
+                          </select>
+                        ) : (
+                          <input type="text" value={m[col.id] || ''} onChange={(e) => handleInputChange(m.id || m.Nombre, col.id, e.target.value)} className="w-full bg-transparent p-1 text-[8px] font-black outline-none border border-transparent focus:border-[#0f4369]" />
+                        )
+                      ) : (
+                        <span title={col.id === 'unidad' ? UNIT_LABELS[m[col.id]] : undefined} className={`flex items-center gap-1 p-1 text-[8px] relative ${col.id === 'Nombre' ? 'font-black' : 'font-bold'} ${isPriceField(col.id) ? 'text-right text-[#0f4369] block' : ''}`}>
+                          {isPriceField(col.id) ? formatCurrency(m[col.id]) : (m[col.id] || '---')}
+                          {col.id === 'Nombre' && isGlobal && (
+                            <span className="inline-flex items-center gap-0.5 ml-1 px-1 py-0 bg-[#0f4369] text-white text-[6px] font-black uppercase rounded-sm shrink-0">
+                              <Globe size={5} /> GLOBAL
+                            </span>
+                          )}
+                          {col.id === 'unidad' && m[col.id] && (
+                            <div className="absolute left-full top-0 ml-2 z-50 bg-[#1c1c19] text-white text-[7px] px-2 py-1 hidden group-:block whitespace-nowrap shadow-[4px_4px_0_0_rgba(15,67,105,1)] border border-white/20">
+                              {UNIT_LABELS[m[col.id]]}
+                            </div>
+                          )}
+                        </span>
+                      )}
+                    </td>
+                  ))}
+                  {!isEditMode && (
+                    <td className="p-1 text-center border border-[#1c1c19]/10">
+                      {canEditRow ? (
+                        <button onClick={() => { setSelectedMaterial(m); setIsModalOpen(true); }} className="p-1 border border-[#1c1c19] hover:bg-[#1c1c19] hover:text-white transition-all">
+                          <Edit size={10} />
+                        </button>
+                      ) : (
+                        <span title="Material global: solo editable por admin" className="p-1 text-[#0f4369] opacity-40">
+                          <Lock size={10} />
+                        </span>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

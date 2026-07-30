@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Lock, Unlock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -9,8 +10,8 @@ export default function AdminModal({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-[#fcf9f4] border-2 border-[#1c1c19] w-full max-w-sm shadow-[8px_8px_0_0_rgba(28,28,25,0.2)]">
         <div className="flex justify-between items-center border-b-2 border-[#1c1c19] bg-[#e5e2dd] p-4">
           <div className="flex items-center space-x-2">
@@ -53,6 +54,7 @@ export default function AdminModal({ isOpen, onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

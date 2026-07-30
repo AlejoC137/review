@@ -259,7 +259,7 @@ const EditableTabLink = ({ projectId, sectionId, defaultLabel, defaultUrl }) => 
 
 export default function PreBEPView() {
   const [searchParams] = useSearchParams();
-  const projectId = searchParams.get('projectId') || 'kengo-kuma';
+  const projectId = searchParams.get('projectId') || '';
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);

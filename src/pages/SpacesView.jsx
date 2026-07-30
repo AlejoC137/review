@@ -13,7 +13,7 @@ const SpacesView = ({ subProjectId = null, projectId: propProjectId = null }) =>
     const { projectId: urlProjectId } = useParams();
     const [searchParams] = useSearchParams();
     const queryProjectId = searchParams.get('projectId');
-    const projectId = propProjectId || urlProjectId || queryProjectId || 'kengo-kuma';
+    const projectId = propProjectId || urlProjectId || queryProjectId || '';
     
     console.log("SpacesView Debug - propProjectId:", propProjectId);
     console.log("SpacesView Debug - urlProjectId:", urlProjectId);

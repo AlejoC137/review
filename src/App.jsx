@@ -41,6 +41,7 @@ import PreBEPView from './pages/PreBEPView';
 import LevelsView from './pages/LevelsView';
 import SpecialtiesView from './pages/SpecialtiesView';
 import AreasManagerView from './pages/AreasManagerView';
+import FromPlugInView from './pages/FromPlugInView';
 
 function GlobalFontStyles() {
   const [fonts, setFonts] = React.useState(getCustomFonts());
@@ -107,6 +108,7 @@ function App() {
 
               <Route path="/pre-bep" element={<PreBEPView />} />
               <Route path="/levels" element={<LevelsView />} />
+              <Route path="/fromPlugIn" element={<FromPlugInView />} />
               <Route path="/areas" element={<ProtectedRoute><AreasManagerView /></ProtectedRoute>} />
 
               <Route path="/documents" element={

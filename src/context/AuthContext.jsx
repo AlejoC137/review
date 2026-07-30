@@ -6,7 +6,9 @@ const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(window.location.hostname === 'localhost');
+  const [isAdmin, setIsAdmin] = useState(() => {
+    return localStorage.getItem('custom_user_admin') === 'true';
+  });
   const [isBimManager, setIsBimManager] = useState(false);
   const [isDemo, setIsDemo] = useState(false);
 
@@ -15,10 +17,6 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    // If on localhost, we automatically assume admin role for development convenience
-    if (window.location.hostname === 'localhost') {
-      setIsAdmin(true);
-    }
     // Check local storage for persistent custom session from user_profiles
     const storedUserId = localStorage.getItem('custom_user_id');
     if (storedUserId) {
@@ -45,7 +43,10 @@ export const AuthProvider = ({ children }) => {
         } else {
           setUser(data);
           const adminValue = data.admin;
-          setIsAdmin(adminValue === true || adminValue === 'true' || adminValue === 1 || adminValue === 'TRUE');
+          const calculatedIsAdmin = adminValue === true || adminValue === 'true' || adminValue === 1 || adminValue === 'TRUE';
+          setIsAdmin(calculatedIsAdmin);
+          localStorage.setItem('custom_user_admin', String(calculatedIsAdmin));
+          localStorage.setItem('custom_user_mail', data.mail || '');
           const bimManagerValue = data.bim_manager;
           setIsBimManager(bimManagerValue === true || bimManagerValue === 'true' || bimManagerValue === 1 || bimManagerValue === 'TRUE');
           const demoMode = data.mail === 'demo@arca.com';
@@ -60,6 +61,8 @@ export const AuthProvider = ({ children }) => {
         // Invalid session or user deleted
         console.error("Session fetch failed or user not found:", error);
         localStorage.removeItem('custom_user_id');
+        localStorage.removeItem('custom_user_admin');
+        localStorage.removeItem('custom_user_mail');
         setUser(null);
         setIsAdmin(false);
         setIsDemo(false);
@@ -68,6 +71,8 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       console.error("Session check error:", err);
       localStorage.removeItem('custom_user_id');
+      localStorage.removeItem('custom_user_admin');
+      localStorage.removeItem('custom_user_mail');
       setUser(null);
       setIsAdmin(false);
       setIsDemo(false);
@@ -104,7 +109,10 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('custom_user_id', data.id);
         setUser(data);
         const adminValue = data.admin;
-        setIsAdmin(adminValue === true || adminValue === 'true' || adminValue === 1 || adminValue === 'TRUE');
+        const calculatedIsAdmin = adminValue === true || adminValue === 'true' || adminValue === 1 || adminValue === 'TRUE';
+        setIsAdmin(calculatedIsAdmin);
+        localStorage.setItem('custom_user_admin', String(calculatedIsAdmin));
+        localStorage.setItem('custom_user_mail', data.mail || '');
         const bimManagerValue = data.bim_manager;
         setIsBimManager(bimManagerValue === true || bimManagerValue === 'true' || bimManagerValue === 1 || bimManagerValue === 'TRUE');
         const demoMode = data.mail === 'demo@arca.com';
@@ -122,6 +130,8 @@ export const AuthProvider = ({ children }) => {
     },
     signOut: async () => {
       localStorage.removeItem('custom_user_id');
+      localStorage.removeItem('custom_user_admin');
+      localStorage.removeItem('custom_user_mail');
       setUser(null);
       setIsAdmin(false);
       setIsDemo(false);

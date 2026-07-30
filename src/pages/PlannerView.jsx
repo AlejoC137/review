@@ -28,7 +28,7 @@ export default function PlannerView() {
     const projectId = searchParams.get('projectId');
     const navigate = useNavigate();
 
-    const { state, handlers } = usePlannerLogic(schemaId, isAdmin);
+    const { state, handlers } = usePlannerLogic(schemaId, isAdmin, projectId);
 
     const {
         plans, activePlan, isLoading, isSaving, isDirty, esquemas
@@ -49,7 +49,7 @@ export default function PlannerView() {
 
     const onCreatePlan = async () => {
         if (!newPlanName) return;
-        const plan = await handleCreatePlan(newPlanName, newPlanDesc);
+        const plan = await handleCreatePlan(newPlanName, newPlanDesc, projectId);
         if (plan && selectedSchemaForNewPlan) {
             await handleConnectSchema(plan.id, selectedSchemaForNewPlan);
         }
@@ -57,7 +57,7 @@ export default function PlannerView() {
         setNewPlanName('');
         setNewPlanDesc('');
         setSelectedSchemaForNewPlan(null);
-        if (plan) navigate(`/planner/${plan.id}`);
+        if (plan) navigate(`/planner/${plan.id}${projectId ? `?projectId=${projectId}` : ''}`);
     };
 
     return (
