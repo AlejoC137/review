@@ -3,9 +3,10 @@ import { supabase } from './supabaseClient';
 export const componentsService = {
     async getComponents() {
         const { data, error } = await supabase
-            .from('project_element_lod_tdi')
+            .from('Catalogo_Componentes')
             .select('*')
-            .order('element_name', { ascending: true });
+            .order('categoria_revit', { ascending: true })
+            .order('subcomponente', { ascending: true });
         if (error) throw error;
         return data || [];
     },

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { projectService } from '../../services/projectService';
+import { levelsService } from '../../services/levelsService';
 import { useDispatch } from 'react-redux';
 import { openInspector } from '../../store/uiSlice';
 import SearchableSpaceSelector from '../common/SearchableSpaceSelector';
@@ -44,6 +45,7 @@ export default function HousesModule({ project }) {
   const [houses, setHouses] = useState([]);
   const [houseTasks, setHouseTasks] = useState([]);
   const [stages, setStages] = useState([]);
+  const [levels, setLevels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState('proyecto');
@@ -84,14 +86,16 @@ export default function HousesModule({ project }) {
     if (!project?.id) return;
     try {
       setLoading(true);
-      const [spacesData, stagesData, staffData] = await Promise.all([
+      const [spacesData, stagesData, staffData, levelsData] = await Promise.all([
         projectService.getSpaces(project.id),
         projectService.getStages().catch(() => []),
-        projectService.getStaff().catch(() => [])
+        projectService.getStaff().catch(() => []),
+        levelsService.getLevels(project.id).catch(() => [])
       ]);
       setHouses(spacesData || []);
       setStages(stagesData || []);
       setStaffers(staffData || []);
+      setLevels(levelsData || []);
     } catch (error) {
       console.error("Error fetching project data:", error);
     } finally {
@@ -140,6 +144,7 @@ export default function HousesModule({ project }) {
         name: selectedHouse.name || '',
         responsable: selectedHouse.responsable || '',
         etapa: parsedDatos.etapa || 'Planificación',
+        level_id: parsedDatos.level_id || '',
         materialesConstantes: parsedDatos.materialesConstantes || [],
         presentacionesEspacio: parsedDatos.presentacionesEspacio || [],
         hasChanges: false,
@@ -204,6 +209,7 @@ export default function HousesModule({ project }) {
       setDetailForm(prev => ({ ...prev, saving: true }));
       const newDatos = {
         etapa: detailForm.etapa,
+        level_id: detailForm.level_id,
         materialesConstantes: detailForm.materialesConstantes,
         presentacionesEspacio: detailForm.presentacionesEspacio
       };
@@ -441,6 +447,19 @@ export default function HousesModule({ project }) {
                             <option value="Obra Negra">Obra Negra</option>
                             <option value="Acabados">Acabados</option>
                             <option value="Entrega">Entrega</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[7px] font-black text-[#72777f] uppercase mb-0.5">NIVEL</label>
+                          <select
+                            value={detailForm.level_id}
+                            onChange={(e) => handleDetailChange('level_id', e.target.value)}
+                            className="w-full px-2 py-1 text-[9px] font-black border border-[#1c1c19]/20 focus:border-[#1c1c19] outline-none uppercase"
+                          >
+                            <option value="">SELECCIONAR_NIVEL</option>
+                            {levels.map(l => (
+                              <option key={l.id} value={l.id}>{l.nombre}</option>
+                            ))}
                           </select>
                         </div>
                       </div>

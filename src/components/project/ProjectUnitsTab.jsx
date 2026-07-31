@@ -230,7 +230,7 @@ export default function ProjectUnitsTab({ project }) {
                           min="0"
                           max="5"
                           value={unitsInfo[dim.precKey]}
-                          onChange={(e) => handleChange(dim.precKey, parseInt(e.target.value) || 0)}
+                          onChange={(e) => handleChange(dim.precKey, e.target.value === '' ? '' : e.target.value)}
                           className="w-16 p-1.5 mx-auto bg-white border border-[#1c1c19] text-xs font-bold focus:outline-none text-center"
                         />
                       ) : (
@@ -263,7 +263,7 @@ export default function ProjectUnitsTab({ project }) {
                       type="number" 
                       min="0" max="5"
                       value={unitsInfo[dim.precKey]}
-                      onChange={e => handleChange(dim.precKey, parseInt(e.target.value) || 0)}
+                      onChange={e => handleChange(dim.precKey, e.target.value === '' ? '' : e.target.value)}
                       disabled={!isEditing}
                       className="w-16 p-2 bg-white border border-[#1c1c19] text-sm font-bold disabled:bg-transparent disabled:border-transparent text-center"
                     />
@@ -291,7 +291,7 @@ export default function ProjectUnitsTab({ project }) {
                       type="number" 
                       min="0" max="5"
                       value={unitsInfo[dim.precKey]}
-                      onChange={e => handleChange(dim.precKey, parseInt(e.target.value) || 0)}
+                      onChange={e => handleChange(dim.precKey, e.target.value === '' ? '' : e.target.value)}
                       disabled={!isEditing}
                       className="w-16 p-2 bg-white border border-[#1c1c19] text-sm font-bold disabled:bg-transparent disabled:border-transparent text-center"
                     />

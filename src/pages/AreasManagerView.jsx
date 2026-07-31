@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Loader2, ArrowLeft, Layers, Box, ChevronDown, ChevronRight } from 'lucide-react';
+import { Loader2, ArrowLeft, Layers, Box, ChevronDown, ChevronRight, Hash, Paperclip, BarChart2, Building2, LayoutGrid, FileText } from 'lucide-react';
+import { projectService } from '../services/projectService';
+import { spacesService } from '../services/spacesService';
 import { levelsService } from '../services/levelsService';
 
 const AreasManagerView = () => {
@@ -8,19 +10,37 @@ const AreasManagerView = () => {
     const navigate = useNavigate();
     const projectId = searchParams.get('projectId') || '';
 
+    const [subProjects, setSubProjects] = useState([]);
+    const [spacesElements, setSpacesElements] = useState([]);
     const [levels, setLevels] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState('norma'); // 'norma', 'overview', 'intervenida', 'piso'
+    const [activeTab, setActiveTab] = useState('subproject');
+
+    const [expandedSubProjects, setExpandedSubProjects] = useState({});
+    const [expandedSpaces, setExpandedSpaces] = useState({});
 
     useEffect(() => {
         loadData();
     }, [projectId]);
 
     const loadData = async () => {
+        if (!projectId) return;
         setLoading(true);
         try {
-            const levelsRes = await levelsService.getLevels(projectId);
-            setLevels(levelsRes || []);
+            const [spRes, seRes, lvRes] = await Promise.all([
+                projectService.getSpaces(projectId),
+                spacesService.getProjectSpaces(projectId),
+                levelsService.getLevels(projectId)
+            ]);
+
+            setSubProjects(spRes || []);
+            setSpacesElements(seRes || []);
+            setLevels(lvRes || []);
+
+            const spExp = {};
+            (spRes || []).forEach(sp => spExp[sp.id] = true);
+            setExpandedSubProjects(spExp);
+            
         } catch (error) {
             console.error('Error loading data:', error);
         } finally {
@@ -28,318 +48,134 @@ const AreasManagerView = () => {
         }
     };
 
-    // Separate levels
-    const rootLevels = levels.filter(l => !l.parent_id).sort((a, b) => (a.indice || 0) - (b.indice || 0));
-    const childLevels = levels.filter(l => l.parent_id);
+    const toggleSubProject = (id) => setExpandedSubProjects(prev => ({ ...prev, [id]: !prev[id] }));
+    const toggleSpace = (id) => setExpandedSpaces(prev => ({ ...prev, [id]: !prev[id] }));
 
     // Helpers
-    const getAreaVal = (subLotes, name, type) => {
-        const lote = subLotes.find(l => l.name === name);
-        if (!lote) return 0;
-        return type === 'built' ? (parseFloat(lote.built_area) || 0) : (parseFloat(lote.uncovered_area) || 0);
+    const getLevelName = (level_id, piso) => {
+        if (level_id) {
+            const level = levels.find(l => l.id === level_id);
+            if (level) return level.nombre;
+        }
+        if (piso) return `PISO ${piso}`;
+        return 'SIN ASIGNAR';
     };
 
-    const isCirculationOrTech = (usageType) => {
-        if (!usageType) return false;
-        const u = usageType.toLowerCase();
-        return u.includes('circulation') || u.includes('technical');
+    const countComponents = (componentsJson) => {
+        if (!componentsJson) return 0;
+        try {
+            const parsed = typeof componentsJson === 'string' ? JSON.parse(componentsJson) : componentsJson;
+            return Array.isArray(parsed) ? parsed.length : 0;
+        } catch {
+            return 0;
+        }
     };
 
-    const isAccommodation = (usageType) => {
-        if (!usageType) return false;
-        return usageType.toLowerCase().includes('accommodation');
-    };
+    // Filter only spaces for aggregations (Elements don't sum area)
+    const spacesOnly = spacesElements.filter(se => se.tipo === 'Espacio');
 
-    const renderNorma = () => {
-        // Calculate dynamic values
-        let numHabitaciones = 0;
-        let totalBuiltAll = 0;
+    // Advanced Aggregation Structure considering Demolition
+    const createEmptyAgg = () => ({
+        construida: { nueva: 0, existente: 0 },
+        descubierta: { nueva: 0, existente: 0 },
+        demolicion: 0,
+        total_proyecto: 0,     // Lo que queda construido/libre al final
+        total_intervencion: 0  // Todo lo que el constructor toca (Nueva + Existente/Refacción + Demolición)
+    });
 
-        childLevels.forEach(child => {
-            const usage = child.project_area_details?.[0]?.usage_type || '';
-            if (isAccommodation(usage) && child.nombre.toLowerCase().includes('room')) {
-                numHabitaciones++;
+    const addAreaToAgg = (agg, space) => {
+        const area = parseFloat(space.area) || 0;
+        const isConstruida = space.area_category === 'Construida';
+        const phase = space.phase || 'Nueva Construcción'; // Default to new
+
+        if (phase === 'Demolición') {
+            agg.demolicion += area;
+            agg.total_intervencion += area;
+        } else {
+            // Es Nueva o Existente (Se queda en el proyecto final)
+            if (isConstruida) {
+                if (phase === 'Existente') agg.construida.existente += area;
+                else agg.construida.nueva += area;
+            } else {
+                if (phase === 'Existente') agg.descubierta.existente += area;
+                else agg.descubierta.nueva += area;
             }
-            
-            (child.project_area_details || []).forEach(det => {
-                totalBuiltAll += parseFloat(det.built_area) || 0;
-            });
-        });
-
-        return (
-            <div className="bg-white border-4 border-[#1c1c19] shadow-[8px_8px_0_0_rgba(28,28,25,1)] p-6 overflow-auto">
-                <table className="w-full text-left border-collapse font-mono text-sm">
-                    <thead className="bg-[#1c1c19] text-white">
-                        <tr>
-                            <th className="p-3 border-r-2 border-[#1c1c19]/20 w-1/2">AGORA de Click Clack por Kengo Kuma</th>
-                            <th className="p-3 border-r-2 border-[#1c1c19]/20 w-1/4 text-center">REGULATION</th>
-                            <th className="p-3 w-1/4 text-center">PROJECT</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr className="bg-[#f6f3ee] font-bold">
-                            <td className="p-3 border-b border-r-2 border-[#1c1c19]/20">CI 10A #37-28</td>
-                            <td className="p-3 border-b border-r-2 border-[#1c1c19]/20"></td>
-                            <td className="p-3 border-b"></td>
-                        </tr>
-                        {[
-                            ['ÁREA BRUTA LOTE', '502,74', '502,74'],
-                            ['FRENTE LOTE', '16,84', '16,84'],
-                            ['FONDO LOTE', '30,00', '30,00'],
-                            ['ALTURA', '8 PISOS', '8 PISOS'],
-                            ['ÁREA ÍNDICE OCUPACIÓN 1 PISO', '402,19', '431,60'],
-                            ['ÍNDICE DE OCUPACIÓN PLATAFORMA', '80%', '86%'],
-                            ['ÁREA ÍNDICE OCUPACIÓN TORRE (4 PISO)', '301,64', '221,64'],
-                            ['ÍNDICE DE OCUPACIÓN TORRE (4 PISO)', '60%', '56,90%'],
-                            ['ÁREA TOTAL CONSTRUIDA', '', totalBuiltAll.toFixed(2)],
-                            ['ÁREA QUE CUENTA PARA ÍNDICE DE CONSTRUCCIÓN', '', ''],
-                            ['NÚMERO HABITACIONES', '', numHabitaciones],
-                            ['CELDAS DE CARGUE Y DESCARGUE', '1', '0'],
-                            ['CAR LOBBY', '1', '0']
-                        ].map((row, i) => (
-                            <tr key={i} className="border-b border-[#1c1c19]/20 hover:bg-[#f6f3ee]">
-                                <td className="p-3 border-r-2 border-[#1c1c19]/20">{row[0]}</td>
-                                <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center">{row[1]}</td>
-                                <td className={`p-3 text-center ${row[2] !== row[1] && row[2] !== '' ? 'text-red-500 font-bold' : ''}`}>{row[2]}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        );
+            agg.total_proyecto += area;
+            agg.total_intervencion += area;
+        }
     };
 
-    const renderOverview = () => {
-        const revenueData = [];
-        let allCirculationWithin = 0;
-        let allCirculationExt = 0;
-        let allTechWithin = 0;
-        let allTechExt = 0;
+    const renderTotalsRow = (totals, label = "TOTAL GENERAL PROYECTO", className = "bg-[#f6f3ee] border-t-4 border-[#1c1c19] text-lg") => (
+        <tr className={`font-black ${className}`}>
+            <td className="p-4 border-r-2 border-[#1c1c19]/20 uppercase text-right">{label}</td>
+            <td className="p-4 border-r-2 border-[#1c1c19]/20 text-center text-[#16a34a]">{totals.construida.nueva.toFixed(2)}</td>
+            <td className="p-4 border-r-2 border-[#1c1c19]/20 text-center text-[#16a34a]">{totals.construida.existente.toFixed(2)}</td>
+            <td className="p-4 border-r-2 border-[#1c1c19]/20 text-center text-[#ea580c]">{totals.descubierta.nueva.toFixed(2)}</td>
+            <td className="p-4 border-r-2 border-[#1c1c19]/20 text-center text-[#ea580c]">{totals.descubierta.existente.toFixed(2)}</td>
+            <td className="p-4 border-r-2 border-[#1c1c19]/20 text-center text-[#dc2626] bg-[#fee2e2]/50">{totals.demolicion.toFixed(2)}</td>
+            <td className="p-4 border-r-2 border-[#1c1c19]/20 text-center text-white bg-[#0f4369]">{totals.total_proyecto.toFixed(2)}</td>
+            <td className="p-4 text-center text-xl bg-[#1c1c19] text-[#e5e2dd]">{totals.total_intervencion.toFixed(2)}</td>
+        </tr>
+    );
 
-        let totalRevWithin = 0;
-        let totalRevExt = 0;
-        let totalCommercial = 0;
-        let totalAccommodation = 0;
-
-        rootLevels.forEach(floor => {
-            const children = childLevels.filter(c => c.parent_id === floor.id);
-            const programs = {};
-            
-            children.forEach(child => {
-                const sub = child.project_area_details || [];
-                const usage = sub[0]?.usage_type || 'Unknown';
-                const within = getAreaVal(sub, 'WITHIN NEW PLOT', 'built');
-                const ext = getAreaVal(sub, 'EXTENSION EXISTING PLOT', 'built') + getAreaVal(sub, 'EXTENSION EXISTING PLOT - REFURBISHMENT', 'built');
-
-                if (isCirculationOrTech(usage)) {
-                    if (usage.toLowerCase().includes('technical')) {
-                        allTechWithin += within;
-                        allTechExt += ext;
-                    } else {
-                        allCirculationWithin += within;
-                        allCirculationExt += ext;
-                    }
-                } else {
-                    if (!programs[usage]) programs[usage] = { within: 0, ext: 0 };
-                    programs[usage].within += within;
-                    programs[usage].ext += ext;
-                    totalRevWithin += within;
-                    totalRevExt += ext;
-
-                    if (isAccommodation(usage)) {
-                        totalAccommodation += (within + ext);
-                    } else {
-                        totalCommercial += (within + ext);
-                    }
-                }
-            });
-
-            Object.keys(programs).forEach(prog => {
-                revenueData.push({
-                    floor: floor.nombre,
-                    space: prog,
-                    within: programs[prog].within,
-                    ext: programs[prog].ext,
-                    total: programs[prog].within + programs[prog].ext
-                });
-            });
-        });
-
-        const totalBuiltWithin = totalRevWithin + allCirculationWithin + allTechWithin;
-        const totalBuiltExt = totalRevExt + allCirculationExt + allTechExt;
-        const totalBuilt = totalBuiltWithin + totalBuiltExt;
-
-        return (
-            <div className="bg-white border-4 border-[#1c1c19] shadow-[8px_8px_0_0_rgba(28,28,25,1)] p-6 overflow-auto">
-                <table className="w-full text-left border-collapse font-mono text-sm">
-                    <thead>
-                        <tr className="bg-[#1c1c19] text-white">
-                            <th colSpan={4} className="p-3 text-center text-lg tracking-widest uppercase">AREAS OVERVIEW</th>
-                        </tr>
-                        <tr className="bg-[#e5e2dd]">
-                            <th className="p-3 border-r-2 border-[#1c1c19]/20 w-1/4">FLOOR</th>
-                            <th className="p-3 border-r-2 border-[#1c1c19]/20 w-1/4">SPACE</th>
-                            <th className="p-3 border-r-2 border-[#1c1c19]/20 w-1/4 text-center">
-                                COVERED GROSS AREA<br/>REMUNERATED AREAS
-                                <div className="flex w-full mt-2 border-t-2 border-[#1c1c19]/20">
-                                    <div className="w-1/2 p-2 border-r-2 border-[#1c1c19]/20">Within Plot</div>
-                                    <div className="w-1/2 p-2">Extensions</div>
-                                </div>
-                            </th>
-                            <th className="p-3 w-1/4 text-center">TOTAL</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr className="bg-white font-bold border-b-2 border-[#1c1c19]/20"><td colSpan={4} className="p-3 uppercase">PROGRAMME WITH REVENUE</td></tr>
-                        {revenueData.map((row, i) => (
-                            <tr key={i} className="border-b border-[#1c1c19]/10">
-                                <td className="p-3 border-r-2 border-[#1c1c19]/20">{row.floor}</td>
-                                <td className="p-3 border-r-2 border-[#1c1c19]/20">{row.space}</td>
-                                <td className="p-0 border-r-2 border-[#1c1c19]/20 h-full">
-                                    <div className="flex h-full text-center">
-                                        <div className="w-1/2 p-3 bg-[#a7f3d0]/30">{row.within > 0 ? `${row.within} m²` : ''}</div>
-                                        <div className="w-1/2 p-3 bg-[#fed7aa]/30">{row.ext > 0 ? `${row.ext} m²` : ''}</div>
-                                    </div>
-                                </td>
-                                <td className="p-3 text-center">{row.total > 0 ? `${row.total} m²` : ''}</td>
-                            </tr>
-                        ))}
-                        <tr className="font-bold border-b-2 border-[#1c1c19]/20 bg-[#f6f3ee]">
-                            <td colSpan={2} className="p-3 border-r-2 border-[#1c1c19]/20">TOTAL REVENUE</td>
-                            <td className="p-0 border-r-2 border-[#1c1c19]/20 h-full">
-                                <div className="flex h-full text-center">
-                                    <div className="w-1/2 p-3">{totalRevWithin} m²</div>
-                                    <div className="w-1/2 p-3">{totalRevExt} m²</div>
-                                </div>
-                            </td>
-                            <td className="p-3 text-center">{totalRevWithin + totalRevExt} m²</td>
-                        </tr>
-                        
-                        <tr className="border-b border-[#1c1c19]/10">
-                            <td className="p-3 border-r-2 border-[#1c1c19]/20">ALL FLOORS</td>
-                            <td className="p-3 border-r-2 border-[#1c1c19]/20">Circulations</td>
-                            <td className="p-0 border-r-2 border-[#1c1c19]/20 h-full">
-                                <div className="flex h-full text-center">
-                                    <div className="w-1/2 p-3 bg-[#a7f3d0]/30">{allCirculationWithin} m²</div>
-                                    <div className="w-1/2 p-3 bg-[#fed7aa]/30">{allCirculationExt} m²</div>
-                                </div>
-                            </td>
-                            <td className="p-3 text-center">{allCirculationWithin + allCirculationExt} m²</td>
-                        </tr>
-                        <tr className="border-b border-[#1c1c19]/10">
-                            <td className="p-3 border-r-2 border-[#1c1c19]/20">ALL FLOORS</td>
-                            <td className="p-3 border-r-2 border-[#1c1c19]/20">Technical areas</td>
-                            <td className="p-0 border-r-2 border-[#1c1c19]/20 h-full">
-                                <div className="flex h-full text-center">
-                                    <div className="w-1/2 p-3 bg-[#a7f3d0]/30">{allTechWithin} m²</div>
-                                    <div className="w-1/2 p-3 bg-[#fed7aa]/30">{allTechExt} m²</div>
-                                </div>
-                            </td>
-                            <td className="p-3 text-center">{allTechWithin + allTechExt} m²</td>
-                        </tr>
-
-                        <tr className="font-bold border-b-2 border-[#1c1c19] bg-[#1c1c19] text-white">
-                            <td colSpan={2} className="p-3 border-r-2 border-[#1c1c19]/20">TOTAL BUILT</td>
-                            <td className="p-0 border-r-2 border-[#1c1c19]/20 h-full">
-                                <div className="flex h-full text-center">
-                                    <div className="w-1/2 p-3">{totalBuiltWithin} m²</div>
-                                    <div className="w-1/2 p-3">{totalBuiltExt} m²</div>
-                                </div>
-                            </td>
-                            <td className="p-3 text-center">{totalBuilt} m²</td>
-                        </tr>
-
-                        <tr className="h-4 bg-white"><td colSpan={4}></td></tr>
-
-                        <tr className="bg-[#e5e2dd] border-b border-[#1c1c19]/20 font-bold">
-                            <td colSpan={2} className="p-3 border-r-2 border-[#1c1c19]/20">TOTAL Commercial m2</td>
-                            <td colSpan={2} className="p-3">{totalCommercial} m²</td>
-                        </tr>
-                        <tr className="bg-[#e5e2dd] font-bold">
-                            <td colSpan={2} className="p-3 border-r-2 border-[#1c1c19]/20">TOTAL Accommodation m2</td>
-                            <td colSpan={2} className="p-3">{totalAccommodation} m²</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        );
-    };
-
-    const TableHeader = () => (
-        <thead className="bg-white sticky top-0 z-10 text-[10px] font-black uppercase tracking-wider shadow-sm">
+    const TableHeader = ({ title }) => (
+        <thead className="bg-[#1c1c19] text-white text-[10px] tracking-wider sticky top-0 z-10 shadow-sm border-b-4 border-[#1c1c19]">
             <tr>
-                <th className="p-2 border-b-2 border-r-2 border-[#1c1c19]/20 w-32 bg-[#e5e2dd]" rowSpan={2}>PROGRAM</th>
-                <th className="p-2 border-b-2 border-r-2 border-[#1c1c19]/20 w-48 bg-[#e5e2dd]" rowSpan={2}>ROOM</th>
-                <th className="p-2 border-b-2 border-r-2 border-[#1c1c19]/20 text-center bg-[#4ade80]/20" colSpan={2}>WITHIN NEW PLOT</th>
-                <th className="p-2 border-b-2 border-r-2 border-[#1c1c19]/20 text-center bg-[#fdba74]/20" colSpan={2}>EXTENSION EXISTING PLOT</th>
-                <th className="p-2 border-b-2 border-r-2 border-[#1c1c19]/20 text-center bg-[#60a5fa]/20" colSpan={2}>EXTENSION EXISTING PLOT</th>
-                <th className="p-2 border-b-2 border-[#1c1c19]/20 text-center bg-[#d1d5db]" rowSpan={2}>TOTAL NEW AND REFURBISHED COVERED AREA Gross</th>
+                <th rowSpan={2} className="p-3 border-r-2 border-white/20 w-[20%] uppercase align-bottom text-[13px] font-black">{title}</th>
+                <th colSpan={2} className="p-2 border-r-2 border-b-2 border-white/20 text-center bg-[#16a34a]/20 uppercase text-xs text-[#4ade80]">CONSTRUIDA FINAL</th>
+                <th colSpan={2} className="p-2 border-r-2 border-b-2 border-white/20 text-center bg-[#ea580c]/20 uppercase text-xs text-[#fdba74]">LIBRE FINAL</th>
+                <th rowSpan={2} className="p-3 border-r-2 border-white/20 text-center align-bottom bg-[#dc2626]/20 text-[#fca5a5] text-xs font-black w-[10%]">A DEMOLER</th>
+                <th rowSpan={2} className="p-3 border-r-2 border-white/20 text-center align-bottom bg-[#0f4369] text-white text-xs font-black w-[10%] leading-tight">ÁREA PROYECTO<br/><span className="text-[9px] font-normal text-gray-300">(SIN DEMOLICIONES)</span></th>
+                <th rowSpan={2} className="p-3 text-center align-bottom bg-[#e5e2dd] text-[#1c1c19] text-xs font-black w-[12%] leading-tight">TOTAL INTERVENCIÓN<br/><span className="text-[9px] font-bold text-gray-500">(OBRA TOTAL)</span></th>
             </tr>
             <tr>
-                <th className="p-2 border-b-2 border-r-2 border-[#1c1c19]/20 text-center bg-[#4ade80]/40 w-24">BUILT Gross</th>
-                <th className="p-2 border-b-2 border-r-2 border-[#1c1c19]/20 text-center bg-[#4ade80]/40 w-24">UNCOVERED Gross</th>
-                <th className="p-2 border-b-2 border-r-2 border-[#1c1c19]/20 text-center bg-[#fdba74]/40 w-24">NEW BUILD Gross</th>
-                <th className="p-2 border-b-2 border-r-2 border-[#1c1c19]/20 text-center bg-[#fdba74]/40 w-24">NEW UNCOVERED Gross</th>
-                <th className="p-2 border-b-2 border-r-2 border-[#1c1c19]/20 text-center bg-[#60a5fa]/40 w-24">INTERIOR REFURBISHMENT Gross</th>
-                <th className="p-2 border-b-2 border-r-2 border-[#1c1c19]/20 text-center bg-[#60a5fa]/40 w-24">EXTENSIONS UNCOVERED REFURBISHMENT Gross</th>
+                <th className="p-2 border-r-2 border-white/20 text-center bg-[#16a34a]/10 w-[9%] uppercase font-bold text-gray-300">Nueva</th>
+                <th className="p-2 border-r-2 border-white/20 text-center bg-[#16a34a]/10 w-[9%] uppercase font-bold text-gray-300">Existente</th>
+                <th className="p-2 border-r-2 border-white/20 text-center bg-[#ea580c]/10 w-[9%] uppercase font-bold text-gray-300">Nueva</th>
+                <th className="p-2 border-r-2 border-white/20 text-center bg-[#ea580c]/10 w-[9%] uppercase font-bold text-gray-300">Existente</th>
             </tr>
         </thead>
     );
 
-    const calcTotalsForList = (list) => {
-        let t = { wBuilt: 0, wUnc: 0, eBuilt: 0, eUnc: 0, rBuilt: 0, rUnc: 0, grand: 0, grandTotalAll: 0 };
-        list.forEach(child => {
-            const sub = child.project_area_details || [];
-            const wB = getAreaVal(sub, 'WITHIN NEW PLOT', 'built');
-            const wU = getAreaVal(sub, 'WITHIN NEW PLOT', 'uncovered');
-            const eB = getAreaVal(sub, 'EXTENSION EXISTING PLOT', 'built');
-            const eU = getAreaVal(sub, 'EXTENSION EXISTING PLOT', 'uncovered');
-            const rB = getAreaVal(sub, 'EXTENSION EXISTING PLOT - REFURBISHMENT', 'built');
-            const rU = getAreaVal(sub, 'EXTENSION EXISTING PLOT - REFURBISHMENT', 'uncovered');
-            
-            t.wBuilt += wB; t.wUnc += wU;
-            t.eBuilt += eB; t.eUnc += eU;
-            t.rBuilt += rB; t.rUnc += rU;
-            
-            t.grand += (wB + eB + rB);
-            t.grandTotalAll += (wB + wU + eB + eU + rB + rU);
-        });
-        return t;
-    };
+    // ==========================================
+    // TAB 1: POR SUBPROYECTO
+    // ==========================================
+    const renderSubProjectTab = () => {
+        const aggregations = {};
+        const grandTotal = createEmptyAgg();
 
-    const renderIntervenida = () => {
-        const t = calcTotalsForList(childLevels);
+        subProjects.forEach(sp => aggregations[sp.id] = createEmptyAgg());
+        spacesOnly.forEach(s => {
+            if (s.subProject_id && aggregations[s.subProject_id]) {
+                addAreaToAgg(aggregations[s.subProject_id], s);
+                addAreaToAgg(grandTotal, s);
+            }
+        });
 
         return (
-            <div className="bg-white border-4 border-[#1c1c19] shadow-[8px_8px_0_0_rgba(28,28,25,1)] flex-1 flex flex-col overflow-hidden">
-                <div className="flex-1 overflow-auto custom-scrollbar p-0">
-                    <table className="w-full text-left border-collapse font-mono text-xs">
-                        <TableHeader />
+            <div className="bg-white border-4 border-[#1c1c19] shadow-[8px_8px_0_0_rgba(28,28,25,1)] flex-1 flex flex-col overflow-hidden font-mono">
+                <div className="flex-1 overflow-auto custom-scrollbar">
+                    <table className="w-full min-w-[1200px] text-left border-collapse text-[13px]">
+                        <TableHeader title="SUBPROYECTO / UNIDAD" />
                         <tbody>
-                            <tr className="border-b-2 border-[#1c1c19]/20 font-bold bg-[#f6f3ee]">
-                                <td colSpan={2} className="p-3 border-r-2 border-[#1c1c19]/20">TOTAL</td>
-                                <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#16a34a] bg-[#4ade80]/10">{t.wBuilt} m²</td>
-                                <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#16a34a] bg-[#4ade80]/10">{t.wUnc} m²</td>
-                                <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#ea580c] bg-[#fdba74]/10">{t.eBuilt} m²</td>
-                                <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#ea580c] bg-[#fdba74]/10">{t.eUnc} m²</td>
-                                <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#2563eb] bg-[#60a5fa]/10">{t.rBuilt} m²</td>
-                                <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#2563eb] bg-[#60a5fa]/10">{t.rUnc} m²</td>
-                                <td className="p-3 text-center bg-[#d1d5db]/30">{t.grand} m²</td>
-                            </tr>
-                            <tr className="border-b-2 border-[#1c1c19]/20 font-bold bg-[#e5e2dd]">
-                                <td colSpan={2} className="p-3 border-r-2 border-[#1c1c19]/20">TOTAL</td>
-                                <td colSpan={2} className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#16a34a]">{t.wBuilt + t.wUnc} m²</td>
-                                <td colSpan={2} className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#ea580c]">{t.eBuilt + t.eUnc} m²</td>
-                                <td colSpan={2} className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#2563eb]">{t.rBuilt + t.rUnc} m²</td>
-                                <td className="p-3 text-center"></td>
-                            </tr>
-                            <tr className="font-bold border-t-4 border-[#1c1c19]">
-                                <td colSpan={2} className="p-4 border-r-2 border-[#1c1c19]/20 text-sm">
-                                    TOTAL ÁREA INTERVENIDA<br/>
-                                    <span className="text-[9px] font-normal italic text-gray-500">Incluye área construida, área descubierta, zonas comunes, Antejardín, intervención hotel existente y cubierta</span>
-                                </td>
-                                <td colSpan={7} className="p-4 text-center text-xl bg-[#fcf9f4]">{t.grandTotalAll} m²</td>
-                            </tr>
+                            {subProjects.length === 0 ? (
+                                <tr><td colSpan={8} className="p-8 text-center text-gray-500 italic uppercase">No hay subproyectos.</td></tr>
+                            ) : subProjects.map(sp => {
+                                const agg = aggregations[sp.id];
+                                return (
+                                    <tr key={sp.id} className="border-b border-[#1c1c19]/20 hover:bg-[#f6f3ee] transition-colors">
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 font-bold uppercase">{sp.name}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center bg-[#a7f3d0]/10 text-[#16a34a]">{agg.construida.nueva.toFixed(2)}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center bg-[#a7f3d0]/10 text-gray-600">{agg.construida.existente.toFixed(2)}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center bg-[#fed7aa]/10 text-[#ea580c]">{agg.descubierta.nueva.toFixed(2)}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center bg-[#fed7aa]/10 text-gray-600">{agg.descubierta.existente.toFixed(2)}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center bg-[#fee2e2]/30 text-[#dc2626] font-bold">{agg.demolicion.toFixed(2)}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center font-bold text-[#0f4369] bg-[#0f4369]/10">{agg.total_proyecto.toFixed(2)}</td>
+                                        <td className="p-3 text-center font-black bg-[#e5e2dd]/30">{agg.total_intervencion.toFixed(2)}</td>
+                                    </tr>
+                                );
+                            })}
+                            {renderTotalsRow(grandTotal)}
                         </tbody>
                     </table>
                 </div>
@@ -347,88 +183,241 @@ const AreasManagerView = () => {
         );
     };
 
-    const renderPorPiso = () => {
-        const grandTotals = calcTotalsForList(childLevels);
+    // ==========================================
+    // TAB 2: POR NIVEL (PISO)
+    // ==========================================
+    const renderLevelTab = () => {
+        const aggByLevel = {};
+        const grandTotal = createEmptyAgg();
+
+        spacesOnly.forEach(s => {
+            const levelName = getLevelName(s.level_id, s.piso);
+            if (!aggByLevel[levelName]) aggByLevel[levelName] = createEmptyAgg();
+            addAreaToAgg(aggByLevel[levelName], s);
+            addAreaToAgg(grandTotal, s);
+        });
+
+        const sortedLevels = Object.keys(aggByLevel).sort((a, b) => {
+            if (a === 'SIN ASIGNAR') return 1;
+            if (b === 'SIN ASIGNAR') return -1;
+            return a.localeCompare(b);
+        });
 
         return (
-            <div className="bg-white border-4 border-[#1c1c19] shadow-[8px_8px_0_0_rgba(28,28,25,1)] flex-1 flex flex-col overflow-hidden">
+            <div className="bg-white border-4 border-[#1c1c19] shadow-[8px_8px_0_0_rgba(28,28,25,1)] flex-1 flex flex-col overflow-hidden font-mono">
                 <div className="flex-1 overflow-auto custom-scrollbar">
-                    <table className="w-full text-left border-collapse font-mono text-[10px]">
-                        <TableHeader />
+                    <table className="w-full min-w-[1200px] text-left border-collapse text-[13px]">
+                        <TableHeader title="NIVEL / PISO" />
                         <tbody>
-                            {rootLevels.map(floor => {
-                                const children = childLevels.filter(c => c.parent_id === floor.id);
-                                if (children.length === 0) return null;
-                                const t = calcTotalsForList(children);
-
+                            {sortedLevels.map(level => {
+                                const agg = aggByLevel[level];
                                 return (
-                                    <React.Fragment key={floor.id}>
-                                        <tr className="bg-[#e5e2dd] font-bold border-y-2 border-[#1c1c19]/40">
-                                            <td colSpan={10} className="p-2 uppercase">{floor.nombre}</td>
-                                        </tr>
-                                        {children.map(child => {
-                                            const sub = child.project_area_details || [];
-                                            const usage = sub[0]?.usage_type || '-';
-                                            const wB = getAreaVal(sub, 'WITHIN NEW PLOT', 'built');
-                                            const wU = getAreaVal(sub, 'WITHIN NEW PLOT', 'uncovered');
-                                            const eB = getAreaVal(sub, 'EXTENSION EXISTING PLOT', 'built');
-                                            const eU = getAreaVal(sub, 'EXTENSION EXISTING PLOT', 'uncovered');
-                                            const rB = getAreaVal(sub, 'EXTENSION EXISTING PLOT - REFURBISHMENT', 'built');
-                                            const rU = getAreaVal(sub, 'EXTENSION EXISTING PLOT - REFURBISHMENT', 'uncovered');
-                                            const g = wB + eB + rB;
+                                    <tr key={level} className="border-b border-[#1c1c19]/20 hover:bg-[#f6f3ee] transition-colors">
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 font-bold uppercase">{level}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center bg-[#a7f3d0]/10 text-[#16a34a]">{agg.construida.nueva.toFixed(2)}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center bg-[#a7f3d0]/10 text-gray-600">{agg.construida.existente.toFixed(2)}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center bg-[#fed7aa]/10 text-[#ea580c]">{agg.descubierta.nueva.toFixed(2)}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center bg-[#fed7aa]/10 text-gray-600">{agg.descubierta.existente.toFixed(2)}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center bg-[#fee2e2]/30 text-[#dc2626] font-bold">{agg.demolicion.toFixed(2)}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center font-bold text-[#0f4369] bg-[#0f4369]/10">{agg.total_proyecto.toFixed(2)}</td>
+                                        <td className="p-3 text-center font-black bg-[#e5e2dd]/30">{agg.total_intervencion.toFixed(2)}</td>
+                                    </tr>
+                                );
+                            })}
+                            {renderTotalsRow(grandTotal)}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    };
 
-                                            return (
-                                                <tr key={child.id} className="border-b border-[#1c1c19]/10 hover:bg-[#fcf9f4]">
-                                                    <td className="p-2 border-r-2 border-[#1c1c19]/20 truncate max-w-[120px]">{usage}</td>
-                                                    <td className="p-2 border-r-2 border-[#1c1c19]/20 truncate max-w-[150px]">{child.nombre}</td>
-                                                    <td className="p-2 border-r-2 border-[#1c1c19]/20 text-center bg-[#4ade80]/5">{wB > 0 ? `${wB} m²` : ''}</td>
-                                                    <td className="p-2 border-r-2 border-[#1c1c19]/20 text-center bg-[#4ade80]/5">{wU > 0 ? `${wU} m²` : ''}</td>
-                                                    <td className="p-2 border-r-2 border-[#1c1c19]/20 text-center bg-[#fdba74]/5">{eB > 0 ? `${eB} m²` : ''}</td>
-                                                    <td className="p-2 border-r-2 border-[#1c1c19]/20 text-center bg-[#fdba74]/5">{eU > 0 ? `${eU} m²` : ''}</td>
-                                                    <td className="p-2 border-r-2 border-[#1c1c19]/20 text-center bg-[#60a5fa]/5">{rB > 0 ? `${rB} m²` : ''}</td>
-                                                    <td className="p-2 border-r-2 border-[#1c1c19]/20 text-center bg-[#60a5fa]/5">{rU > 0 ? `${rU} m²` : ''}</td>
-                                                    <td className="p-2 text-center bg-[#d1d5db]/10 font-bold">{g > 0 ? `${g} m²` : ''}</td>
-                                                </tr>
-                                            );
-                                        })}
-                                        <tr className="bg-[#f6f3ee] font-bold border-t border-[#1c1c19]/20">
-                                            <td colSpan={2} className="p-2 border-r-2 border-[#1c1c19]/20 text-right pr-4">Total {floor.nombre}</td>
-                                            <td className="p-2 border-r-2 border-[#1c1c19]/20 text-center">{t.wBuilt > 0 ? `${t.wBuilt} m²` : ''}</td>
-                                            <td className="p-2 border-r-2 border-[#1c1c19]/20 text-center">{t.wUnc > 0 ? `${t.wUnc} m²` : ''}</td>
-                                            <td className="p-2 border-r-2 border-[#1c1c19]/20 text-center">{t.eBuilt > 0 ? `${t.eBuilt} m²` : ''}</td>
-                                            <td className="p-2 border-r-2 border-[#1c1c19]/20 text-center">{t.eUnc > 0 ? `${t.eUnc} m²` : ''}</td>
-                                            <td className="p-2 border-r-2 border-[#1c1c19]/20 text-center">{t.rBuilt > 0 ? `${t.rBuilt} m²` : ''}</td>
-                                            <td className="p-2 border-r-2 border-[#1c1c19]/20 text-center">{t.rUnc > 0 ? `${t.rUnc} m²` : ''}</td>
-                                            <td className="p-2 text-center">{t.grand > 0 ? `${t.grand} m²` : ''}</td>
+    // ==========================================
+    // TAB 3: POR CATEGORÍA DE USO
+    // ==========================================
+    const renderUsageTab = () => {
+        const aggByUsage = {};
+        const grandTotal = createEmptyAgg();
+
+        spacesOnly.forEach(s => {
+            const usage = s.categoria_uso || 'SIN ASIGNAR';
+            if (!aggByUsage[usage]) aggByUsage[usage] = createEmptyAgg();
+            addAreaToAgg(aggByUsage[usage], s);
+            addAreaToAgg(grandTotal, s);
+        });
+
+        const sortedUsages = Object.keys(aggByUsage).sort();
+
+        return (
+            <div className="bg-white border-4 border-[#1c1c19] shadow-[8px_8px_0_0_rgba(28,28,25,1)] flex-1 flex flex-col overflow-hidden font-mono">
+                <div className="flex-1 overflow-auto custom-scrollbar">
+                    <table className="w-full min-w-[1200px] text-left border-collapse text-[13px]">
+                        <TableHeader title="PROGRAMA ARQUITECTÓNICO" />
+                        <tbody>
+                            {sortedUsages.map(usage => {
+                                const agg = aggByUsage[usage];
+                                return (
+                                    <tr key={usage} className="border-b border-[#1c1c19]/20 hover:bg-[#f6f3ee] transition-colors">
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 font-bold uppercase">{usage}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center bg-[#a7f3d0]/10 text-[#16a34a]">{agg.construida.nueva.toFixed(2)}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center bg-[#a7f3d0]/10 text-gray-600">{agg.construida.existente.toFixed(2)}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center bg-[#fed7aa]/10 text-[#ea580c]">{agg.descubierta.nueva.toFixed(2)}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center bg-[#fed7aa]/10 text-gray-600">{agg.descubierta.existente.toFixed(2)}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center bg-[#fee2e2]/30 text-[#dc2626] font-bold">{agg.demolicion.toFixed(2)}</td>
+                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center font-bold text-[#0f4369] bg-[#0f4369]/10">{agg.total_proyecto.toFixed(2)}</td>
+                                        <td className="p-3 text-center font-black bg-[#e5e2dd]/30">{agg.total_intervencion.toFixed(2)}</td>
+                                    </tr>
+                                );
+                            })}
+                            {renderTotalsRow(grandTotal)}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    };
+
+    // ==========================================
+    // TAB 4: DESGLOSE TÉCNICO
+    // ==========================================
+    const renderDetailsTab = () => {
+        return (
+            <div className="bg-white border-4 border-[#1c1c19] shadow-[8px_8px_0_0_rgba(28,28,25,1)] flex-1 flex flex-col overflow-hidden font-mono">
+                <div className="flex-1 overflow-auto custom-scrollbar p-0">
+                    <table className="w-full min-w-[1200px] text-left border-collapse text-[10px]">
+                        <thead className="bg-[#1c1c19] text-white sticky top-0 z-10 text-[9px] font-black uppercase tracking-wider shadow-sm border-b-4 border-[#1c1c19]">
+                            <tr>
+                                <th className="p-3 border-r-2 border-white/20 w-[30%]">ESTRUCTURA (SUBPROYECTO {'>'} ESPACIO {'>'} ELEMENTO)</th>
+                                <th className="p-3 border-r-2 border-white/20 w-[15%]">CATEGORÍA DE USO</th>
+                                <th className="p-3 border-r-2 border-white/20 w-[15%] text-center">NIVEL / PISO</th>
+                                <th className="p-3 border-r-2 border-white/20 w-[10%] text-center">FASE (REVIT)</th>
+                                <th className="p-3 border-r-2 border-white/20 w-[10%] text-center">COMPONENTES</th>
+                                <th className="p-3 border-r-2 border-white/20 w-[10%] text-center">TIPO DE ÁREA</th>
+                                <th className="p-3 w-[10%] text-center text-[#e5e2dd]">ÁREA (m²)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {subProjects.length === 0 ? (
+                                <tr><td colSpan={7} className="p-8 text-center text-gray-500 italic uppercase">No hay subproyectos registrados.</td></tr>
+                            ) : subProjects.map(sp => {
+                                const isSpExpanded = expandedSubProjects[sp.id];
+                                const spaces = spacesElements.filter(se => se.subProject_id === sp.id && se.tipo === 'Espacio');
+                                
+                                // Para el desglose, mostramos la suma bruta para fines técnicos
+                                let spTotal = 0;
+                                spaces.forEach(s => spTotal += (parseFloat(s.area) || 0));
+                                
+                                return (
+                                    <React.Fragment key={sp.id}>
+                                        <tr 
+                                            className="bg-[#e5e2dd] border-b-2 border-[#1c1c19]/60 cursor-pointer hover:bg-[#d5d2cd] transition-colors"
+                                            onClick={() => toggleSubProject(sp.id)}
+                                        >
+                                            <td className="p-3 border-r-2 border-[#1c1c19]/20 font-black flex items-center gap-2">
+                                                {isSpExpanded ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
+                                                <Layers size={14}/>
+                                                <span className="uppercase text-xs">{sp.name}</span>
+                                            </td>
+                                            <td className="p-3 border-r-2 border-[#1c1c19]/20 text-gray-500 text-center">-</td>
+                                            <td className="p-3 border-r-2 border-[#1c1c19]/20 text-gray-500 text-center">-</td>
+                                            <td className="p-3 border-r-2 border-[#1c1c19]/20 text-gray-500 text-center">-</td>
+                                            <td className="p-3 border-r-2 border-[#1c1c19]/20 text-gray-500 text-center">-</td>
+                                            <td className="p-3 border-r-2 border-[#1c1c19]/20 text-gray-500 text-center">-</td>
+                                            <td className="p-3 text-center font-black text-sm bg-[#1c1c19]/10">{spTotal.toFixed(2)}</td>
                                         </tr>
+                                        
+                                        {isSpExpanded && spaces.map(space => {
+                                            const elements = spacesElements.filter(se => se.parent_espacio_id === space.id && se.tipo === 'Elemento');
+                                            const isSpaceExpanded = expandedSpaces[space.id];
+                                            const compsCount = countComponents(space.componentes);
+                                            const isConst = space.area_category === 'Construida';
+                                            const isDemolicion = space.phase === 'Demolición';
+                                            
+                                            return (
+                                                <React.Fragment key={space.id}>
+                                                    <tr 
+                                                        className={`bg-[#fcf9f4] border-b border-[#1c1c19]/20 hover:bg-white transition-colors ${elements.length > 0 ? 'cursor-pointer' : ''}`}
+                                                        onClick={() => elements.length > 0 && toggleSpace(space.id)}
+                                                    >
+                                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 pl-8 flex items-center gap-2 font-bold">
+                                                            {elements.length > 0 ? (
+                                                                isSpaceExpanded ? <ChevronDown size={12}/> : <ChevronRight size={12}/>
+                                                            ) : <span className="w-[12px]"></span>}
+                                                            <Box size={14} className="text-[#0f4369]"/>
+                                                            <span className={`uppercase ${isDemolicion ? 'line-through text-gray-400' : ''}`}>{space.nombre} {space.apellido}</span>
+                                                        </td>
+                                                        <td className={`p-3 border-r-2 border-[#1c1c19]/20 uppercase ${isDemolicion ? 'text-gray-400' : ''}`}>{space.categoria_uso}</td>
+                                                        <td className={`p-3 border-r-2 border-[#1c1c19]/20 text-center font-bold uppercase ${isDemolicion ? 'text-gray-400' : 'text-[#0f4369]'}`}>
+                                                            {getLevelName(space.level_id, space.piso)}
+                                                        </td>
+                                                        <td className={`p-3 border-r-2 border-[#1c1c19]/20 text-center uppercase text-[9px] font-bold ${isDemolicion ? 'text-[#dc2626]' : ''}`}>
+                                                            {space.phase || 'NUEVA CONSTRUCCIÓN'}
+                                                        </td>
+                                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center">
+                                                            {compsCount > 0 ? (
+                                                                <span className="bg-[#1c1c19] text-white px-2 py-0.5 rounded-sm text-[8px] flex items-center justify-center gap-1 w-fit mx-auto">
+                                                                    <Paperclip size={10}/> {compsCount}
+                                                                </span>
+                                                            ) : '-'}
+                                                        </td>
+                                                        <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center uppercase">
+                                                            <span className={`px-2 py-0.5 font-black text-[9px] border-2 
+                                                                ${isDemolicion ? 'border-[#dc2626] text-[#dc2626] bg-[#fee2e2]' 
+                                                                : isConst ? 'border-[#16a34a] text-[#16a34a] bg-[#16a34a]/10' 
+                                                                : 'border-[#ea580c] text-[#ea580c] bg-[#ea580c]/10'}`}>
+                                                                {space.area_category}
+                                                            </span>
+                                                        </td>
+                                                        <td className={`p-3 text-center font-black text-xs 
+                                                            ${isDemolicion ? 'bg-[#fee2e2]/50 text-[#dc2626]' 
+                                                            : isConst ? 'bg-[#a7f3d0]/30 text-[#16a34a]' 
+                                                            : 'bg-[#fed7aa]/30 text-[#ea580c]'}`}>
+                                                            {parseFloat(space.area || 0).toFixed(2)}
+                                                        </td>
+                                                    </tr>
+
+                                                    {isSpaceExpanded && elements.map(element => {
+                                                        const elCompsCount = countComponents(element.componentes);
+                                                        const isElDemolicion = element.phase === 'Demolición';
+                                                        return (
+                                                            <tr key={element.id} className="bg-white border-b border-[#1c1c19]/10 hover:bg-[#f6f3ee]">
+                                                                <td className="p-3 border-r-2 border-[#1c1c19]/20 pl-16 flex items-center gap-2 text-gray-500 font-bold">
+                                                                    <Hash size={12} className="text-gray-400"/>
+                                                                    <span className={`uppercase text-[9px] ${isElDemolicion ? 'line-through' : ''}`}>{element.nombre} {element.apellido}</span>
+                                                                </td>
+                                                                <td className="p-3 border-r-2 border-[#1c1c19]/20 uppercase text-[9px] text-gray-400">{element.categoria_uso || '-'}</td>
+                                                                <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center uppercase text-[9px] text-gray-400">
+                                                                    {getLevelName(element.level_id, element.piso)}
+                                                                </td>
+                                                                <td className={`p-3 border-r-2 border-[#1c1c19]/20 text-center uppercase text-[9px] ${isElDemolicion ? 'text-[#dc2626] font-bold' : 'text-gray-400'}`}>
+                                                                    {element.phase || 'NUEVA CONSTRUCCIÓN'}
+                                                                </td>
+                                                                <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center">
+                                                                    {elCompsCount > 0 ? (
+                                                                        <span className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-sm text-[8px] flex items-center justify-center gap-1 w-fit mx-auto font-bold">
+                                                                            <Paperclip size={10}/> {elCompsCount}
+                                                                        </span>
+                                                                    ) : '-'}
+                                                                </td>
+                                                                <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center uppercase text-gray-400">-</td>
+                                                                <td className="p-3 text-center text-gray-400 bg-gray-50">-</td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </React.Fragment>
+                                            )
+                                        })}
+                                        
+                                        {isSpExpanded && spaces.length === 0 && (
+                                            <tr className="bg-white border-b border-[#1c1c19]/20">
+                                                <td colSpan={7} className="p-4 pl-10 text-gray-400 font-bold italic text-[10px] uppercase text-center">
+                                                    SIN ESPACIOS CONFIGURADOS PARA ESTA UNIDAD.
+                                                </td>
+                                            </tr>
+                                        )}
                                     </React.Fragment>
                                 );
                             })}
-                            
-                            <tr className="border-t-4 border-[#1c1c19] font-bold bg-[#e5e2dd]">
-                                <td colSpan={2} className="p-3 border-r-2 border-[#1c1c19]/20">TOTAL</td>
-                                <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#16a34a]">{grandTotals.wBuilt} m²</td>
-                                <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#16a34a]">{grandTotals.wUnc} m²</td>
-                                <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#ea580c]">{grandTotals.eBuilt} m²</td>
-                                <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#ea580c]">{grandTotals.eUnc} m²</td>
-                                <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#2563eb]">{grandTotals.rBuilt} m²</td>
-                                <td className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#2563eb]">{grandTotals.rUnc} m²</td>
-                                <td className="p-3 text-center">{grandTotals.grand} m²</td>
-                            </tr>
-                            <tr className="border-b-2 border-[#1c1c19]/20 font-bold bg-[#e5e2dd]">
-                                <td colSpan={2} className="p-3 border-r-2 border-[#1c1c19]/20">TOTAL</td>
-                                <td colSpan={2} className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#16a34a]">{grandTotals.wBuilt + grandTotals.wUnc} m²</td>
-                                <td colSpan={2} className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#ea580c]">{grandTotals.eBuilt + grandTotals.eUnc} m²</td>
-                                <td colSpan={2} className="p-3 border-r-2 border-[#1c1c19]/20 text-center text-[#2563eb]">{grandTotals.rBuilt + grandTotals.rUnc} m²</td>
-                                <td className="p-3 text-center"></td>
-                            </tr>
-                            <tr className="font-bold border-b-4 border-[#1c1c19] bg-white">
-                                <td colSpan={2} className="p-4 border-r-2 border-[#1c1c19]/20 text-xs">
-                                    TOTAL ÁREA INTERVENIDA<br/>
-                                    <span className="text-[9px] font-normal italic text-gray-500">Incluye área construida, área descubierta, zonas comunes, Antejardín, intervención hotel existente y cubierta</span>
-                                </td>
-                                <td colSpan={7} className="p-4 text-center text-lg">{grandTotals.grandTotalAll} m²</td>
-                            </tr>
                         </tbody>
                     </table>
                 </div>
@@ -437,10 +426,10 @@ const AreasManagerView = () => {
     };
 
     const tabs = [
-        { id: 'norma', label: 'AREA NORMA + RESUMEN' },
-        { id: 'overview', label: 'AREAS OVERVIEW' },
-        { id: 'intervenida', label: 'TOTAL ÁREA INTERVENIDA' },
-        { id: 'piso', label: 'AREA POR PISO' }
+        { id: 'subproject', label: 'POR SUBPROYECTO', icon: <Building2 size={16}/> },
+        { id: 'level', label: 'POR NIVEL / PISO', icon: <Layers size={16}/> },
+        { id: 'usage', label: 'POR PROGRAMA', icon: <BarChart2 size={16}/> },
+        { id: 'details', label: 'DESGLOSE TÉCNICO', icon: <FileText size={16}/> }
     ];
 
     return (
@@ -455,21 +444,24 @@ const AreasManagerView = () => {
                         <ArrowLeft size={20} />
                     </button>
                     <div>
-                        <h1 className="text-xl font-black italic uppercase tracking-tighter">CUADRO DE ÁREAS</h1>
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em]">PROYECTO: {projectId}</span>
+                        <h1 className="text-xl font-black italic uppercase tracking-tighter text-[#e5e2dd]">
+                            CUADRO DE ÁREAS ARQUITECTÓNICO
+                        </h1>
+                        <span className="text-[10px] font-bold text-[#a7f3d0] uppercase tracking-[0.2em]">PROYECTO: {projectId}</span>
                     </div>
                 </div>
             </div>
 
             {/* Tabs */}
-            <div className="flex shrink-0 bg-[#e5e2dd] border-b-4 border-[#1c1c19]">
+            <div className="flex shrink-0 bg-[#e5e2dd] border-b-4 border-[#1c1c19] overflow-x-auto">
                 {tabs.map(tab => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex-1 p-3 text-xs font-black uppercase tracking-wider transition-all border-r-2 border-[#1c1c19]/20 last:border-r-0
-                            ${activeTab === tab.id ? 'bg-[#fcf9f4] text-[#1c1c19] shadow-[inset_0_4px_0_0_#ea580c]' : 'text-gray-500 hover:bg-[#d5d2cd] hover:text-[#1c1c19]'}`}
+                        className={`flex-1 min-w-[200px] p-3 text-[11px] font-black uppercase tracking-widest transition-all border-r-2 border-[#1c1c19]/20 last:border-r-0 flex items-center justify-center gap-2
+                            ${activeTab === tab.id ? 'bg-[#fcf9f4] text-[#1c1c19] shadow-[inset_0_4px_0_0_#16a34a]' : 'text-gray-500 hover:bg-[#d5d2cd] hover:text-[#1c1c19]'}`}
                     >
+                        {tab.icon}
                         {tab.label}
                     </button>
                 ))}
@@ -477,13 +469,13 @@ const AreasManagerView = () => {
 
             <div className="flex-1 flex flex-col overflow-hidden p-6">
                 {loading ? (
-                    <div className="flex-1 flex items-center justify-center"><Loader2 size={32} className="animate-spin text-[#1c1c19]" /></div>
+                    <div className="flex-1 flex items-center justify-center"><Loader2 size={40} className="animate-spin text-[#1c1c19]" /></div>
                 ) : (
                     <>
-                        {activeTab === 'norma' && renderNorma()}
-                        {activeTab === 'overview' && renderOverview()}
-                        {activeTab === 'intervenida' && renderIntervenida()}
-                        {activeTab === 'piso' && renderPorPiso()}
+                        {activeTab === 'subproject' && renderSubProjectTab()}
+                        {activeTab === 'level' && renderLevelTab()}
+                        {activeTab === 'usage' && renderUsageTab()}
+                        {activeTab === 'details' && renderDetailsTab()}
                     </>
                 )}
             </div>

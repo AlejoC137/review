@@ -4,7 +4,7 @@ export const spacesService = {
     async getSpaces(subProjectId = null) {
         let query = supabase
             .from('Espacio_Elemento')
-            .select('id, nombre, tipo, apellido, piso, level_id, area, area_category, subProject_id, componentes, categoria_uso')
+            .select('id, nombre, tipo, apellido, piso, level_id, area, area_category, subProject_id, componentes, categoria_uso, parent_espacio_id, phase')
             .order('nombre', { ascending: true });
         
         if (subProjectId) {
@@ -20,7 +20,7 @@ export const spacesService = {
     async getTemplates() {
         const { data, error } = await supabase
             .from('Espacio_Elemento')
-            .select('id, nombre, tipo, apellido, piso, level_id, area, area_category, componentes, categoria_uso')
+            .select('id, nombre, tipo, apellido, piso, level_id, area, area_category, componentes, categoria_uso, parent_espacio_id, phase')
             .is('subProject_id', null)
             .order('nombre', { ascending: true });
         if (error) throw error;
@@ -29,7 +29,7 @@ export const spacesService = {
     async getBySubProject(subProjectId) {
         const { data, error } = await supabase
             .from('Espacio_Elemento')
-            .select('id, nombre, tipo, apellido, piso, level_id, area, area_category, componentes, subProject_id, categoria_uso')
+            .select('id, nombre, tipo, apellido, piso, level_id, area, area_category, componentes, subProject_id, categoria_uso, parent_espacio_id, phase')
             .eq('subProject_id', subProjectId)
             .order('nombre', { ascending: true });
         if (error) throw error;
@@ -38,7 +38,7 @@ export const spacesService = {
     async getSpaceDetails(espacioId) {
         const { data, error } = await supabase
             .from('Espacio_Elemento')
-            .select('id, nombre, tipo, piso, level_id, area, area_category, componentes, apellido, categoria_uso')
+            .select('id, nombre, tipo, piso, level_id, area, area_category, componentes, apellido, categoria_uso, parent_espacio_id, phase')
             .eq('id', espacioId)
             .single();
         if (error) throw error;
@@ -72,7 +72,7 @@ export const spacesService = {
     async getAllSpacesAndElements(subProjectId = null) {
         let query = supabase
             .from('Espacio_Elemento')
-            .select('id, nombre, tipo, apellido, piso, level_id, area, area_category, subProject_id, componentes, categoria_uso')
+            .select('id, nombre, tipo, apellido, piso, level_id, area, area_category, subProject_id, componentes, categoria_uso, parent_espacio_id, phase')
             .order('tipo', { ascending: true })
             .order('nombre', { ascending: true });
 
@@ -100,7 +100,7 @@ export const spacesService = {
         // Then get all spaces for those subProjects
         const { data, error } = await supabase
             .from('Espacio_Elemento')
-            .select('id, nombre, tipo, apellido, piso, level_id, area, area_category, subProject_id, componentes, categoria_uso')
+            .select('id, nombre, tipo, apellido, piso, level_id, area, area_category, subProject_id, componentes, categoria_uso, parent_espacio_id, phase')
             .in('subProject_id', subProjIds)
             .order('tipo', { ascending: true })
             .order('nombre', { ascending: true });
@@ -109,4 +109,5 @@ export const spacesService = {
         return data || [];
     }
 };
+
 

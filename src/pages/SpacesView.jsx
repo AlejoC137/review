@@ -3,11 +3,13 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { Building2, Box, Search, Plus, Trash2, X, Loader2, Layers, Save, Package, Lock, Edit3 } from 'lucide-react';
 import { spacesService } from '../services/spacesService';
 import { componentsService } from '../services/componentsService';
-import { getMaterials } from '../services/materialsService';
+import { getMaterials, createMaterial } from '../services/materialsService';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../services/supabaseClient';
 import { levelsService } from '../services/levelsService';
-
+import SpaceForm from '../components/spaces/SpaceForm';
+import ElementForm from '../components/spaces/ElementForm';
+import ComponentPickerModal from '../components/common/ComponentPickerModal';
 
 const SpacesView = ({ subProjectId = null, projectId: propProjectId = null }) => {
     const { projectId: urlProjectId } = useParams();
@@ -42,8 +44,11 @@ const SpacesView = ({ subProjectId = null, projectId: propProjectId = null }) =>
     const [compSearch, setCompSearch] = useState('');
     const [isAddingNewComponent, setIsAddingNewComponent] = useState(false);
     const [newCompName, setNewCompName] = useState('');
+    const [isAddingNewMaterial, setIsAddingNewMaterial] = useState(false);
+    const [newMatName, setNewMatName] = useState('');
     const [editingComp, setEditingComp] = useState(null);
-    const [editCompData, setEditCompData] = useState({ element_name: '' });
+    const [editCompData, setEditCompData] = useState({ subcomponente: '', categoria_revit: '' });
+    const [selectedCategory, setSelectedCategory] = useState('TODAS');
 
     const [spaceFormData, setSpaceFormData] = useState({
         nombre: '',
@@ -55,7 +60,9 @@ const SpacesView = ({ subProjectId = null, projectId: propProjectId = null }) =>
         area: 0,
         area_category: 'Construida',
         componentes: [],
-        subProject_id: subProjectId
+        subProject_id: subProjectId,
+        phase: 'Nueva Construcción',
+        parent_espacio_id: ''
     });
     const [savingSpace, setSavingSpace] = useState(false);
 
@@ -107,7 +114,9 @@ const SpacesView = ({ subProjectId = null, projectId: propProjectId = null }) =>
                 area: selectedSpace.area || 0,
                 area_category: selectedSpace.area_category || 'Construida',
                 componentes: Array.isArray(parsedComps) ? parsedComps : [],
-                subProject_id: selectedSpace.subProject_id || subProjectId
+                subProject_id: selectedSpace.subProject_id || subProjectId,
+                phase: selectedSpace.phase || 'Nueva Construcción',
+                parent_espacio_id: selectedSpace.parent_espacio_id || ''
             });
             setIsAddMode(false);
         }
@@ -131,7 +140,9 @@ const SpacesView = ({ subProjectId = null, projectId: propProjectId = null }) =>
             area: template.area || 0,
             area_category: template.area_category || 'Construida',
             componentes: Array.isArray(parsedComps) ? parsedComps : [],
-            subProject_id: subProjectId
+            subProject_id: subProjectId,
+            phase: template.phase || 'Nueva Construcción',
+            parent_espacio_id: filterType === 'Elemento' && selectedSpace?.tipo === 'Espacio' ? selectedSpace.id : (template.parent_espacio_id || '')
         });
         setShowTemplatePicker(false);
         setIsAddMode(true);
@@ -175,19 +186,40 @@ const SpacesView = ({ subProjectId = null, projectId: propProjectId = null }) =>
         }
     };
 
-    const handleCreateCatalogComponent = async () => {
-        if (!newCompName.trim() || !isBimManager) return;
+    const handleCreateCatalogComponent = async (name, category = 'NUEVO_SUBCOMPONENTE', descripcion = '', es_principal = false) => {
+        if (!name.trim()) return;
         try {
-            await componentsService.createComponent({
-                id: crypto.randomUUID(),
-                element_name: newCompName
+            const newComp = await componentsService.createComponent({
+                subcomponente: name.trim(),
+                categoria_revit: category || 'NUEVO_SUBCOMPONENTE',
+                descripcion: descripcion,
+                es_principal: es_principal
             });
-            const compsData = await componentsService.getComponents();
-            setAllComponents(compsData || []);
-            setNewCompName('');
-            setIsAddingNewComponent(false);
+            if (newComp) {
+                setAllComponents(prev => [...prev, newComp]);
+            }
         } catch (error) {
-            console.error('Error creating catalog component:', error);
+            console.error('Error creating component:', error);
+            alert('Error al crear el subcomponente');
+        }
+    };
+
+    const handleCreateMaterial = async () => {
+        if (!newMatName.trim()) return;
+        try {
+            const newMat = await createMaterial({ 
+                Nombre: newMatName.trim(), 
+                globalMaterial: true, 
+                categoria: 'SIN CATEGORÍA'
+            });
+            if (newMat) {
+                setAllMaterials(prev => [...prev, newMat]);
+                setNewMatName('');
+                setIsAddingNewMaterial(false);
+            }
+        } catch (error) {
+            console.error('Error creating material:', error);
+            alert('Error al crear el material');
         }
     };
 
@@ -204,13 +236,12 @@ const SpacesView = ({ subProjectId = null, projectId: propProjectId = null }) =>
         }
     };
 
-    const handleUpdateCatalogComponent = async () => {
-        if (!editingComp || !isBimManager) return;
+    const handleUpdateCatalogComponent = async (compId, data) => {
+        if (!compId || !isBimManager) return;
         try {
-            await componentsService.updateComponent(editingComp.id, editCompData);
+            await componentsService.updateComponent(compId, data);
             const compsData = await componentsService.getComponents();
             setAllComponents(compsData || []);
-            setEditingComp(null);
         } catch (error) {
             console.error('Error updating catalog component:', error);
         }
@@ -230,7 +261,9 @@ const SpacesView = ({ subProjectId = null, projectId: propProjectId = null }) =>
             const payload = {
                 ...spaceFormData,
                 componentes: JSON.stringify(spaceFormData.componentes),
-                subProject_id: asTemplate ? null : subProjectId
+                subProject_id: asTemplate ? null : (subProjectId === "" ? null : subProjectId),
+                level_id: spaceFormData.level_id === "" ? null : spaceFormData.level_id,
+                parent_espacio_id: spaceFormData.parent_espacio_id === "" ? null : spaceFormData.parent_espacio_id
             };
 
             if (isAddMode) {
@@ -351,7 +384,11 @@ const SpacesView = ({ subProjectId = null, projectId: propProjectId = null }) =>
                                         onClick={() => {
                                             setIsAddMode(true);
                                             setSelectedSpace(null);
-                                            setSpaceFormData({ nombre: '', apellido: '', tipo: 'Espacio', piso: '', level_id: '', area: 0, area_category: 'Construida', componentes: [], subProject_id: null });
+                                            setSpaceFormData({ 
+                                                nombre: '', apellido: '', tipo: filterType === 'Elemento' ? 'Elemento' : 'Espacio', 
+                                                piso: '', level_id: '', area: 0, area_category: 'Construida', componentes: [], 
+                                                subProject_id: null, phase: 'Nueva Construcción', parent_espacio_id: '' 
+                                            });
                                             setShowTemplatePicker(false);
                                         }}
                                         className="px-4 py-1.5 border-2 border-[#1c1c19] text-[9px] font-black uppercase bg-[#f6f3ee] hover:bg-[#1c1c19] hover:text-white transition-all"
@@ -363,7 +400,11 @@ const SpacesView = ({ subProjectId = null, projectId: propProjectId = null }) =>
                                     onClick={() => {
                                         setIsAddMode(true);
                                         setSelectedSpace(null);
-                                        setSpaceFormData({ nombre: '', apellido: '', tipo: 'Espacio', piso: '', level_id: '', area: 0, area_category: 'Construida', componentes: [], subProject_id: subProjectId });
+                                        setSpaceFormData({ 
+                                            nombre: '', apellido: '', tipo: filterType === 'Elemento' ? 'Elemento' : 'Espacio', 
+                                            piso: '', level_id: '', area: 0, area_category: 'Construida', componentes: [], 
+                                            subProject_id: subProjectId, phase: 'Nueva Construcción', parent_espacio_id: '' 
+                                        });
                                         setShowTemplatePicker(false);
                                     }}
                                     className="px-4 py-1.5 border-2 border-[#1c1c19] text-[9px] font-black uppercase hover:bg-[#1c1c19] hover:text-white transition-all"
@@ -436,136 +477,29 @@ const SpacesView = ({ subProjectId = null, projectId: propProjectId = null }) =>
                                 ))
                             }
                         </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Component Picker Modal */}
-            {showComponentPicker && (
-                <div className="absolute inset-0 z-[120] bg-[#1c1c19]/60 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-white border-4 border-[#1c1c19] w-full max-w-2xl shadow-[12px_12px_0_0_rgba(0,0,0,1)] flex flex-col max-h-[85vh]">
-                        <div className="p-4 border-b-4 border-[#1c1c19] bg-[#1c1c19] text-white flex justify-between items-center">
-                            <div className="flex items-center gap-2">
-                                <Box size={18} />
-                                <h3 className="text-sm font-black italic uppercase tracking-widest">CATÁLOGO_MAESTRO_DE_COMPONENTES</h3>
-                            </div>
-                            <button onClick={() => { setShowComponentPicker(false); setCompSearch(''); setIsAddingNewComponent(false); }} className="p-1 hover:bg-white hover:text-[#1c1c19] transition-all"><X size={20} /></button>
-                        </div>
-
-                        <div className="p-4 bg-[#f6f3ee] border-b-2 border-[#1c1c19]">
-                            <div className="relative">
-                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#72777f]" />
-                                <input
-                                    autoFocus
-                                    type="text"
-                                    placeholder="BUSCAR COMPONENTE..."
-                                    value={compSearch}
-                                    onChange={(e) => setCompSearch(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-3 text-[11px] font-black uppercase border-2 border-[#1c1c19] focus:outline-none bg-white shadow-[4px_4px_0_0_rgba(0,0,0,0.1)]"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar bg-[#fcf9f4]">
-                            {editingComp ? (
-                                <div className="p-4 bg-white border-2 border-[#1c1c19] space-y-4">
-                                    <h4 className="text-[10px] font-black uppercase italic border-b-2 border-[#1c1c19] pb-1">EDITAR_COMPONENTE_DEL_CATÁLOGO</h4>
-                                    <div className="space-y-3">
-                                        <div>
-                                            <label className="block text-[7px] font-black text-[#72777f] uppercase mb-0.5">NOMBRE_DEL_COMPONENTE</label>
-                                            <input
-                                                type="text"
-                                                value={editCompData.element_name}
-                                                onChange={(e) => setEditCompData({ ...editCompData, element_name: e.target.value })}
-                                                className="w-full p-2 border-2 border-[#1c1c19] text-[10px] font-black uppercase outline-none focus:bg-[#f6f3ee]"
-                                            />
-                                        </div>
-                                        <div className="flex gap-2 pt-2">
-                                            <button onClick={handleUpdateCatalogComponent} className="flex-1 py-2 bg-[#1c1c19] text-white text-[9px] font-black uppercase hover:bg-[#0f4369] transition-all">GUARDAR_CAMBIOS</button>
-                                            <button onClick={() => setEditingComp(null)} className="px-4 py-2 border-2 border-[#1c1c19] text-[9px] font-black uppercase hover:bg-gray-100 transition-all">CANCELAR</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                (() => {
-                                    const filtered = allComponents.filter(c => (c.element_name || c.nombre || '').toLowerCase().includes(compSearch.toLowerCase()));
-                                    const grouped = filtered.reduce((acc, c) => {
-                                        const disc = c.discipline || 'GENERAL / SIN DISCIPLINA';
-                                        if (!acc[disc]) acc[disc] = [];
-                                        acc[disc].push(c);
-                                        return acc;
-                                    }, {});
-
-                                    return Object.entries(grouped).sort().map(([discipline, comps]) => (
-                                        <div key={discipline} className="mb-4">
-                                            <h5 className="text-[8px] font-black uppercase tracking-widest text-[#1c1c19] mb-2 bg-[#f6f3ee] p-1.5 border-l-4 border-[#1c1c19]">
-                                                {discipline}
-                                            </h5>
-                                            <div className="space-y-1 pl-2 border-l-2 border-[#1c1c19]/10">
-                                                {comps.sort((a, b) => (a.element_name || a.nombre || '').localeCompare(b.element_name || b.nombre || '')).map(c => (
-                                                    <div key={c.id} className="flex gap-1 group">
-                                                        <button
-                                                            onClick={() => {
-                                                                handleUpdateAssignedComponent(activeCompIdx, 'component_id', c.id);
-                                                                setShowComponentPicker(false);
-                                                                setCompSearch('');
-                                                            }}
-                                                            className="flex-1 p-3 border-2 border-[#1c1c19] bg-white hover:bg-[#1c1c19] hover:text-white transition-all flex items-center justify-between"
-                                                        >
-                                                            <span className="text-[10px] font-black uppercase tracking-tight">{c.element_name || c.nombre}</span>
-                                                            <span className="text-[7px] font-bold opacity-40 uppercase">LOD {c.lod || 100}</span>
-                                                        </button>
-                                                        {isBimManager && (
-                                                            <>
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setEditingComp(c);
-                                                                        setEditCompData({ element_name: c.element_name || c.nombre });
-                                                                    }}
-                                                                    className="px-3 border-2 border-[#1c1c19] text-[#1c1c19] hover:bg-[#1c1c19] hover:text-white transition-all bg-white"
-                                                                >
-                                                                    <Edit3 size={14} />
-                                                                </button>
-                                                                <button
-                                                                    onClick={(e) => handleDeleteCatalogComponent(c.id, e)}
-                                                                    className="px-3 border-2 border-[#1c1c19] text-red-500 hover:bg-red-500 hover:text-white transition-all bg-white"
-                                                                >
-                                                                    <Trash2 size={14} />
-                                                                </button>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ));
-                                })()
-                            )}
-                        </div>
 
                         {isBimManager && (
                             <div className="p-4 border-t-4 border-[#1c1c19] bg-white">
-                                {isAddingNewComponent ? (
+                                {isAddingNewMaterial ? (
                                     <div className="flex gap-2">
                                         <input
                                             autoFocus
                                             type="text"
-                                            value={newCompName}
-                                            onChange={(e) => setNewCompName(e.target.value)}
-                                            placeholder="NOMBRE DEL NUEVO COMPONENTE..."
+                                            value={newMatName}
+                                            onChange={(e) => setNewMatName(e.target.value)}
+                                            placeholder="NOMBRE DEL NUEVO MATERIAL..."
                                             className="flex-1 p-2 border-2 border-[#1c1c19] text-[10px] font-black uppercase outline-none focus:bg-[#f6f3ee]"
-                                            onKeyDown={(e) => e.key === 'Enter' && handleCreateCatalogComponent()}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleCreateMaterial()}
                                         />
-                                        <button onClick={handleCreateCatalogComponent} className="px-4 py-2 bg-[#1c1c19] text-white text-[9px] font-black uppercase hover:bg-[#0f4369] transition-all">AGREGAR</button>
-                                        <button onClick={() => setIsAddingNewComponent(false)} className="px-4 py-2 border-2 border-[#1c1c19] text-[9px] font-black uppercase hover:bg-gray-100 transition-all">X</button>
+                                        <button onClick={handleCreateMaterial} className="px-4 py-2 bg-[#1c1c19] text-white text-[9px] font-black uppercase hover:bg-[#0f4369] transition-all">AGREGAR</button>
+                                        <button onClick={() => setIsAddingNewMaterial(false)} className="px-4 py-2 border-2 border-[#1c1c19] text-[9px] font-black uppercase hover:bg-gray-100 transition-all">X</button>
                                     </div>
                                 ) : (
                                     <button
-                                        onClick={() => setIsAddingNewComponent(true)}
+                                        onClick={() => setIsAddingNewMaterial(true)}
                                         className="w-full py-2 border-2 border-dashed border-[#1c1c19] text-[9px] font-black uppercase hover:bg-[#f6f3ee] transition-all flex items-center justify-center gap-2"
                                     >
-                                        <Plus size={14} /> REGISTRAR_NUEVO_COMPONENTE_EN_CATÁLOGO
+                                        <Plus size={14} /> REGISTRAR_NUEVO_ACABADO_O_MATERIAL
                                     </button>
                                 )}
                             </div>
@@ -573,6 +507,23 @@ const SpacesView = ({ subProjectId = null, projectId: propProjectId = null }) =>
                     </div>
                 </div>
             )}
+
+            {/* Component Picker Modal */}
+            <ComponentPickerModal
+                isOpen={showComponentPicker}
+                onClose={() => {
+                    setShowComponentPicker(false);
+                    setActiveCompIdx(null);
+                }}
+                allComponents={allComponents}
+                onSelect={(comp) => {
+                    handleUpdateAssignedComponent(activeCompIdx, 'component_id', comp.id);
+                }}
+                isBimManager={isBimManager}
+                onUpdateComponent={handleUpdateCatalogComponent}
+                onDeleteComponent={(id) => handleDeleteCatalogComponent(id, { stopPropagation: () => {} })}
+                onCreateComponent={handleCreateCatalogComponent}
+            />
 
             {/* Sidebar */}
             <div className="w-72 border-r-4 border-[#1c1c19] flex flex-col bg-[#fcf9f4]">
@@ -583,7 +534,19 @@ const SpacesView = ({ subProjectId = null, projectId: propProjectId = null }) =>
                         </h2>
                         {/* Allowed for all if in unit context, or if BIM manager */}
                         {(subProjectId || isBimManager) && (
-                            <button onClick={() => subProjectId ? setShowTemplatePicker(true) : setIsAddMode(true)} className="p-1 border-2 border-[#1c1c19] hover:bg-[#1c1c19] hover:text-white transition-all">
+                            <button onClick={() => {
+                                if (subProjectId) {
+                                    setShowTemplatePicker(true);
+                                } else {
+                                    setIsAddMode(true);
+                                    setSelectedSpace(null);
+                                    setSpaceFormData({ 
+                                        nombre: '', apellido: '', tipo: filterType === 'Elemento' ? 'Elemento' : 'Espacio', 
+                                        categoria_uso: 'General', piso: '', level_id: '', area: 0, area_category: 'Construida', 
+                                        componentes: [], subProject_id: null, phase: 'Nueva Construcción', parent_espacio_id: '' 
+                                    });
+                                }
+                            }} className="p-1 border-2 border-[#1c1c19] hover:bg-[#1c1c19] hover:text-white transition-all">
                                 <Plus size={16} />
                             </button>
                         )}
@@ -618,7 +581,11 @@ const SpacesView = ({ subProjectId = null, projectId: propProjectId = null }) =>
                             {['all', 'Espacio', 'Elemento'].map((t) => (
                                 <button
                                     key={t}
-                                    onClick={() => setFilterType(t)}
+                                    onClick={() => {
+                                        setFilterType(t);
+                                        setSelectedSpace(null);
+                                        setIsAddMode(false);
+                                    }}
                                     className={`flex-1 py-1 text-[8px] font-black uppercase border-2 border-[#1c1c19] transition-all ${filterType === t ? 'bg-[#1c1c19] text-white shadow-[2px_2px_0_0_rgba(15,67,105,1)]' : 'bg-white hover:bg-[#f6f3ee]'}`}
                                 >
                                     {t === 'all' ? 'TODOS' : t}
@@ -710,199 +677,37 @@ const SpacesView = ({ subProjectId = null, projectId: propProjectId = null }) =>
 
                         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-[#fcf9f4]">
                             <div className="max-w-6xl space-y-8">
-                                {/* DATOS GENERALES */}
-                                <div className="bg-white border-4 border-[#1c1c19] p-6 shadow-[8px_8px_0_0_rgba(0,0,0,1)]">
-                                    <div className="flex items-center gap-3 border-b-2 border-[#1c1c19] pb-2 mb-6">
-                                        <Building2 size={18} />
-                                        <h4 className="text-[10px] font-black uppercase italic tracking-widest">
-                                            {spaceFormData.subProject_id === null ? 'DATOS_MAESTROS_DE_PLANTILLA' : 'DEFINICIÓN_DE_ESPACIO_/_ELEMENTO'}
-                                        </h4>
-                                    </div>
-                                    <div className="grid grid-cols-12 gap-6">
-                                        <div className="col-span-12 lg:col-span-4">
-                                            <label className="block text-[8px] font-black text-[#72777f] uppercase mb-1">NOMBRE_IDENTIFICADOR</label>
-                                            <input disabled={!isBimManager && spaceFormData.subProject_id === null} type="text" value={spaceFormData.nombre} onChange={(e) => setSpaceFormData({ ...spaceFormData, nombre: e.target.value })} className="w-full p-2 border-2 border-[#1c1c19] font-black text-sm outline-none bg-[#fcf9f4]/50 focus:bg-white focus:shadow-[4px_4px_0_0_rgba(0,0,0,0.05)] transition-all disabled:opacity-50" />
-                                        </div>
-                                        <div className="col-span-12 lg:col-span-4">
-                                            <label className="block text-[8px] font-black text-[#72777f] uppercase mb-1">DESCRIPCIÓN_/_APELLIDO</label>
-                                            <input disabled={!isBimManager && spaceFormData.subProject_id === null} type="text" value={spaceFormData.apellido} onChange={(e) => setSpaceFormData({ ...spaceFormData, apellido: e.target.value })} className="w-full p-2 border-2 border-[#1c1c19] font-black text-sm outline-none bg-[#fcf9f4]/50 focus:bg-white focus:shadow-[4px_4px_0_0_rgba(0,0,0,0.05)] transition-all disabled:opacity-50" />
-                                        </div>
-                                        <div className="col-span-12 lg:col-span-4">
-                                            <label className="block text-[8px] font-black text-[#72777f] uppercase mb-1">CATEGORÍA_DE_USO</label>
-                                            <select disabled={!isBimManager && spaceFormData.subProject_id === null} value={spaceFormData.categoria_uso} onChange={(e) => setSpaceFormData({ ...spaceFormData, categoria_uso: e.target.value })} className="w-full p-2 border-2 border-[#1c1c19] font-black text-xs outline-none bg-white disabled:opacity-50">
-                                                <option value="General">GENERAL / OTROS</option>
-                                                <option value="Residencial">RESIDENCIAL</option>
-                                                <option value="Comercial/Oficinas">COMERCIAL / OFICINAS</option>
-                                                <option value="Industrial/Fábricas">INDUSTRIAL / FÁBRICAS</option>
-                                                <option value="Científico/Laboratorios">CIENTÍFICO / LABORATORIOS</option>
-                                                <option value="Educacional">EDUCACIONAL</option>
-                                                <option value="Salud/Hospitalario">SALUD / HOSPITALARIO</option>
-                                                <option value="Exteriores/Urbanismo">EXTERIORES / URBANISMO</option>
-                                            </select>
-                                        </div>
-                                        <div className="col-span-6 lg:col-span-2">
-                                            <label className="block text-[8px] font-black text-[#72777f] uppercase mb-1">TIPO_REGISTRO</label>
-                                            <select disabled={!isBimManager && spaceFormData.subProject_id === null} value={spaceFormData.tipo} onChange={(e) => setSpaceFormData({ ...spaceFormData, tipo: e.target.value })} className="w-full p-2 border-2 border-[#1c1c19] font-black text-xs outline-none bg-white disabled:opacity-50">
-                                                <option value="Espacio">ESPACIO</option>
-                                                <option value="Elemento">ELEMENTO</option>
-                                            </select>
-                                        </div>
-                                        <div className="col-span-12 md:col-span-4">
-                                            <label className="block text-[8px] font-black text-[#72777f] uppercase mb-1">NIVEL_ASOCIADO</label>
-                                            <select 
-                                                disabled={!isBimManager && spaceFormData.subProject_id === null} 
-                                                value={spaceFormData.level_id} 
-                                                onChange={(e) => setSpaceFormData({ ...spaceFormData, level_id: e.target.value })} 
-                                                className="w-full p-2 border-2 border-[#1c1c19] font-black text-xs outline-none disabled:opacity-50"
-                                            >
-                                                <option value="">(SIN NIVEL)</option>
-                                                {levels.filter(l => !l.parent_id).map(l => (
-                                                    <option key={l.id} value={l.id}>{l.nombre}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div className="col-span-6 md:col-span-4">
-                                            <label className="block text-[8px] font-black text-[#72777f] uppercase mb-1">ÁREA (m²)</label>
-                                            <input 
-                                                disabled={!isBimManager && spaceFormData.subProject_id === null} 
-                                                type="number" step="0.01" 
-                                                value={spaceFormData.area} 
-                                                onChange={(e) => setSpaceFormData({ ...spaceFormData, area: e.target.value })} 
-                                                className="w-full p-2 border-2 border-[#1c1c19] font-black text-xs outline-none disabled:opacity-50" 
-                                                placeholder="Ej: 25.5" 
-                                            />
-                                        </div>
-                                        <div className="col-span-6 md:col-span-4">
-                                            <label className="block text-[8px] font-black text-[#72777f] uppercase mb-1">CATEGORÍA DE ÁREA</label>
-                                            <select 
-                                                disabled={!isBimManager && spaceFormData.subProject_id === null} 
-                                                value={spaceFormData.area_category} 
-                                                onChange={(e) => setSpaceFormData({ ...spaceFormData, area_category: e.target.value })} 
-                                                className="w-full p-2 border-2 border-[#1c1c19] font-black text-xs outline-none disabled:opacity-50"
-                                            >
-                                                <option value="Construida">CONSTRUIDA / CUBIERTA</option>
-                                                <option value="Descubierta">DESCUBIERTA</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    {spaceFormData.subProject_id === null && (
-                                        <div className="mt-4 p-2 bg-orange-50 border-2 border-orange-200 text-[8px] font-black text-orange-700 uppercase tracking-widest">
-                                            ⚠ ESTÁS EDITANDO UNA PLANTILLA MAESTRA. LOS CAMBIOS AQUÍ NO SE RELEJARÁN EN INSTANCIAS YA CREADAS, SOLO EN NUEVAS CLONACIONES.
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* COMPONENTES Y ACABADOS (MATERIALES) */}
-                                <div className="bg-white border-4 border-[#1c1c19] p-6 shadow-[8px_8px_0_0_rgba(15,67,105,0.1)]">
-                                    <div className="flex justify-between items-center border-b-2 border-[#1c1c19] pb-2 mb-6">
-                                        <div className="flex items-center gap-3">
-                                            <Box size={18} />
-                                            <h4 className="text-[10px] font-black uppercase italic tracking-widest">COMPONENTES_Y_ACABADOS_PERSONALIZADOS</h4>
-                                        </div>
-                                        {(spaceFormData.subProject_id !== null || isBimManager) && (
-                                            <button onClick={handleAddComponent} className="h-8 px-4 bg-[#1c1c19] text-white text-[9px] font-black uppercase italic flex items-center gap-2 hover:bg-[#0f4369] transition-all">
-                                                <Plus size={14} /> ASIGNAR_COMPONENTE
-                                            </button>
-                                        )}
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <div className="grid grid-cols-12 gap-4 px-2 text-[7px] font-black text-[#72777f] uppercase tracking-widest opacity-60">
-                                            <div className="col-span-4">COMPONENTE_DEL_CATÁLOGO</div>
-                                            <div className="col-span-4">ACABADO_/_MATERIAL_ESPECÍFICO</div>
-                                            <div className="col-span-3">NOTAS_DE_INSTALACIÓN</div>
-                                            <div className="col-span-1"></div>
-                                        </div>
-
-                                        {spaceFormData.componentes.length === 0 ? (
-                                            <div className="text-[9px] font-bold text-[#72777f] italic py-10 text-center border-4 border-dashed border-[#1c1c19]/5 bg-[#fcf9f4]">
-                                                NO HAY COMPONENTES ASIGNADOS A ESTA UNIDAD. HAGA CLIC EN "ASIGNAR_COMPONENTE" PARA EMPEZAR.
-                                            </div>
-                                        ) : spaceFormData.componentes.map((item, idx) => (
-                                            <div key={idx} className="grid grid-cols-12 gap-4 items-center p-3 border-2 border-[#1c1c19] bg-white group hover:bg-[#f6f3ee]/30 transition-all">
-                                                <div className="col-span-4">
-                                                    {(() => {
-                                                        const selectedComp = allComponents.find(c => c.id === item.component_id);
-                                                        return (
-                                                            <button
-                                                                disabled={!isBimManager && spaceFormData.subProject_id === null}
-                                                                onClick={() => {
-                                                                    setActiveCompIdx(idx);
-                                                                    setShowComponentPicker(true);
-                                                                }}
-                                                                className="w-full p-2 border-2 border-[#1c1c19]/20 font-black text-[10px] outline-none focus:border-[#1c1c19] bg-white flex flex-col items-start transition-all hover:border-[#1c1c19] disabled:opacity-50"
-                                                            >
-                                                                {selectedComp ? (
-                                                                    <>
-                                                                        <span className="uppercase truncate w-full">{selectedComp.element_name || selectedComp.nombre}</span>
-                                                                        <span className="text-[6.5px] font-bold text-[#72777f] uppercase opacity-60">
-                                                                            {selectedComp.discipline} | LOD {selectedComp.lod || 100}
-                                                                        </span>
-                                                                    </>
-                                                                ) : (
-                                                                    <span className="text-[#72777f] uppercase">SELECCIONAR_COMPONENTE...</span>
-                                                                )}
-                                                            </button>
-                                                        );
-                                                    })()}
-                                                </div>
-                                                <div className="col-span-4">
-                                                    {(() => {
-                                                        const selectedMat = allMaterials.find(m => m.id === item.material_id);
-                                                        return (
-                                                            <button
-                                                                disabled={!isBimManager && spaceFormData.subProject_id === null}
-                                                                onClick={() => {
-                                                                    setActiveCompIdx(idx);
-                                                                    setShowMaterialPicker(true);
-                                                                }}
-                                                                className="w-full p-2 border-2 border-[#1c1c19]/20 font-black text-[10px] outline-none focus:border-[#1c1c19] bg-white flex flex-col items-start transition-all hover:border-[#1c1c19] disabled:opacity-50"
-                                                            >
-                                                                {selectedMat ? (
-                                                                    <>
-                                                                        <span className="uppercase truncate w-full">{selectedMat.Nombre}</span>
-                                                                        <span className="text-[6.5px] font-bold text-[#0f4369] uppercase opacity-60">
-                                                                            {selectedMat.categoria} | {selectedMat.proveedor || 'S.P'}
-                                                                        </span>
-                                                                    </>
-                                                                ) : (
-                                                                    <span className="text-[#72777f] uppercase">SELECCIONAR_ACABADO...</span>
-                                                                )}
-                                                            </button>
-                                                        );
-                                                    })()}
-                                                </div>
-                                                <div className="col-span-3">
-                                                    <input
-                                                        disabled={!isBimManager && spaceFormData.subProject_id === null}
-                                                        type="text"
-                                                        value={item.notas}
-                                                        onChange={(e) => handleUpdateAssignedComponent(idx, 'notas', e.target.value)}
-                                                        placeholder="NOTAS..."
-                                                        className="w-full p-2 border-2 border-[#1c1c19]/20 font-black text-[10px] outline-none focus:border-[#1c1c19] bg-transparent disabled:opacity-50"
-                                                    />
-                                                </div>
-                                                <div className="col-span-1 flex justify-end">
-                                                    {(spaceFormData.subProject_id !== null || isBimManager) && (
-                                                        <button onClick={() => handleRemoveComponent(idx)} className="p-2 text-red-500 hover:bg-red-500 hover:text-white border-2 border-transparent hover:border-[#1c1c19] transition-all">
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    {spaceFormData.componentes.length > 0 && (
-                                        <div className="mt-6 p-4 border-2 border-[#1c1c19] bg-[#0f4369]/5 flex items-center gap-4">
-                                            <Package size={16} className="text-[#0f4369]" />
-                                            <p className="text-[8px] font-bold text-[#0f4369] uppercase leading-tight">
-                                                LOS MATERIALES SELECCIONADOS AQUÍ SOBREESCREBEN EL ACABADO POR DEFECTO DEL COMPONENTE SOLO PARA ESTE ESPACIO.
-                                                ESTO PERMITE QUE UN MISMO COMPONENTE (EJ: PUERTA) TENGA DIFERENTES ACABADOS SEGÚN SU UBICACIÓN.
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
+                                {spaceFormData.tipo === 'Espacio' ? (
+                                    <SpaceForm
+                                        spaceFormData={spaceFormData}
+                                        setSpaceFormData={setSpaceFormData}
+                                        isBimManager={isBimManager}
+                                        levels={levels}
+                                        spaces={spaces}
+                                        selectedSpace={selectedSpace}
+                                        setFilterType={setFilterType}
+                                        setIsAddMode={setIsAddMode}
+                                        setSelectedSpace={setSelectedSpace}
+                                        setShowTemplatePicker={setShowTemplatePicker}
+                                        onReloadRequired={loadInitialData}
+                                    />
+                                ) : (
+                                    <ElementForm
+                                        spaceFormData={spaceFormData}
+                                        setSpaceFormData={setSpaceFormData}
+                                        isBimManager={isBimManager}
+                                        spaces={spaces}
+                                        selectedSpace={selectedSpace}
+                                        allComponents={allComponents}
+                                        allMaterials={allMaterials}
+                                        handleAddComponent={handleAddComponent}
+                                        handleRemoveComponent={handleRemoveComponent}
+                                        handleUpdateAssignedComponent={handleUpdateAssignedComponent}
+                                        setActiveCompIdx={setActiveCompIdx}
+                                        setShowComponentPicker={setShowComponentPicker}
+                                        setShowMaterialPicker={setShowMaterialPicker}
+                                    />
+                                )}
                             </div>
                         </div>
                     </div>

@@ -172,10 +172,12 @@ export default function ProjectDataModule({ project, onTabChange }) {
     typology: '',
     modules: [],
     lot_area: 0,
-    sales_area: 0,
-    built_area: 0,
     circulation_area: 0,
-    occupied_area: 0,
+    occupied_area_plataforma: 0,
+    occupied_area_torre: 0,
+    ic_norma: 0,
+    io_norma_plataforma: 0,
+    io_norma_torre: 0,
     additional_info: '',
     tdi_correlation: '',
     oir_pir_compliance: '',
@@ -533,18 +535,16 @@ export default function ProjectDataModule({ project, onTabChange }) {
       typology: pebInfo.typology || '',
       modules: pebInfo.modules || [],
       lot_area: pebInfo.lot_area || 0,
-      sales_area: pebInfo.sales_area || 0,
-      built_area: pebInfo.built_area || 0,
       circulation_area: pebInfo.circulation_area || 0,
-      occupied_area: pebInfo.occupied_area || 0,
+      occupied_area_plataforma: pebInfo.occupied_area_plataforma !== undefined ? pebInfo.occupied_area_plataforma : (pebInfo.occupied_area || 0),
+      occupied_area_torre: pebInfo.occupied_area_torre || 0,
+      ic_norma: pebInfo.ic_norma || 0,
+      io_norma_plataforma: pebInfo.io_norma_plataforma !== undefined ? pebInfo.io_norma_plataforma : (pebInfo.io_norma || 0),
+      io_norma_torre: pebInfo.io_norma_torre || 0,
       additional_info: pebInfo.additional_info || '',
       tdi_correlation: pebInfo.tdi_correlation || '',
       oir_pir_compliance: pebInfo.oir_pir_compliance || '',
-      bim_uses: pebInfo.bim_uses || [],
-      software_principal: pebInfo.software_principal || 'Revit',
-      version_software: pebInfo.version_software || '2025',
-      uso_del_modelo: pebInfo.uso_del_modelo || 'Coordinación 3D, Extracción de cantidades',
-      entorno_comun_de_datos_cde: pebInfo.entorno_comun_de_datos_cde || 'Autodesk Construction Cloud'
+      bim_uses: pebInfo.bim_uses || []
     });
     setIsEditingPeb(true);
   };
@@ -586,11 +586,7 @@ export default function ProjectDataModule({ project, onTabChange }) {
           ...data,
           department: dept || 'Antioquia',
           city: cityVal || 'Medellín',
-          additional_info: data.additional_info || '',
-          software_principal: data.software_principal || 'Revit',
-          version_software: data.version_software || '2025',
-          uso_del_modelo: data.uso_del_modelo || 'Coordinación 3D, Extracción de cantidades',
-          entorno_comun_de_datos_cde: data.entorno_comun_de_datos_cde || 'Autodesk Construction Cloud'
+          additional_info: data.additional_info || ''
         });
         alert("Información General del PEB actualizada exitosamente.");
       }
@@ -1161,7 +1157,7 @@ export default function ProjectDataModule({ project, onTabChange }) {
                         type="number" 
                         step="0.01"
                         value={pebForm.lot_area} 
-                        onChange={e => setPebForm({...pebForm, lot_area: parseFloat(e.target.value) || 0})}
+                        onChange={e => setPebForm({...pebForm, lot_area: e.target.value === '' ? '' : e.target.value})}
                         className="w-full p-2 border-2 border-[#1c1c19] font-mono text-xs font-bold" 
                       />
                     </div>
@@ -1193,39 +1189,84 @@ export default function ProjectDataModule({ project, onTabChange }) {
                       />
                     </div>
                     <div>
-                      <label className="text-[9px] font-black uppercase text-[#72777f]">Área Ocupada Piso 1 (m²)</label>
+                      <label className="text-[9px] font-black uppercase text-[#72777f]">Área Ocupada Plataforma (m²)</label>
                       <input 
                         type="number" 
                         step="0.01"
-                        value={pebForm.occupied_area} 
-                        onChange={e => setPebForm({...pebForm, occupied_area: parseFloat(e.target.value) || 0})}
+                        value={pebForm.occupied_area_plataforma} 
+                        onChange={e => setPebForm({...pebForm, occupied_area_plataforma: e.target.value === '' ? '' : e.target.value})}
                         className="w-full p-2 border-2 border-[#1c1c19] font-mono text-xs font-bold" 
                       />
                     </div>
                     <div>
-                      <label className="text-[9px] font-black uppercase text-[#1c1c19]">Total (m² - Calculado)</label>
+                      <label className="text-[9px] font-black uppercase text-[#72777f]">Área Ocupada Torre (m²)</label>
                       <input 
-                        type="text" 
-                        disabled
-                        value={areasTotals.gross.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        className="w-full p-2 border-2 border-[#1c1c19]/30 bg-gray-50 font-mono text-xs font-black text-[#1c1c19] cursor-not-allowed" 
+                        type="number" 
+                        step="0.01"
+                        value={pebForm.occupied_area_torre} 
+                        onChange={e => setPebForm({...pebForm, occupied_area_torre: e.target.value === '' ? '' : e.target.value})}
+                        className="w-full p-2 border-2 border-[#1c1c19] font-mono text-xs font-bold" 
                       />
                     </div>
                   </div>
 
                   {/* Índices Calculados */}
-                  <div className="bg-[#f0f4f8] p-3 border-2 border-[#1c1c19]/10 rounded-sm mt-3 font-mono">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[10px] font-black uppercase text-[#003366]">Índice de Construcción (IC):</span>
-                      <span className="text-xs font-bold text-[#003366]">
-                        {parseFloat(pebForm.lot_area) > 0 ? (areasTotals.covered / parseFloat(pebForm.lot_area)).toFixed(2) : '0.00'}
-                      </span>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
+                    <div className="bg-[#f0f4f8] p-3 border-2 border-[#1c1c19]/10 rounded-sm font-mono space-y-2 shadow-[2px_2px_0_0_rgba(28,28,25,0.1)]">
+                      <h5 className="text-[10px] font-black uppercase text-[#003366] border-b border-[#003366]/20 pb-1">Índice de Construcción (IC)</h5>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[9px] font-bold text-gray-500 uppercase">Proyectado:</span>
+                        <span className="text-xs font-black text-[#003366]">
+                          {parseFloat(pebForm.lot_area) > 0 ? (areasTotals.covered / parseFloat(pebForm.lot_area)).toFixed(2) : '0.00'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[9px] font-bold text-gray-500 uppercase">Norma:</span>
+                        <input 
+                          type="number" step="0.01" 
+                          value={pebForm.ic_norma} 
+                          onChange={e => setPebForm({...pebForm, ic_norma: e.target.value === '' ? '' : e.target.value})}
+                          className="w-16 p-1 border-2 border-[#1c1c19] text-xs font-bold text-right" 
+                        />
+                      </div>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-black uppercase text-[#003366]">Índice de Ocupación (IO):</span>
-                      <span className="text-xs font-bold text-[#003366]">
-                        {parseFloat(pebForm.lot_area) > 0 ? (parseFloat(pebForm.occupied_area) / parseFloat(pebForm.lot_area)).toFixed(2) : '0.00'}
-                      </span>
+                    
+                    <div className="bg-[#f0f4f8] p-3 border-2 border-[#1c1c19]/10 rounded-sm font-mono space-y-2 shadow-[2px_2px_0_0_rgba(28,28,25,0.1)]">
+                      <h5 className="text-[10px] font-black uppercase text-[#003366] border-b border-[#003366]/20 pb-1">IO Plataforma</h5>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[9px] font-bold text-gray-500 uppercase">Proyectado:</span>
+                        <span className="text-xs font-black text-[#003366]">
+                          {parseFloat(pebForm.lot_area) > 0 ? ((parseFloat(pebForm.occupied_area_plataforma) / parseFloat(pebForm.lot_area)) * 100).toFixed(2) + '%' : '0.00%'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[9px] font-bold text-gray-500 uppercase">Norma %:</span>
+                        <input 
+                          type="number" step="0.01" 
+                          value={pebForm.io_norma_plataforma} 
+                          onChange={e => setPebForm({...pebForm, io_norma_plataforma: e.target.value === '' ? '' : e.target.value})}
+                          className="w-16 p-1 border-2 border-[#1c1c19] text-xs font-bold text-right" 
+                        />
+                      </div>
+                    </div>
+
+                    <div className="bg-[#f0f4f8] p-3 border-2 border-[#1c1c19]/10 rounded-sm font-mono space-y-2 shadow-[2px_2px_0_0_rgba(28,28,25,0.1)]">
+                      <h5 className="text-[10px] font-black uppercase text-[#003366] border-b border-[#003366]/20 pb-1">IO Torre</h5>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[9px] font-bold text-gray-500 uppercase">Proyectado:</span>
+                        <span className="text-xs font-black text-[#003366]">
+                          {parseFloat(pebForm.lot_area) > 0 ? ((parseFloat(pebForm.occupied_area_torre) / parseFloat(pebForm.lot_area)) * 100).toFixed(2) + '%' : '0.00%'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[9px] font-bold text-gray-500 uppercase">Norma %:</span>
+                        <input 
+                          type="number" step="0.01" 
+                          value={pebForm.io_norma_torre} 
+                          onChange={e => setPebForm({...pebForm, io_norma_torre: e.target.value === '' ? '' : e.target.value})}
+                          className="w-16 p-1 border-2 border-[#1c1c19] text-xs font-bold text-right" 
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1445,8 +1486,12 @@ export default function ProjectDataModule({ project, onTabChange }) {
                       <span className="font-bold text-[#1c1c19]">{parseFloat(pebInfo.circulation_area || 0).toLocaleString()} m²</span>
                     </div>
                     <div className="flex justify-between items-center text-xs">
-                      <span className="text-[9px] font-black text-[#72777f] uppercase tracking-tighter">Ocupación Piso 1:</span>
-                      <span className="font-bold text-[#1c1c19]">{parseFloat(pebInfo.occupied_area || 0).toLocaleString()} m²</span>
+                      <span className="text-[9px] font-black text-[#72777f] uppercase tracking-tighter">Ocupación Plataforma:</span>
+                      <span className="font-bold text-[#1c1c19]">{parseFloat(pebInfo.occupied_area_plataforma !== undefined ? pebInfo.occupied_area_plataforma : (pebInfo.occupied_area || 0)).toLocaleString()} m²</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-[9px] font-black text-[#72777f] uppercase tracking-tighter">Ocupación Torre:</span>
+                      <span className="font-bold text-[#1c1c19]">{parseFloat(pebInfo.occupied_area_torre || 0).toLocaleString()} m²</span>
                     </div>
                     <div className="border-t border-[#1c1c19]/10 pt-1.5 flex justify-between items-center text-xs font-black">
                       <span className="text-[9px] tracking-tighter text-[#1c1c19]">Total:</span>
@@ -1455,18 +1500,93 @@ export default function ProjectDataModule({ project, onTabChange }) {
                   </div>
                   
                   {/* Índices Calculados */}
-                  <div className="bg-[#f0f4f8] p-3 border-2 border-[#1c1c19]/10 rounded-sm mt-3 font-mono">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[10px] font-black uppercase text-[#003366]">Índice de Construcción (IC):</span>
-                      <span className="text-xs font-bold text-[#003366]">
-                        {parseFloat(pebInfo.lot_area || 0) > 0 ? (parseFloat(pebInfo.built_area || 0) / parseFloat(pebInfo.lot_area || 0)).toFixed(2) : '0.00'}
-                      </span>
+                  <div className="flex flex-col gap-3 mt-5 font-mono">
+                    <div className="bg-[#f0f4f8] p-4 border-2 border-[#1c1c19]/10 rounded-sm shadow-[3px_3px_0_0_rgba(28,28,25,0.05)]">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-[#003366]/20 pb-3 mb-3">
+                        <h5 className="text-[11px] font-black uppercase text-[#003366] leading-none">Índice de Construcción (IC)</h5>
+                        {(() => {
+                          const calc = parseFloat(pebInfo.lot_area || 0) > 0 ? (parseFloat(pebInfo.built_area || 0) / parseFloat(pebInfo.lot_area || 0)) : 0;
+                          const norma = parseFloat(pebInfo.ic_norma || 0);
+                          const diff = norma - calc;
+                          if (norma === 0) return null;
+                          return (
+                            <div className={`text-center text-[10px] font-black uppercase py-1 px-3 border-2 leading-none whitespace-nowrap ${calc <= norma ? 'border-[#16a34a] text-[#16a34a] bg-[#16a34a]/10' : 'border-[#dc2626] text-[#dc2626] bg-[#fee2e2]'}`}>
+                              {calc <= norma ? `CUMPLE (RES: ${diff.toFixed(2)})` : `EXCEDE (X ${Math.abs(diff).toFixed(2)})`}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Norma</span>
+                          <span className="text-sm font-bold text-gray-700">{(pebInfo.ic_norma || 0).toFixed(2)}</span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Diseño</span>
+                          <span className="text-sm font-black text-[#003366]">
+                            {parseFloat(pebInfo.lot_area || 0) > 0 ? (parseFloat(pebInfo.built_area || 0) / parseFloat(pebInfo.lot_area || 0)).toFixed(2) : '0.00'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-black uppercase text-[#003366]">Índice de Ocupación (IO):</span>
-                      <span className="text-xs font-bold text-[#003366]">
-                        {parseFloat(pebInfo.lot_area || 0) > 0 ? ((parseFloat(pebInfo.occupied_area || 0) / parseFloat(pebInfo.lot_area || 0)) * 100).toFixed(2) + '%' : '0.00%'}
-                      </span>
+                    
+                    <div className="bg-[#f0f4f8] p-4 border-2 border-[#1c1c19]/10 rounded-sm shadow-[3px_3px_0_0_rgba(28,28,25,0.05)]">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-[#003366]/20 pb-3 mb-3">
+                        <h5 className="text-[11px] font-black uppercase text-[#003366] leading-none">IO Plataforma</h5>
+                        {(() => {
+                          const occupied = parseFloat(pebInfo.occupied_area_plataforma !== undefined ? pebInfo.occupied_area_plataforma : (pebInfo.occupied_area || 0));
+                          const calc = parseFloat(pebInfo.lot_area || 0) > 0 ? ((occupied / parseFloat(pebInfo.lot_area || 0)) * 100) : 0;
+                          const norma = parseFloat(pebInfo.io_norma_plataforma !== undefined ? pebInfo.io_norma_plataforma : (pebInfo.io_norma || 0));
+                          const diff = norma - calc;
+                          if (norma === 0) return null;
+                          return (
+                            <div className={`text-center text-[10px] font-black uppercase py-1 px-3 border-2 leading-none whitespace-nowrap ${calc <= norma ? 'border-[#16a34a] text-[#16a34a] bg-[#16a34a]/10' : 'border-[#dc2626] text-[#dc2626] bg-[#fee2e2]'}`}>
+                              {calc <= norma ? `CUMPLE (RES: ${diff.toFixed(2)}%)` : `EXCEDE (X ${Math.abs(diff).toFixed(2)}%)`}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Norma</span>
+                          <span className="text-sm font-bold text-gray-700">{(pebInfo.io_norma_plataforma !== undefined ? pebInfo.io_norma_plataforma : (pebInfo.io_norma || 0)).toFixed(2)}%</span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Diseño</span>
+                          <span className="text-sm font-black text-[#003366]">
+                            {parseFloat(pebInfo.lot_area || 0) > 0 ? ((parseFloat(pebInfo.occupied_area_plataforma !== undefined ? pebInfo.occupied_area_plataforma : (pebInfo.occupied_area || 0)) / parseFloat(pebInfo.lot_area || 0)) * 100).toFixed(2) + '%' : '0.00%'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-[#f0f4f8] p-4 border-2 border-[#1c1c19]/10 rounded-sm shadow-[3px_3px_0_0_rgba(28,28,25,0.05)]">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-[#003366]/20 pb-3 mb-3">
+                        <h5 className="text-[11px] font-black uppercase text-[#003366] leading-none">IO Torre</h5>
+                        {(() => {
+                          const calc = parseFloat(pebInfo.lot_area || 0) > 0 ? ((parseFloat(pebInfo.occupied_area_torre || 0) / parseFloat(pebInfo.lot_area || 0)) * 100) : 0;
+                          const norma = parseFloat(pebInfo.io_norma_torre || 0);
+                          const diff = norma - calc;
+                          if (norma === 0) return null;
+                          return (
+                            <div className={`text-center text-[10px] font-black uppercase py-1 px-3 border-2 leading-none whitespace-nowrap ${calc <= norma ? 'border-[#16a34a] text-[#16a34a] bg-[#16a34a]/10' : 'border-[#dc2626] text-[#dc2626] bg-[#fee2e2]'}`}>
+                              {calc <= norma ? `CUMPLE (RES: ${diff.toFixed(2)}%)` : `EXCEDE (X ${Math.abs(diff).toFixed(2)}%)`}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Norma</span>
+                          <span className="text-sm font-bold text-gray-700">{(pebInfo.io_norma_torre || 0).toFixed(2)}%</span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Diseño</span>
+                          <span className="text-sm font-black text-[#003366]">
+                            {parseFloat(pebInfo.lot_area || 0) > 0 ? ((parseFloat(pebInfo.occupied_area_torre || 0) / parseFloat(pebInfo.lot_area || 0)) * 100).toFixed(2) + '%' : '0.00%'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

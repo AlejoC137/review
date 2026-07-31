@@ -5,7 +5,9 @@ import {
   Table as TableIcon, X, Plus, Edit2, Trash2, Save, Sparkles
 } from 'lucide-react';
 import { projectService } from '../../services/projectService';
+import { componentsService } from '../../services/componentsService';
 import AiLodTdiFillModal from './AiLodTdiFillModal';
+import ComponentPickerModal from '../common/ComponentPickerModal';
 
 /* ─── Static data ──────────────────────────────────────────── */
 const DISCIPLINE_ELEMENTS = [
@@ -223,14 +225,31 @@ export default function LodTdiMatrix({ projectId }) {
   const [reloadKey, setReloadKey] = useState(0);
   const [projectElements, setProjectElements] = useState([]);
   const [isAdding, setIsAdding] = useState(false);
-  const [form, setForm] = useState({ discipline: '', element: '', oldDiscipline: '', oldElement: '' });
+  const [showComponentPicker, setShowComponentPicker] = useState(false);
+  const [form, setForm] = useState({ discipline: '', element: '', oldElement: null });
+  const [catalogComponents, setCatalogComponents] = useState([]);
+  const [specialtiesList, setSpecialtiesList] = useState([]);
 
   const disciplines = ['all', ...new Set(projectElements.map(e => e.discipline))];
 
   useEffect(() => {
+    componentsService.getComponents().then(data => {
+      const sorted = (data || []).sort((a, b) => a.subcomponente.localeCompare(b.subcomponente));
+      setCatalogComponents(sorted);
+    }).catch(console.error);
+  }, []);
+
+  useEffect(() => {
     const fetchMatrix = async () => {
+
       if (!projectId) return;
       setLoading(true);
+      try {
+        const specData = await projectService.getSpecialties(projectId);
+        setSpecialtiesList(specData || []);
+      } catch (e) {
+        console.error('Error fetching specialties', e);
+      }
       const localKey = `peb_lod_tdi_matrix_${projectId}`;
       const localSaved = localStorage.getItem(localKey);
       try {
@@ -624,11 +643,35 @@ export default function LodTdiMatrix({ projectId }) {
             <div className="p-4 space-y-4">
               <div>
                 <label className="text-[10px] font-black uppercase text-gray-500 block mb-1">Disciplina</label>
-                <input type="text" value={form.discipline} onChange={e => setForm({...form, discipline: e.target.value})} className="w-full p-2 border-2 border-[#1c1c19] text-sm focus:outline-none focus:border-[#0f4369] transition-colors" placeholder="Ej. Arquitectura" />
+                <select value={form.discipline} onChange={e => setForm({...form, discipline: e.target.value})} className="w-full p-2 border-2 border-[#1c1c19] text-sm focus:outline-none focus:border-[#0f4369] transition-colors bg-white">
+                    <option value="">Seleccione una disciplina...</option>
+                    {specialtiesList.map(s => (
+                        <option key={s.id} value={s.name}>{s.name}</option>
+                    ))}
+                    {/* Fallback to disciplines already in use if they are missing from specialtiesList */}
+                    {[...new Set(projectElements.map(e => e.discipline))].filter(d => !specialtiesList.find(s => s.name === d)).map(d => (
+                        <option key={d} value={d}>{d}</option>
+                    ))}
+                </select>
               </div>
               <div>
                 <label className="text-[10px] font-black uppercase text-gray-500 block mb-1">Elemento</label>
-                <input type="text" value={form.element} onChange={e => setForm({...form, element: e.target.value})} className="w-full p-2 border-2 border-[#1c1c19] text-sm focus:outline-none focus:border-[#0f4369] transition-colors" placeholder="Ej. Muros" />
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={form.element} 
+                    onChange={e => setForm({...form, element: e.target.value})} 
+                    className="flex-1 p-2 border-2 border-[#1c1c19] text-sm focus:outline-none focus:border-[#0f4369] transition-colors bg-white" 
+                    placeholder="Ej. Muros o busque en catálogo..." 
+                  />
+                  <button 
+                    onClick={() => setShowComponentPicker(true)} 
+                    className="px-4 border-2 border-[#1c1c19] bg-[#1c1c19] text-white hover:bg-white hover:text-[#1c1c19] transition-colors flex items-center justify-center font-black text-xs"
+                    title="Abrir Catálogo"
+                  >
+                    <Search size={16} /> CATÁLOGO
+                  </button>
+                </div>
               </div>
             </div>
             <div className="p-4 border-t-2 border-[#1c1c19] bg-[#f6f3ee] flex justify-end gap-2">
@@ -638,6 +681,32 @@ export default function LodTdiMatrix({ projectId }) {
           </div>
         </div>
       )}
+
+      <ComponentPickerModal 
+        isOpen={showComponentPicker}
+        onClose={() => setShowComponentPicker(false)}
+        allComponents={catalogComponents}
+        onSelect={(c) => {
+          setForm({...form, element: c.subcomponente});
+        }}
+        isBimManager={true}
+        onCreateComponent={async (name, category, descripcion, es_principal) => {
+          if (!name.trim()) return;
+          try {
+              const newComp = await componentsService.createComponent({
+                  subcomponente: name.trim(),
+                  categoria_revit: category || 'NUEVO_SUBCOMPONENTE',
+                  descripcion: descripcion || '',
+                  es_principal: es_principal || false
+              });
+              if (newComp) {
+                  setCatalogComponents(prev => [...prev, newComp]);
+              }
+          } catch (error) {
+              console.error('Error creating component:', error);
+          }
+        }}
+      />
     </div>
   );
 }
