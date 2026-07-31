@@ -50,17 +50,22 @@ export default function HousesModule({ project }) {
   const [tasksLoading, setTasksLoading] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState('proyecto');
   const [staffers, setStaffers] = useState([]);
-  const [showNewLevelInput, setShowNewLevelInput] = useState(false);
-  const [newLevelName, setNewLevelName] = useState('');
-  const [creatingLevel, setCreatingLevel] = useState(false);
-
   const [modals, setModals] = useState({
     addSpace: false,
     addTask: false,
+    addLevel: false,
     confirmDelete: null,
     gantt: false,
     report: false
   });
+
+  const [newLevelForm, setNewLevelForm] = useState({
+    indice: '',
+    nombre: '',
+    elevacion: '',
+    descripcion: ''
+  });
+  const [creatingLevel, setCreatingLevel] = useState(false);
 
   const [detailForm, setDetailForm] = useState({
     name: '',
@@ -314,20 +319,26 @@ export default function HousesModule({ project }) {
   };
 
   const handleCreateLevel = async () => {
-    if (!newLevelName.trim() || !project?.id) return;
+    if (!newLevelForm.nombre.trim() || !project?.id) {
+      alert("El nombre del nivel es obligatorio.");
+      return;
+    }
     setCreatingLevel(true);
     try {
-      const newLevel = await levelsService.createLevel({
+      const payload = {
         project_id: project.id,
-        nombre: newLevelName.trim(),
-        indice: levels.length + 1,
+        nombre: newLevelForm.nombre.trim(),
+        indice: newLevelForm.indice ? parseInt(newLevelForm.indice, 10) : levels.length + 1,
+        elevacion: newLevelForm.elevacion || null,
+        descripcion: newLevelForm.descripcion || null,
         parent_id: null
-      });
-      const updatedLevels = [...levels, newLevel];
+      };
+      const newLevel = await levelsService.createLevel(payload);
+      const updatedLevels = [...levels, newLevel].sort((a, b) => (a.indice || 0) - (b.indice || 0));
       setLevels(updatedLevels);
       handleDetailChange('level_id', newLevel.id);
-      setNewLevelName('');
-      setShowNewLevelInput(false);
+      setNewLevelForm({ indice: '', nombre: '', elevacion: '', descripcion: '' });
+      setModals(m => ({ ...m, addLevel: false }));
     } catch (err) {
       console.error('Error creating level:', err);
       alert('No se pudo crear el nivel.');
@@ -480,42 +491,13 @@ export default function HousesModule({ project }) {
                             <label className="block text-[7px] font-black text-[#72777f] uppercase">NIVEL</label>
                             <button
                               type="button"
-                              onClick={() => { setShowNewLevelInput(v => !v); setNewLevelName(''); }}
+                              onClick={() => setModals(m => ({ ...m, addLevel: true }))}
                               className="flex items-center gap-0.5 text-[6px] font-black uppercase text-[#0f4369] hover:text-[#1c1c19] transition-colors"
                               title="Crear nuevo nivel"
                             >
                               <Plus size={9} /> NUEVO
                             </button>
                           </div>
-
-                          {showNewLevelInput && (
-                            <div className="flex gap-1 mb-1">
-                              <input
-                                type="text"
-                                autoFocus
-                                placeholder="NOMBRE DEL NIVEL..."
-                                value={newLevelName}
-                                onChange={e => setNewLevelName(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter') handleCreateLevel(); if (e.key === 'Escape') { setShowNewLevelInput(false); setNewLevelName(''); } }}
-                                className="flex-1 px-2 py-1 text-[8px] font-black border border-[#0f4369] outline-none uppercase bg-[#f0f6fb] placeholder:font-normal placeholder:normal-case"
-                              />
-                              <button
-                                type="button"
-                                onClick={handleCreateLevel}
-                                disabled={creatingLevel || !newLevelName.trim()}
-                                className="px-2 py-1 bg-[#0f4369] text-white text-[7px] font-black uppercase disabled:opacity-40 flex items-center gap-0.5"
-                              >
-                                {creatingLevel ? <Loader2 size={9} className="animate-spin" /> : <Plus size={9} />}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => { setShowNewLevelInput(false); setNewLevelName(''); }}
-                                className="px-1.5 py-1 border border-[#1c1c19]/20 text-[#72777f] hover:bg-[#1c1c19] hover:text-white transition-all"
-                              >
-                                <X size={9} />
-                              </button>
-                            </div>
-                          )}
 
                           <select
                             value={detailForm.level_id}
@@ -785,6 +767,84 @@ export default function HousesModule({ project }) {
 
       <HouseGanttModal isOpen={modals.gantt} onClose={() => setModals(m => ({ ...m, gantt: false }))} project={selectedHouse} tasks={houseTasks} />
       <HouseReportModal isOpen={modals.report} onClose={() => setModals(m => ({ ...m, report: false }))} project={selectedHouse} tasks={houseTasks} />
+
+      {/* Add Level Modal */}
+      <Modal
+        isOpen={modals.addLevel}
+        onClose={() => setModals(m => ({ ...m, addLevel: false }))}
+        title="NUEVO_NIVEL"
+        footer={
+          <>
+            <button
+              onClick={() => setModals(m => ({ ...m, addLevel: false }))}
+              className="px-4 py-1.5 border-2 border-[#1c1c19] text-[9px] font-black uppercase hover:bg-[#1c1c19] hover:text-white transition-all"
+            >
+              CANCELAR
+            </button>
+            <button
+              onClick={handleCreateLevel}
+              disabled={creatingLevel}
+              className="px-6 py-1.5 bg-[#ba1a1a] text-white text-[9px] font-black uppercase italic flex items-center gap-2 shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
+            >
+              {creatingLevel ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+              GUARDAR_NIVEL
+            </button>
+          </>
+        }
+      >
+        <div className="bg-white border-4 border-[#1c1c19] p-4 shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
+          <div className="flex items-center gap-3 border-b-2 border-[#1c1c19] pb-2 mb-4">
+            <Layers size={14} className="text-[#ba1a1a]" />
+            <h4 className="text-[9px] font-black uppercase italic tracking-widest text-[#1c1c19]">
+              DATOS_DEL_NIVEL
+            </h4>
+          </div>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[7px] font-black text-[#72777f] uppercase mb-1">ÍNDICE_(NÚMERO)</label>
+                <input
+                  type="number"
+                  value={newLevelForm.indice}
+                  onChange={e => setNewLevelForm({ ...newLevelForm, indice: e.target.value })}
+                  className="w-full p-2 border-2 border-[#1c1c19] font-black text-xs outline-none bg-[#fcf9f4]/50 focus:bg-white transition-all"
+                  placeholder="Ej: 1, 2..."
+                />
+              </div>
+              <div>
+                <label className="block text-[7px] font-black text-[#72777f] uppercase mb-1">ELEVACIÓN_(COTA)</label>
+                <input
+                  type="text"
+                  value={newLevelForm.elevacion}
+                  onChange={e => setNewLevelForm({ ...newLevelForm, elevacion: e.target.value })}
+                  className="w-full p-2 border-2 border-[#1c1c19] font-black text-xs outline-none bg-[#fcf9f4]/50 focus:bg-white transition-all"
+                  placeholder="Ej: +3.00m"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[7px] font-black text-[#72777f] uppercase mb-1">NOMBRE_DEL_NIVEL</label>
+              <input
+                type="text"
+                value={newLevelForm.nombre}
+                onChange={e => setNewLevelForm({ ...newLevelForm, nombre: e.target.value })}
+                className="w-full p-2 border-2 border-[#1c1c19] font-black text-xs outline-none bg-[#fcf9f4]/50 focus:bg-white transition-all"
+                placeholder="Ej: Planta Baja, Nivel 1..."
+              />
+            </div>
+            <div>
+              <label className="block text-[7px] font-black text-[#72777f] uppercase mb-1">DESCRIPCIÓN_/_NOTAS</label>
+              <textarea
+                value={newLevelForm.descripcion}
+                onChange={e => setNewLevelForm({ ...newLevelForm, descripcion: e.target.value })}
+                rows={3}
+                className="w-full p-2 border-2 border-[#1c1c19] font-bold text-xs outline-none bg-[#fcf9f4]/50 focus:bg-white transition-all resize-none"
+                placeholder="Información adicional sobre el uso o características del nivel..."
+              />
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
