@@ -50,6 +50,9 @@ export default function HousesModule({ project }) {
   const [tasksLoading, setTasksLoading] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState('proyecto');
   const [staffers, setStaffers] = useState([]);
+  const [showNewLevelInput, setShowNewLevelInput] = useState(false);
+  const [newLevelName, setNewLevelName] = useState('');
+  const [creatingLevel, setCreatingLevel] = useState(false);
 
   const [modals, setModals] = useState({
     addSpace: false,
@@ -310,6 +313,29 @@ export default function HousesModule({ project }) {
     }
   };
 
+  const handleCreateLevel = async () => {
+    if (!newLevelName.trim() || !project?.id) return;
+    setCreatingLevel(true);
+    try {
+      const newLevel = await levelsService.createLevel({
+        project_id: project.id,
+        nombre: newLevelName.trim(),
+        indice: levels.length + 1,
+        parent_id: null
+      });
+      const updatedLevels = [...levels, newLevel];
+      setLevels(updatedLevels);
+      handleDetailChange('level_id', newLevel.id);
+      setNewLevelName('');
+      setShowNewLevelInput(false);
+    } catch (err) {
+      console.error('Error creating level:', err);
+      alert('No se pudo crear el nivel.');
+    } finally {
+      setCreatingLevel(false);
+    }
+  };
+
   if (loading) return (
     <div className="flex-1 flex items-center justify-center bg-[#f6f3ee]">
       <Loader2 size={24} className="animate-spin text-[#0f4369]" />
@@ -450,7 +476,47 @@ export default function HousesModule({ project }) {
                           </select>
                         </div>
                         <div>
-                          <label className="block text-[7px] font-black text-[#72777f] uppercase mb-0.5">NIVEL</label>
+                          <div className="flex items-center justify-between mb-0.5">
+                            <label className="block text-[7px] font-black text-[#72777f] uppercase">NIVEL</label>
+                            <button
+                              type="button"
+                              onClick={() => { setShowNewLevelInput(v => !v); setNewLevelName(''); }}
+                              className="flex items-center gap-0.5 text-[6px] font-black uppercase text-[#0f4369] hover:text-[#1c1c19] transition-colors"
+                              title="Crear nuevo nivel"
+                            >
+                              <Plus size={9} /> NUEVO
+                            </button>
+                          </div>
+
+                          {showNewLevelInput && (
+                            <div className="flex gap-1 mb-1">
+                              <input
+                                type="text"
+                                autoFocus
+                                placeholder="NOMBRE DEL NIVEL..."
+                                value={newLevelName}
+                                onChange={e => setNewLevelName(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') handleCreateLevel(); if (e.key === 'Escape') { setShowNewLevelInput(false); setNewLevelName(''); } }}
+                                className="flex-1 px-2 py-1 text-[8px] font-black border border-[#0f4369] outline-none uppercase bg-[#f0f6fb] placeholder:font-normal placeholder:normal-case"
+                              />
+                              <button
+                                type="button"
+                                onClick={handleCreateLevel}
+                                disabled={creatingLevel || !newLevelName.trim()}
+                                className="px-2 py-1 bg-[#0f4369] text-white text-[7px] font-black uppercase disabled:opacity-40 flex items-center gap-0.5"
+                              >
+                                {creatingLevel ? <Loader2 size={9} className="animate-spin" /> : <Plus size={9} />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setShowNewLevelInput(false); setNewLevelName(''); }}
+                                className="px-1.5 py-1 border border-[#1c1c19]/20 text-[#72777f] hover:bg-[#1c1c19] hover:text-white transition-all"
+                              >
+                                <X size={9} />
+                              </button>
+                            </div>
+                          )}
+
                           <select
                             value={detailForm.level_id}
                             onChange={(e) => handleDetailChange('level_id', e.target.value)}
