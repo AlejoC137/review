@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { pluginDataService } from '../services/pluginDataService';
 import { 
   Database, RefreshCw, Trash2, Eye, MapPin, Layers, 
-  Box, Calendar, Mail, FileText, Search, AlertCircle, CheckCircle, Code
+  Box, Calendar, Mail, FileText, Search, AlertCircle, CheckCircle, Code, PaintBucket
 } from 'lucide-react';
+import MaterialSyncEditor from '../components/MaterialSyncEditor';
 
 export default function FromPlugInView() {
   const [exportsList, setExportsList] = useState([]);
@@ -258,7 +259,13 @@ export default function FromPlugInView() {
                 onClick={() => setActiveTab('elements')}
                 className={`px-4 py-2.5 font-bold flex items-center gap-2 border-r border-[#1c1c19] ${activeTab === 'elements' ? 'bg-[#0f4369] text-white' : 'text-[#72777f] hover:bg-[#e5e2dd]'}`}
               >
-                <Database size={14} /> Elementos por ID ({selectedItem.elements_by_id ? Object.keys(selectedItem.elements_by_id).length : 0})
+                <Database size={14} /> Elementos ({selectedItem.elements_by_id ? Object.keys(selectedItem.elements_by_id).length : 0})
+              </button>
+              <button
+                onClick={() => setActiveTab('materials')}
+                className={`px-4 py-2.5 font-bold flex items-center gap-2 border-r border-[#1c1c19] ${activeTab === 'materials' ? 'bg-[#0f4369] text-white' : 'text-[#72777f] hover:bg-[#e5e2dd]'}`}
+              >
+                <PaintBucket size={14} /> Materiales
               </button>
               <button
                 onClick={() => setActiveTab('json')}
@@ -380,6 +387,16 @@ export default function FromPlugInView() {
                     <p className="text-[#72777f]">No se incluyó detalle de elementos por ID.</p>
                   )}
                 </div>
+              )}
+
+              {activeTab === 'materials' && (
+                <MaterialSyncEditor 
+                  selectedItem={selectedItem} 
+                  onSaveSuccess={(updatedMaterials) => {
+                    setSelectedItem({ ...selectedItem, materials: updatedMaterials });
+                    setExportsList(prev => prev.map(p => p.id === selectedItem.id ? { ...p, materials: updatedMaterials } : p));
+                  }}
+                />
               )}
 
               {activeTab === 'json' && (

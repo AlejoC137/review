@@ -41,5 +41,19 @@ export const pluginDataService = {
       throw error;
     }
     return data;
+  },
+
+  // Actualizar los materiales editados de un proyecto
+  async updateMaterials(id, materials) {
+    const { data, error } = await supabase
+      .from('plugin_project_data')
+      .update({ materials })
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error al actualizar materiales:', error);
+      throw error;
+    }
+    return data;
   }
 };
