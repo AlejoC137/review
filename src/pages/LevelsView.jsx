@@ -231,7 +231,8 @@ const LevelsView = () => {
 
 
     return (
-        <div className="h-screen flex flex-col bg-[#fcf9f4] font-mono">
+        <>
+            <div className="h-screen flex flex-col bg-[#fcf9f4] font-mono">
             {/* Header */}
             <div className="p-4 border-b-4 border-[#1c1c19] bg-[#1c1c19] text-white flex justify-between items-center shrink-0">
                 <div className="flex items-center gap-4">
@@ -618,6 +619,7 @@ const LevelsView = () => {
                 </div>
             </div>
         )}
+        </>
     );
 };
 
