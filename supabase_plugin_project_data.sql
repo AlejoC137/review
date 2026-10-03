@@ -1,6 +1,6 @@
 -- =========================================================================
 -- SCRIPT DE CREACIÓN Y ACTUALIZACIÓN DE TABLA DE PRUEBAS PARA DATOS DEL PLUGIN
--- Proyecto: review2 / Supabase
+-- Proyecto: review / Supabase
 -- Pestaña de administración: /fromPlugIn
 -- =========================================================================
 

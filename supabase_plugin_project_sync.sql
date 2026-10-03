@@ -1,6 +1,6 @@
 -- =========================================================================
 -- SCRIPT DE ACTUALIZACIÓN DE TABLA PARA SINCRONIZACIÓN
--- Proyecto: review2 / Supabase
+-- Proyecto: review / Supabase
 -- Añade columnas faltantes para el exportador completo de Revit
 -- =========================================================================
 
