@@ -1128,7 +1128,9 @@ async function processMcpMessage(message) {
       result: {
         protocolVersion: '2024-11-05',
         capabilities: {
-          tools: { listChanged: false }
+          tools: { listChanged: false },
+          prompts: { listChanged: false },
+          resources: { listChanged: false }
         },
         serverInfo: {
           name: 'review-mcp',
@@ -1144,6 +1146,22 @@ async function processMcpMessage(message) {
 
   if (method === 'ping') {
     return { jsonrpc: '2.0', id, result: {} };
+  }
+
+  if (method === 'prompts/list') {
+    return { jsonrpc: '2.0', id, result: { prompts: [] } };
+  }
+
+  if (method === 'resources/list') {
+    return { jsonrpc: '2.0', id, result: { resources: [] } };
+  }
+
+  if (method === 'roots/list') {
+    return { jsonrpc: '2.0', id, result: { roots: [] } };
+  }
+
+  if (method === 'completion/complete') {
+    return { jsonrpc: '2.0', id, result: { completion: { values: [] } } };
   }
 
   if (method === 'tools/list') {
@@ -1279,10 +1297,11 @@ async function processMcpMessage(message) {
  * ============================================================================
  */
 export default async function handler(req, res) {
-  // CORS universal
+  // CORS universal y soporte StreamableHTTP
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-session-id');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, HEAD');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-session-id, Mcp-Protocol-Version, Mcp-Method, Mcp-Name, Mcp-Session-Id');
+  res.setHeader('Access-Control-Expose-Headers', 'Mcp-Protocol-Version, Mcp-Session-Id');
 
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -1290,12 +1309,24 @@ export default async function handler(req, res) {
     return;
   }
 
-  // SSE Transport para MCP
-  if (req.method === 'GET') {
-    const acceptHeader = req.headers['accept'] || '';
-    const isBrowserHtml = acceptHeader.includes('text/html') && !acceptHeader.includes('text/event-stream');
+  if (req.method === 'HEAD') {
+    res.statusCode = 200;
+    res.end();
+    return;
+  }
 
-    if (!isBrowserHtml) {
+  const host = req.headers['x-forwarded-host'] || req.headers.host || 'arca-review.vercel.app';
+  const proto = req.headers['x-forwarded-proto'] || 'https';
+  const baseUrl = `${proto}://${host}`;
+
+  // Manejo de peticiones GET:
+  // 1. Si el cliente solicita explícitamente text/event-stream -> SSE Transport (Claude Desktop / Cursor)
+  // 2. Si no -> Respuesta JSON inmediata StreamableHTTP / Health / Validator (Gemini / Monitor / Browser)
+  if (req.method === 'GET') {
+    const acceptHeader = (req.headers['accept'] || '').toLowerCase();
+    const wantsSse = acceptHeader.includes('text/event-stream');
+
+    if (wantsSse) {
       const sessionId = randomUUID();
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -1305,9 +1336,7 @@ export default async function handler(req, res) {
       });
 
       activeSessions.set(sessionId, res);
-      const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
-      const proto = req.headers['x-forwarded-proto'] || 'https';
-      const endpointUri = `${proto}://${host}/api/mcp?sessionId=${sessionId}`;
+      const endpointUri = `${baseUrl}/api/mcp?sessionId=${sessionId}`;
       res.write(`event: endpoint\r\ndata: ${endpointUri}\r\n\r\n`);
 
       const pingInterval = setInterval(() => {
@@ -1321,21 +1350,27 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Respuesta Informativa para navegadores o monitor de salud
-    res.setHeader('Content-Type', 'application/json');
+    // Respuesta Informativa JSON (StreamableHTTP & Health Check)
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.statusCode = 200;
     res.end(JSON.stringify({
       server: 'review-mcp',
       status: 'online',
       protocol: 'Model Context Protocol (MCP)',
       version: '2.0.0',
+      transport: ['StreamableHTTP', 'SSE'],
+      capabilities: {
+        tools: { listChanged: false },
+        prompts: { listChanged: false },
+        resources: { listChanged: false }
+      },
       description: 'Servidor MCP Integral para Review (BIM Revit, Supabase y Gestión BEP)',
       total_tools: TOOLS_DEFINITIONS.length,
       tools: TOOLS_DEFINITIONS.map(t => ({ name: t.name, description: t.description })),
       configuration: {
         mcpServers: {
           review: {
-            url: "https://review.vercel.app/api/mcp"
+            url: `${baseUrl}/api/mcp`
           }
         }
       }
@@ -1343,7 +1378,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Manejo de peticiones POST (JSON-RPC 2.0)
+  // Manejo de peticiones POST (JSON-RPC 2.0 y Streamable HTTP)
   if (req.method === 'POST') {
     try {
       let body = req.body;
@@ -1354,7 +1389,18 @@ export default async function handler(req, res) {
           req.on('end', () => resolve(chunks));
           req.on('error', err => reject(err));
         });
-        body = raw ? JSON.parse(raw) : {};
+        body = raw ? (typeof raw === 'string' && raw.trim() ? JSON.parse(raw) : {}) : {};
+      }
+
+      // Si el POST viene vacío (ej. probe de conexión), responder 200 OK
+      if (!body || Object.keys(body).length === 0) {
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.statusCode = 200;
+        res.end(JSON.stringify({
+          jsonrpc: '2.0',
+          result: { status: 'online', server: 'review-mcp', version: '2.0.0' }
+        }));
+        return;
       }
 
       let rpcResponse;
@@ -1366,14 +1412,19 @@ export default async function handler(req, res) {
       }
 
       const urlParams = new URL(req.url, 'http://localhost').searchParams;
-      const sessionId = urlParams.get('sessionId') || req.headers['x-session-id'];
+      const sessionId = urlParams.get('sessionId') || req.headers['x-session-id'] || req.headers['mcp-session-id'];
       if (sessionId && activeSessions.has(sessionId) && rpcResponse) {
         const sseRes = activeSessions.get(sessionId);
         sseRes.write(`event: message\r\ndata: ${JSON.stringify(rpcResponse)}\r\n\r\n`);
       }
 
+      res.setHeader('Mcp-Protocol-Version', '2024-11-05');
+      if (sessionId) {
+        res.setHeader('Mcp-Session-Id', sessionId);
+      }
+
       if (rpcResponse) {
-        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.statusCode = 200;
         res.end(JSON.stringify(rpcResponse));
       } else {
@@ -1382,7 +1433,7 @@ export default async function handler(req, res) {
       }
     } catch (err) {
       console.error("Error en handler MCP:", err);
-      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.statusCode = 500;
       res.end(JSON.stringify({
         jsonrpc: '2.0',
