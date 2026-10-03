@@ -1293,9 +1293,9 @@ export default async function handler(req, res) {
   // SSE Transport para MCP
   if (req.method === 'GET') {
     const acceptHeader = req.headers['accept'] || '';
-    const isSse = acceptHeader.includes('text/event-stream') || req.url?.includes('transport=sse');
+    const isBrowserHtml = acceptHeader.includes('text/html') && !acceptHeader.includes('text/event-stream');
 
-    if (isSse) {
+    if (!isBrowserHtml) {
       const sessionId = randomUUID();
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -1305,7 +1305,9 @@ export default async function handler(req, res) {
       });
 
       activeSessions.set(sessionId, res);
-      const endpointUri = `/api/mcp?sessionId=${sessionId}`;
+      const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
+      const proto = req.headers['x-forwarded-proto'] || 'https';
+      const endpointUri = `${proto}://${host}/api/mcp?sessionId=${sessionId}`;
       res.write(`event: endpoint\r\ndata: ${endpointUri}\r\n\r\n`);
 
       const pingInterval = setInterval(() => {
