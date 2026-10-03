@@ -292,6 +292,27 @@ const TOOLS_DEFINITIONS = [
     }
   },
   {
+    name: "materiales_catalogo_consultar",
+    description: "Consulta materiales registrados con precios unitarios en COP, stock y proveedor en la tabla Materiales.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        categoria: { type: "string" },
+        busqueda: { type: "string" },
+        limite: { type: "number", default: 50 }
+      }
+    }
+  },
+  {
+    name: "proyecto_general_info_obtener",
+    description: "Obtiene métricas normativas y áreas ocupadas (plataforma, torre, índices IC/IO) desde project_general_info.",
+    inputSchema: {
+      type: "object",
+      properties: { project_id: { type: "string", description: "UUID o nombre del proyecto" } },
+      required: ["project_id"]
+    }
+  },
+  {
     name: "materiales_presupuestar",
     description: "Calcula un presupuesto estimado para una lista de materiales y cantidades solicitadas, cruzando precios oficiales de la base de datos.",
     inputSchema: {
