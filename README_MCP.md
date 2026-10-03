@@ -86,8 +86,11 @@ Servidor oficial que implementa el protocolo **Model Context Protocol (MCP)** so
 ```json
 {
   "mcpServers": {
-    "review": {
-      "url": "https://review.vercel.app/api/mcp"
+    "review_cloud": {
+      "url": "https://arca-review.vercel.app/mcp"
+    },
+    "review_local": {
+      "url": "http://localhost:8080/mcp"
     }
   }
 }
