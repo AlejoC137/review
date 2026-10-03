@@ -18,14 +18,44 @@
  * ============================================================================
  */
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHmac } from 'node:crypto';
 
 // Variables de entorno con fallback al proyecto configurado
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://irkrljhfbtnjspyvrapa.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlya3JsamhmYnRuanNweXZyYXBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzMTI3OTEsImV4cCI6MjA4OTg4ODc5MX0.c_Rd0hc11NRXX3aWYOODhU-e5GjGcoxobJQbBOc6LOE';
+const MCP_SECRET = process.env.MCP_SECRET || 'review-mcp-secret-key-2026';
 
 // Sesiones SSE en memoria
 const activeSessions = new Map();
+
+/**
+ * Valida un token Bearer OAuth emitido por /api/oauth/token (stateless HMAC)
+ */
+function verifyAccessToken(authHeader) {
+  if (!authHeader) return null;
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!token.startsWith('rev_pat_')) return null;
+
+  const raw = token.slice(8);
+  const parts = raw.split('.');
+  if (parts.length !== 2) return null;
+  const [encoded, sig] = parts;
+
+  const expectedSig = createHmac('sha256', MCP_SECRET)
+    .update(encoded)
+    .digest('hex')
+    .slice(0, 32);
+
+  if (sig !== expectedSig) return null;
+
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString());
+    if (payload.exp && payload.exp < Date.now()) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Cliente HTTP directo para Supabase REST API (Sin dependencias externas)
@@ -170,6 +200,27 @@ async function getProjectBimExport(projectId) {
 // CATÁLOGO DE HERRAMIENTAS MCP (MODEL CONTEXT PROTOCOL TOOLS DEFINITION)
 // ============================================================================
 const TOOLS_DEFINITIONS = [
+  // --- 0. SESIÓN Y CONTROL DE PROYECTO OAUTH ---
+  {
+    name: "auth_session_info",
+    description: "Consulta la identidad del usuario autenticado (nombre, email, rol) y el proyecto BIM activo vinculado a la sesión actual en Supabase.",
+    inputSchema: {
+      type: "object",
+      properties: {}
+    }
+  },
+  {
+    name: "proyecto_activo_seleccionar",
+    description: "Selecciona o cambia el proyecto BIM activo para la sesión actual entre los proyectos registrados en Supabase (ej: 'agora click clack', 'proyecto café').",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_name: { type: "string", description: "Nombre o palabra clave del proyecto BIM" },
+        project_id: { type: "string", description: "ID UUID del proyecto en Supabase" }
+      }
+    }
+  },
+
   // --- 1. BIM & CUANTIFICACIÓN (Revit PlugIn + plugin_project_data) ---
   {
     name: "pisos_cuantificacion_consultar",
@@ -1118,7 +1169,7 @@ async function handleDatabaseReportResumen({ project_id }) {
 // ============================================================================
 // PROCESADOR CENTRAL DE MENSAJES MCP (JSON-RPC 2.0)
 // ============================================================================
-async function processMcpMessage(message) {
+async function processMcpMessage(message, sessionUser = null) {
   const { id, method, params } = message;
 
   if (method === 'initialize') {
@@ -1173,11 +1224,68 @@ async function processMcpMessage(message) {
   }
 
   if (method === 'tools/call') {
-    const { name, arguments: args } = params || {};
+    const { name, arguments: rawArgs } = params || {};
+    const args = { ...(rawArgs || {}) };
+
+    // Si la sesión OAuth tiene un proyecto activo y no se indicó en los args, aplicarlo automáticamente
+    if (sessionUser && sessionUser.projectId) {
+      if (!args.project_id) args.project_id = sessionUser.projectId;
+      if (!args.project_name) args.project_name = sessionUser.projectName;
+    }
+
     try {
       let toolResult;
 
       switch (name) {
+        case 'auth_session_info':
+          toolResult = sessionUser ? {
+            autenticado: true,
+            usuario: {
+              id: sessionUser.userId,
+              email: sessionUser.email,
+              nombre: sessionUser.userName,
+              admin: sessionUser.admin
+            },
+            proyecto_activo: {
+              id: sessionUser.projectId,
+              nombre: sessionUser.projectName
+            }
+          } : {
+            autenticado: false,
+            mensaje: "Sesión anónima (sin token Bearer). Para autenticarte como usuario y vincular tu proyecto, usa /api/oauth/authorize.",
+            proyecto_activo: "Multi-proyecto global"
+          };
+          break;
+
+        case 'proyecto_activo_seleccionar':
+          {
+            const target = args.project_name || args.project_id;
+            if (!target) {
+              toolResult = { exito: false, mensaje: "Debes especificar 'project_name' o 'project_id'." };
+              break;
+            }
+            const { data: projs } = await supabaseFetch('projects?select=id,name');
+            const found = (projs || []).find(p => p.id === target || normalizeStr(p.name).includes(normalizeStr(target)));
+            if (found) {
+              if (sessionUser) {
+                sessionUser.projectId = found.id;
+                sessionUser.projectName = found.name;
+              }
+              toolResult = {
+                exito: true,
+                mensaje: `Proyecto activo cambiado a: ${found.name}`,
+                proyecto_id: found.id,
+                proyecto_nombre: found.name
+              };
+            } else {
+              toolResult = {
+                exito: false,
+                mensaje: `No se encontró el proyecto '${target}'. Proyectos disponibles: ${(projs || []).map(p => p.name).join(', ')}`
+              };
+            }
+          }
+          break;
+
         case 'pisos_cuantificacion_consultar':
           toolResult = await handlePisosCuantificacion(args || {});
           break;
@@ -1378,6 +1486,10 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Extraer token de autenticación (si Gemini / cliente MCP lo envía)
+  const authHeader = req.headers['authorization'] || req.headers['x-api-key'] || (new URL(req.url, 'http://localhost')).searchParams.get('token');
+  const sessionUser = verifyAccessToken(authHeader);
+
   // Manejo de peticiones POST (JSON-RPC 2.0 y Streamable HTTP)
   if (req.method === 'POST') {
     try {
@@ -1398,17 +1510,23 @@ export default async function handler(req, res) {
         res.statusCode = 200;
         res.end(JSON.stringify({
           jsonrpc: '2.0',
-          result: { status: 'online', server: 'review-mcp', version: '2.0.0' }
+          result: {
+            status: 'online',
+            server: 'review-mcp',
+            version: '2.0.0',
+            authenticated: Boolean(sessionUser),
+            active_project: sessionUser?.projectName || null
+          }
         }));
         return;
       }
 
       let rpcResponse;
       if (Array.isArray(body)) {
-        rpcResponse = await Promise.all(body.map(msg => processMcpMessage(msg)));
+        rpcResponse = await Promise.all(body.map(msg => processMcpMessage(msg, sessionUser)));
         rpcResponse = rpcResponse.filter(r => r !== null);
       } else {
-        rpcResponse = await processMcpMessage(body);
+        rpcResponse = await processMcpMessage(body, sessionUser);
       }
 
       const urlParams = new URL(req.url, 'http://localhost').searchParams;
