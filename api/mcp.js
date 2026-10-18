@@ -189,11 +189,24 @@ async function getProjectBimExport(projectId) {
   if (!projectId) return exportsData[0];
 
   const target = normalizeStr(projectId);
-  return exportsData.find(exp =>
+  let matched = exportsData.find(exp =>
     (exp.id && normalizeStr(exp.id) === target) ||
-    (exp.project_name && normalizeStr(exp.project_name).includes(target)) ||
+    (exp.project_name && (normalizeStr(exp.project_name).includes(target) || target.includes(normalizeStr(exp.project_name)))) ||
     (exp.project_number && normalizeStr(exp.project_number) === target)
-  ) || exportsData[0];
+  );
+
+  if (!matched) {
+    const { data: projs } = await supabaseFetch('projects?select=id,name');
+    const proj = (projs || []).find(p => p.id === projectId || normalizeStr(p.name).includes(target));
+    if (proj && proj.name) {
+      const pName = normalizeStr(proj.name);
+      matched = exportsData.find(exp =>
+        exp.project_name && (normalizeStr(exp.project_name).includes(pName) || pName.includes(normalizeStr(exp.project_name)))
+      );
+    }
+  }
+
+  return matched || exportsData[0];
 }
 
 // ============================================================================
@@ -527,6 +540,87 @@ const TOOLS_DEFINITIONS = [
         project_id: { type: "string", description: "ID del proyecto" }
       },
       required: ["project_id"]
+    }
+  },
+  // --- 9. GESTIÓN DE PLANOS (SHEETS) REVIT Y COLA DE CAMBIOS SINCRONIZADA ---
+  {
+    name: "sheets_proyecto_consultar",
+    description: "Consulta todos los planos (Sheets) y categorías/colecciones de planos (Sheet Collections) sincronizados desde Revit para un proyecto, incluyendo su numeración, nombre, categoría, autor, revisor y la cola de cambios pendientes hacia Revit.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: { type: "string", description: "ID o nombre del proyecto (ej: 'macarena' o UUID)" },
+        categoria_coleccion: { type: "string", description: "Filtrar por categoría / Sheet Collection (ej: 'CURADURIA', 'DETALLES', 'INTERIORISMO', 'BORDES DE LOSA', 'ESPECIFCIACIONES', 'PAISAJISMO')" },
+        busqueda: { type: "string", description: "Filtro opcional por número o nombre de plano" }
+      }
+    }
+  },
+  {
+    name: "sheets_cola_cambios_gestionar",
+    description: "Gestiona la cola de cambios de planos (Sheets) en Supabase para que desde Revit el usuario pueda cargarla, confirmarla y aplicarla automáticamente. Permite ver la cola, encolar cambios de numeración/nombres/categorías/propiedades, renumerar por lotes o limpiar la cola.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: { type: "string", description: "ID o nombre del proyecto" },
+        accion: {
+          type: "string",
+          enum: ["ver_cola", "encolar_cambios", "renumerar_lote", "limpiar_cola"],
+          description: "Acción a ejecutar sobre la cola de cambios de Sheets"
+        },
+        cambios: {
+          type: "array",
+          description: "Lista de cambios por plano (para accion='encolar_cambios')",
+          items: {
+            type: "object",
+            properties: {
+              element_id: { type: "string", description: "ElementId del Sheet en Revit (o current_number si no se conoce el ID)" },
+              current_number: { type: "string", description: "Número actual del plano en Revit" },
+              target_number: { type: "string", description: "Nuevo número de plano (Sheet Number)" },
+              target_name: { type: "string", description: "Nuevo nombre del plano (Sheet Name)" },
+              target_collection: { type: "string", description: "Nueva categoría / Sheet Collection (ej: 'CURADURIA', 'DETALLES')" },
+              target_sheet_order: { type: "string", description: "Nueva numeración fraccionaria (ej: '3/10')" },
+              target_drawn_by: { type: "string", description: "Dibujado por (Drawn By)" },
+              target_checked_by: { type: "string", description: "Revisado por (Checked By)" },
+              target_approved_by: { type: "string", description: "Aprobado por (Approved By)" },
+              target_designed_by: { type: "string", description: "Diseñado por (Designed By)" },
+              target_issue_date: { type: "string", description: "Fecha de emisión (Sheet Issue Date)" },
+              custom_parameters: { type: "object", description: "Diccionario clave-valor de otros parámetros del plano o rótulo" }
+            }
+          }
+        },
+        nuevos_planos: {
+          type: "array",
+          description: "Lista de nuevos planos a crear en Revit cuando se aplique la cola",
+          items: {
+            type: "object",
+            properties: {
+              sheet_number: { type: "string" },
+              sheet_name: { type: "string" },
+              sheet_collection: { type: "string" },
+              drawn_by: { type: "string" },
+              checked_by: { type: "string" },
+              approved_by: { type: "string" }
+            },
+            required: ["sheet_number", "sheet_name"]
+          }
+        },
+        lote_config: {
+          type: "object",
+          description: "Configuración para accion='renumerar_lote'",
+          properties: {
+            filtro_coleccion: { type: "string", description: "Categoría / Sheet Collection a renumerar" },
+            filtro_prefijo: { type: "string", description: "Prefijo actual de planos a filtrar" },
+            prefijo_nuevo: { type: "string", description: "Nuevo prefijo para la numeración (ej: 'A-', 'DET-')" },
+            inicio: { type: "number", default: 1, description: "Número inicial de la secuencia" },
+            paso: { type: "number", default: 1, description: "Incremento entre planos" },
+            digitos: { type: "number", default: 2, description: "Cantidad de dígitos con ceros a la izquierda" },
+            sufijo_nuevo: { type: "string", default: "", description: "Sufijo opcional" },
+            nueva_coleccion: { type: "string", description: "Cambiar categoría / Sheet Collection de todo el lote" },
+            calcular_fraccion: { type: "boolean", default: true, description: "Actualizar automáticamente 'Númeración plano' como X/Total" }
+          }
+        }
+      },
+      required: ["accion"]
     }
   }
 ];
@@ -1166,6 +1260,400 @@ async function handleDatabaseReportResumen({ project_id }) {
   };
 }
 
+/**
+ * Extrae la lista normalizada de Sheets y Sheet Collections desde una exportación de plugin_project_data
+ */
+function extractSheetsAndCollectionsFromBimExport(matchedExport) {
+  const sheetsMap = new Map();
+  const collectionsSet = new Set();
+
+  if (!matchedExport) return { sheets: [], collections: [] };
+
+  const elementsById = matchedExport.elements_by_id || {};
+  for (const [keyId, el] of Object.entries(elementsById)) {
+    if (!el || typeof el !== 'object') continue;
+    const cat = String(el.category || el.Category || '').trim();
+    const params = el.parameters || el.Parameters || {};
+
+    if (cat === 'Sheet Collections' || cat === 'Colecciones de planos') {
+      const colName = el.name || el.Name || params['Name'] || params['Sheet Collection'] || '';
+      if (colName) collectionsSet.add(String(colName).trim());
+      continue;
+    }
+
+    if (cat === 'Sheets' || cat === 'Planos') {
+      const elementId = String(el.id || el.Id || keyId);
+      const sheetNumber = String(params['Sheet Number'] || params['Número de plano'] || el.SheetNumber || '').trim();
+      let sheetName = String(params['Sheet Name'] || params['Nombre de plano'] || el.Name || el.name || '').trim();
+      if (!params['Sheet Name'] && sheetNumber && sheetName.startsWith(`${sheetNumber} - `)) {
+        sheetName = sheetName.slice(`${sheetNumber} - `.length).trim();
+      }
+      const sheetCollection = String(params['Sheet Collection'] || params['Colección de planos'] || 'SIN COLECCIÓN').trim();
+      if (sheetCollection && sheetCollection !== 'SIN COLECCIÓN') {
+        collectionsSet.add(sheetCollection);
+      }
+
+      sheetsMap.set(elementId, {
+        element_id: elementId,
+        sheet_number: sheetNumber,
+        sheet_name: sheetName,
+        sheet_collection: sheetCollection || 'SIN COLECCIÓN',
+        sheet_order: String(params['Númeración plano'] || params['Numeración plano'] || '').trim(),
+        scale: String(params['Scale'] || params['Escala'] || '').trim(),
+        drawn_by: String(params['Drawn By'] || params['Dibujado por'] || '').trim(),
+        checked_by: String(params['Checked By'] || params['Revisado por'] || '').trim(),
+        approved_by: String(params['Approved By'] || params['Aprobado por'] || '').trim(),
+        designed_by: String(params['Designed By'] || params['Diseñado por'] || '').trim(),
+        issue_date: String(params['Sheet Issue Date'] || params['Fecha de emisión'] || '').trim(),
+        family_and_type: String(params['Family and Type'] || el.type_name || '').trim()
+      });
+    }
+  }
+
+  const sheets = Array.from(sheetsMap.values()).sort((a, b) =>
+    a.sheet_number.localeCompare(b.sheet_number, undefined, { numeric: true, sensitivity: 'base' })
+  );
+
+  return {
+    sheets,
+    collections: Array.from(collectionsSet).sort()
+  };
+}
+
+/**
+ * Handler 21: sheets_proyecto_consultar
+ */
+async function handleSheetsProyectoConsultar({ project_id, categoria_coleccion, busqueda }) {
+  const matchedExport = await getProjectBimExport(project_id);
+  if (!matchedExport) {
+    return {
+      exito: false,
+      mensaje: "No se encontraron modelos sincronizados desde Revit en plugin_project_data."
+    };
+  }
+
+  const { sheets, collections } = extractSheetsAndCollectionsFromBimExport(matchedExport);
+
+  let filtered = sheets;
+  if (categoria_coleccion) {
+    const normCat = normalizeStr(categoria_coleccion);
+    filtered = filtered.filter(s => normalizeStr(s.sheet_collection).includes(normCat));
+  }
+  if (busqueda) {
+    const normQ = normalizeStr(busqueda);
+    filtered = filtered.filter(s =>
+      normalizeStr(s.sheet_number).includes(normQ) ||
+      normalizeStr(s.sheet_name).includes(normQ) ||
+      normalizeStr(s.sheet_collection).includes(normQ)
+    );
+  }
+
+  // Consultar si hay cola de cambios pendiente en admin_documents
+  const { data: queueDocs } = await supabaseFetch('admin_documents?type=eq.revit_sheets_queue&order=created_at.desc&limit=10');
+  const normProj = normalizeStr(matchedExport.project_name || project_id || '');
+  const activeQueueDoc = (queueDocs || []).find(doc => {
+    try {
+      const parsed = typeof doc.content === 'string' ? JSON.parse(doc.content) : doc.content;
+      return (
+        doc.project_id === project_id ||
+        parsed?.export_id === matchedExport.id ||
+        (parsed?.revit_project_name && normalizeStr(parsed.revit_project_name).includes(normProj))
+      );
+    } catch {
+      return false;
+    }
+  });
+
+  let activeQueue = null;
+  if (activeQueueDoc) {
+    try {
+      activeQueue = typeof activeQueueDoc.content === 'string' ? JSON.parse(activeQueueDoc.content) : activeQueueDoc.content;
+    } catch {
+      activeQueue = null;
+    }
+  }
+
+  const resumenPorColeccion = {};
+  for (const s of sheets) {
+    resumenPorColeccion[s.sheet_collection] = (resumenPorColeccion[s.sheet_collection] || 0) + 1;
+  }
+
+  return {
+    proyecto_revit: matchedExport.project_name,
+    export_id: matchedExport.id,
+    fecha_sincronizacion: matchedExport.exported_at || matchedExport.created_at,
+    total_sheets_modelo: sheets.length,
+    total_sheets_filtrados: filtered.length,
+    colecciones_categorias: collections,
+    resumen_por_categoria: resumenPorColeccion,
+    cola_cambios_activa: activeQueue ? {
+      queue_doc_id: activeQueueDoc.id,
+      status: activeQueue.status,
+      updated_at: activeQueue.updated_at,
+      total_modificaciones_en_cola: (activeQueue.changes || []).length,
+      total_nuevos_planos_en_cola: (activeQueue.new_sheets || []).length,
+      cambios: activeQueue.changes || [],
+      nuevos_planos: activeQueue.new_sheets || []
+    } : null,
+    sheets: filtered
+  };
+}
+
+/**
+ * Handler 22: sheets_cola_cambios_gestionar
+ */
+async function handleSheetsColaCambiosGestionar({
+  project_id,
+  accion = 'ver_cola',
+  cambios = [],
+  nuevos_planos = [],
+  lote_config = null
+}) {
+  const matchedExport = await getProjectBimExport(project_id);
+  if (!matchedExport) {
+    return {
+      exito: false,
+      mensaje: "No se encontró el proyecto sincronizado en plugin_project_data."
+    };
+  }
+
+  const { sheets } = extractSheetsAndCollectionsFromBimExport(matchedExport);
+
+  // Resolver project_id en tabla projects si existe
+  const { data: projs } = await supabaseFetch('projects?select=id,name');
+  const normExportName = normalizeStr(matchedExport.project_name || project_id || '');
+  const matchedProj = (projs || []).find(p =>
+    p.id === project_id ||
+    normalizeStr(p.name).includes(normExportName) ||
+    normExportName.includes(normalizeStr(p.name))
+  );
+  const canonicalProjectId = matchedProj?.id || project_id || matchedExport.id;
+
+  // Buscar cola existente
+  const { data: queueDocs } = await supabaseFetch('admin_documents?type=eq.revit_sheets_queue&order=created_at.desc&limit=20');
+  const existingDoc = (queueDocs || []).find(doc => {
+    try {
+      const parsed = typeof doc.content === 'string' ? JSON.parse(doc.content) : doc.content;
+      return (
+        doc.project_id === canonicalProjectId ||
+        parsed?.export_id === matchedExport.id ||
+        (parsed?.revit_project_name && normalizeStr(parsed.revit_project_name) === normExportName)
+      );
+    } catch {
+      return false;
+    }
+  });
+
+  let currentPayload = {
+    queue_version: '1.0',
+    status: 'pending',
+    source: 'MCP_GEMINI',
+    project_id: canonicalProjectId,
+    export_id: matchedExport.id,
+    revit_project_name: matchedExport.project_name,
+    updated_at: new Date().toISOString(),
+    changes: [],
+    new_sheets: []
+  };
+
+  if (existingDoc) {
+    try {
+      const parsed = typeof existingDoc.content === 'string' ? JSON.parse(existingDoc.content) : existingDoc.content;
+      if (parsed && typeof parsed === 'object') {
+        currentPayload = {
+          ...currentPayload,
+          ...parsed,
+          changes: Array.isArray(parsed.changes) ? [...parsed.changes] : [],
+          new_sheets: Array.isArray(parsed.new_sheets) ? [...parsed.new_sheets] : []
+        };
+      }
+    } catch {
+      // ignore parse error
+    }
+  }
+
+  if (accion === 'ver_cola') {
+    return {
+      exito: true,
+      proyecto_revit: matchedExport.project_name,
+      project_id: canonicalProjectId,
+      queue_doc_id: existingDoc?.id || null,
+      status: existingDoc ? currentPayload.status : 'empty',
+      total_cambios: currentPayload.changes.length,
+      total_nuevos_planos: currentPayload.new_sheets.length,
+      cola: currentPayload
+    };
+  }
+
+  if (accion === 'limpiar_cola') {
+    if (existingDoc) {
+      await supabaseFetch(`admin_documents?id=eq.${existingDoc.id}`, { method: 'DELETE' });
+    }
+    return {
+      exito: true,
+      mensaje: `Cola de cambios de Sheets limpiada para ${matchedExport.project_name}.`,
+      project_id: canonicalProjectId
+    };
+  }
+
+  // Mapa rápido de cambios actuales por element_id
+  const changesMap = new Map();
+  for (const ch of currentPayload.changes) {
+    if (ch.element_id) changesMap.set(String(ch.element_id), { ...ch });
+  }
+
+  if (accion === 'renumerar_lote' && lote_config) {
+    let targetSheets = [...sheets];
+    if (lote_config.filtro_coleccion) {
+      const normCol = normalizeStr(lote_config.filtro_coleccion);
+      targetSheets = targetSheets.filter(s => normalizeStr(s.sheet_collection).includes(normCol));
+    }
+    if (lote_config.filtro_prefijo) {
+      const normPref = normalizeStr(lote_config.filtro_prefijo);
+      targetSheets = targetSheets.filter(s => normalizeStr(s.sheet_number).startsWith(normPref));
+    }
+
+    const prefix = lote_config.prefijo_nuevo ?? '';
+    const start = Number(lote_config.inicio ?? 1);
+    const step = Number(lote_config.paso ?? 1);
+    const digits = Number(lote_config.digitos ?? 2);
+    const suffix = lote_config.sufijo_nuevo ?? '';
+    const total = targetSheets.length;
+
+    targetSheets.forEach((sh, idx) => {
+      const seq = String(start + idx * step).padStart(digits, '0');
+      const newNumber = `${prefix}${seq}${suffix}`;
+      const prev = changesMap.get(sh.element_id) || {
+        element_id: sh.element_id,
+        current_number: sh.sheet_number,
+        current_name: sh.sheet_name,
+        current_collection: sh.sheet_collection,
+        target_number: sh.sheet_number,
+        target_name: sh.sheet_name,
+        target_collection: sh.sheet_collection,
+        target_sheet_order: sh.sheet_order,
+        target_drawn_by: sh.drawn_by,
+        target_checked_by: sh.checked_by,
+        target_approved_by: sh.approved_by,
+        target_designed_by: sh.designed_by,
+        target_issue_date: sh.issue_date,
+        custom_parameters: {}
+      };
+
+      prev.target_number = newNumber;
+      if (lote_config.nueva_coleccion) {
+        prev.target_collection = lote_config.nueva_coleccion;
+      }
+      if (lote_config.calcular_fraccion !== false) {
+        prev.target_sheet_order = `${idx + 1}/${total}`;
+      }
+      changesMap.set(sh.element_id, prev);
+    });
+  }
+
+  if (Array.isArray(cambios) && cambios.length > 0) {
+    for (const item of cambios) {
+      // Buscar el plano original por element_id o current_number
+      const orig = sheets.find(s =>
+        (item.element_id && String(s.element_id) === String(item.element_id)) ||
+        (item.current_number && normalizeStr(s.sheet_number) === normalizeStr(item.current_number))
+      );
+
+      const elemId = String(orig?.element_id || item.element_id || '');
+      if (!elemId) continue;
+
+      const prev = changesMap.get(elemId) || {
+        element_id: elemId,
+        current_number: orig?.sheet_number || item.current_number || '',
+        current_name: orig?.sheet_name || '',
+        current_collection: orig?.sheet_collection || 'SIN COLECCIÓN',
+        target_number: orig?.sheet_number || item.current_number || '',
+        target_name: orig?.sheet_name || '',
+        target_collection: orig?.sheet_collection || 'SIN COLECCIÓN',
+        target_sheet_order: orig?.sheet_order || '',
+        target_drawn_by: orig?.drawn_by || '',
+        target_checked_by: orig?.checked_by || '',
+        target_approved_by: orig?.approved_by || '',
+        target_designed_by: orig?.designed_by || '',
+        target_issue_date: orig?.issue_date || '',
+        custom_parameters: {}
+      };
+
+      if (item.target_number !== undefined) prev.target_number = String(item.target_number).trim();
+      if (item.target_name !== undefined) prev.target_name = String(item.target_name).trim();
+      if (item.target_collection !== undefined) prev.target_collection = String(item.target_collection).trim();
+      if (item.target_sheet_order !== undefined) prev.target_sheet_order = String(item.target_sheet_order).trim();
+      if (item.target_drawn_by !== undefined) prev.target_drawn_by = String(item.target_drawn_by).trim();
+      if (item.target_checked_by !== undefined) prev.target_checked_by = String(item.target_checked_by).trim();
+      if (item.target_approved_by !== undefined) prev.target_approved_by = String(item.target_approved_by).trim();
+      if (item.target_designed_by !== undefined) prev.target_designed_by = String(item.target_designed_by).trim();
+      if (item.target_issue_date !== undefined) prev.target_issue_date = String(item.target_issue_date).trim();
+      if (item.custom_parameters && typeof item.custom_parameters === 'object') {
+        prev.custom_parameters = { ...(prev.custom_parameters || {}), ...item.custom_parameters };
+      }
+
+      changesMap.set(elemId, prev);
+    }
+  }
+
+  const finalChanges = Array.from(changesMap.values());
+  const finalNewSheets = [
+    ...currentPayload.new_sheets,
+    ...(Array.isArray(nuevos_planos) ? nuevos_planos : [])
+  ];
+
+  const updatedPayload = {
+    ...currentPayload,
+    status: 'pending',
+    source: 'MCP_GEMINI',
+    updated_at: new Date().toISOString(),
+    summary: {
+      modified_sheets: finalChanges.length,
+      new_sheets: finalNewSheets.length
+    },
+    changes: finalChanges,
+    new_sheets: finalNewSheets
+  };
+
+  const docRecord = {
+    title: `REVIT_SHEETS_QUEUE :: ${matchedExport.project_name} [PENDING]`,
+    type: 'revit_sheets_queue',
+    project_id: canonicalProjectId,
+    doc_date: new Date().toISOString().split('T')[0],
+    amount: finalChanges.length + finalNewSheets.length,
+    content: JSON.stringify(updatedPayload, null, 2)
+  };
+
+  let savedDoc = null;
+  if (existingDoc?.id) {
+    const { data } = await supabaseFetch(`admin_documents?id=eq.${existingDoc.id}`, {
+      method: 'PATCH',
+      headers: { 'Prefer': 'return=representation' },
+      body: JSON.stringify(docRecord)
+    });
+    savedDoc = data?.[0] || existingDoc;
+  } else {
+    const { data } = await supabaseFetch('admin_documents', {
+      method: 'POST',
+      headers: { 'Prefer': 'return=representation' },
+      body: JSON.stringify(docRecord)
+    });
+    savedDoc = data?.[0] || null;
+  }
+
+  return {
+    exito: true,
+    mensaje: `Cola actualizada con ${finalChanges.length} planos modificados y ${finalNewSheets.length} nuevos planos listos para confirmar y aplicar en Revit.`,
+    proyecto_revit: matchedExport.project_name,
+    project_id: canonicalProjectId,
+    queue_doc_id: savedDoc?.id || null,
+    status: 'pending',
+    resumen: updatedPayload.summary,
+    muestra_cambios: finalChanges.slice(0, 25),
+    nuevos_planos: finalNewSheets
+  };
+}
+
 // ============================================================================
 // PROCESADOR CENTRAL DE MENSAJES MCP (JSON-RPC 2.0)
 // ============================================================================
@@ -1354,6 +1842,12 @@ async function processMcpMessage(message, sessionUser = null) {
           break;
         case 'database_report_resumen':
           toolResult = await handleDatabaseReportResumen(args || {});
+          break;
+        case 'sheets_proyecto_consultar':
+          toolResult = await handleSheetsProyectoConsultar(args || {});
+          break;
+        case 'sheets_cola_cambios_gestionar':
+          toolResult = await handleSheetsColaCambiosGestionar(args || {});
           break;
         default:
           throw new Error(`Herramienta '${name}' no reconocida.`);

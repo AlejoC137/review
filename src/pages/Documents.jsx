@@ -3,13 +3,14 @@ import ReactMarkdown from 'react-markdown';
 import {
   Plus, Search, FileText, Trash2, Edit3, Save, X, Printer, Download, Eye,
   ChevronRight, Calendar, Tag, User, Hash, AlertCircle, Loader2, Settings2,
-  Maximize2, Minimize2, ZoomIn, ZoomOut, Type, ArrowUpRight, Receipt
+  Maximize2, Minimize2, ZoomIn, ZoomOut, Type, ArrowUpRight, Receipt, Layers, FolderOpen
 } from 'lucide-react';
 
 const PAGE_WIDTH = 816; // 8.5in * 96dpi
 const PAGE_HEIGHT = 1056; // 11in * 96dpi
 import { supabase } from '../services/supabaseClient';
 import MarkdownEditor from '../components/ui/MarkdownEditor';
+import RevitSheetsManager from '../components/project/RevitSheetsManager';
 import { useAuth } from '../context/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 
@@ -17,6 +18,8 @@ const Documents = () => {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const projectId = searchParams.get('projectId');
+  const [sectionMode, setSectionMode] = useState(searchParams.get('tab') === 'docs' ? 'docs' : 'sheets');
+  const [projectName, setProjectName] = useState('');
   
   const [documents, setDocuments] = useState([]);
   const [activeTab, setActiveTab] = useState(null); // Will store the ID of the active document
@@ -48,6 +51,11 @@ const Documents = () => {
     if (user) {
       fetchDocuments();
     }
+    if (projectId) {
+      supabase.from('projects').select('name').eq('id', projectId).maybeSingle().then(({ data }) => {
+        if (data?.name) setProjectName(data.name);
+      });
+    }
   }, [user, projectId]);
 
   const fetchDocuments = async () => {
@@ -67,10 +75,11 @@ const Documents = () => {
     if (error) {
       console.error('Error fetching documents:', error);
     } else {
-      setDocuments(data);
-      if (data.length > 0) {
-        if (!activeTab || !data.find(d => d.id === activeTab)) {
-          setActiveTab(data[0].id);
+      const filteredDocs = (data || []).filter(d => d.type !== 'revit_sheets_queue');
+      setDocuments(filteredDocs);
+      if (filteredDocs.length > 0) {
+        if (!activeTab || !filteredDocs.find(d => d.id === activeTab)) {
+          setActiveTab(filteredDocs[0].id);
         }
       } else {
         setActiveTab(null);
@@ -190,7 +199,7 @@ const Documents = () => {
   };
 
   return (
-    <div className="flex h-full bg-[#f6f3ee] text-[#1c1c19] overflow-hidden selection:bg-[#0f4369] selection:text-white print:bg-white print:h-auto print:overflow-visible w-full">
+    <div className="flex flex-col h-full bg-[#f6f3ee] text-[#1c1c19] overflow-hidden selection:bg-[#0f4369] selection:text-white print:bg-white print:h-auto print:overflow-visible w-full">
       <style>
         {`
           @media print {
@@ -228,6 +237,44 @@ const Documents = () => {
         `}
       </style>
 
+      {/* TOP MODE SWITCHER BAR: GESTIÓN DE SHEETS REVIT vs ARCHIVO DE DOCUMENTOS */}
+      <div className="print:hidden bg-[#1c1c19] text-white px-4 py-2 border-b-2 border-[#1c1c19] flex flex-wrap items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSectionMode('sheets')}
+            className={`px-3.5 py-1.5 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border transition-all ${
+              sectionMode === 'sheets'
+                ? 'bg-emerald-400 text-[#1c1c19] border-white shadow-[2px_2px_0_0_#ffffff]'
+                : 'bg-[#2a2a26] text-white/70 border-white/20 hover:text-white hover:border-white/50'
+            }`}
+          >
+            <Layers size={13} />
+            GESTIÓN DE SHEETS REVIT (COLA & NUMERACIÓN)
+          </button>
+          <button
+            onClick={() => setSectionMode('docs')}
+            className={`px-3.5 py-1.5 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border transition-all ${
+              sectionMode === 'docs'
+                ? 'bg-[#fcf9f4] text-[#1c1c19] border-white shadow-[2px_2px_0_0_#0f4369]'
+                : 'bg-[#2a2a26] text-white/70 border-white/20 hover:text-white hover:border-white/50'
+            }`}
+          >
+            <FolderOpen size={13} />
+            ARCHIVO DE DOCUMENTOS ({documents.length})
+          </button>
+        </div>
+        <div className="text-[9px] font-bold uppercase tracking-widest text-white/60 flex items-center gap-2">
+          <span>PROYECTO: <strong className="text-emerald-400">{projectName || projectId || 'ACTIVO'}</strong></span>
+          <span className="opacity-40">|</span>
+          <span>FLUJO: REVIT → REVIEW / MCP → COLA SUPABASE → APLICAR EN REVIT</span>
+        </div>
+      </div>
+
+      {sectionMode === 'sheets' ? (
+        <div className="flex-1 flex overflow-hidden">
+          <RevitSheetsManager projectId={projectId} projectName={projectName} />
+        </div>
+      ) : (
       <div className="flex-1 flex overflow-hidden flex-col md:flex-row print:block print:overflow-visible">
 
         {/* LEFT SUBPANEL - Document Selection */}
@@ -768,6 +815,7 @@ const Documents = () => {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };
