@@ -1,69 +1,108 @@
 /**
- * Utility to convert flat esquema_nodes rows from Supabase into a nested tree structure
- * matching the layout expected by the mind map canvas and tree layout algorithms.
+ * Converts flat list of database nodes into a hierarchical tree structure
  */
-export const buildTreeFromFlatNodes = (rows) => {
-  if (!rows || rows.length === 0) return null;
+export const buildTreeFromFlatNodes = (flatNodes) => {
+  if (!flatNodes || flatNodes.length === 0) return null;
 
-  // Map database row properties to camelCase JS nodes
   const nodeMap = {};
-  rows.forEach(row => {
-    nodeMap[row.id] = {
-      id: row.id,
-      name: row.name || '',
-      description: row.description || '',
-      category: row.category || '',
-      type: row.type || 'DOC',
-      roles: row.roles || '',
-      x: row.x !== null && row.x !== undefined ? row.x : undefined,
-      y: row.y !== null && row.y !== undefined ? row.y : undefined,
-      width: row.width !== null ? row.width : undefined,
-      height: row.height !== null ? row.height : undefined,
-      depth: row.depth || 0,
-      isRoot: !!row.is_root,
-      isBranchExpanded: row.is_branch_expanded !== false, // defaults to true
-      isTextExpanded: !!row.is_text_expanded,
-      isHighlighted: !!row.is_highlighted,
-      highlightColor: row.highlight_color || null,
-      storage_mode: row.storage_mode || 'INHERIT',
-      externalLinks: row.external_links || [],
-      externalResources: row.external_resources || [],
-      path: row.path || [],
-      recurso_id: row.recurso_id || null,
+  let root = null;
+
+  // First pass: create entries in map
+  flatNodes.forEach((node) => {
+    // Parse extra metadata stored in highlight_color or blocks if JSON-encoded
+    let parsedMeta = {};
+    if (
+      typeof node.highlight_color === 'string' &&
+      node.highlight_color.startsWith('{')
+    ) {
+      try {
+        parsedMeta = JSON.parse(node.highlight_color);
+      } catch (_) {}
+    }
+
+    nodeMap[node.node_key] = {
+      id: node.node_key,
+      name: node.name,
+      description: node.description || '',
+      type: node.node_type || 'DOC',
+      fileUrl: node.file_url || '',
+      highlightColor: parsedMeta.highlightColor || (node.highlight_color?.startsWith('{') ? null : node.highlight_color),
+      bgColor: parsedMeta.bgColor || undefined,
+      blockType: parsedMeta.blockType || (parsedMeta.revitAction ? 'revit_action' : undefined),
+      revitAction: parsedMeta.revitAction || undefined,
+      cableOffset: parsedMeta.cableOffset || undefined,
+      side: parsedMeta.side || undefined,
+      x: node.pos_x !== null ? Number(node.pos_x) : undefined,
+      y: node.pos_y !== null ? Number(node.pos_y) : undefined,
+      isTextExpanded: !!node.is_text_expanded,
+      isBranchExpanded: node.is_branch_expanded !== false,
+      isRoot: !!node.is_root,
       children: []
     };
   });
 
-  let root = null;
-
-  rows.forEach(row => {
-    const node = nodeMap[row.id];
-    if (row.is_root || !row.parent_id) {
-      root = node;
-    } else {
-      const parent = nodeMap[row.parent_id];
-      if (parent) {
-        parent.children.push(node);
-      }
+  // Second pass: link children to parents
+  flatNodes.forEach((node) => {
+    const current = nodeMap[node.node_key];
+    if (node.is_root || !node.parent_key) {
+      root = current;
+    } else if (nodeMap[node.parent_key]) {
+      nodeMap[node.parent_key].children.push(current);
     }
   });
 
-  // Fallback root if none explicitly matches
-  if (!root) {
-    const nodes = Object.values(nodeMap);
-    root = nodes.find(n => n.depth === 0) || nodes[0] || null;
-  }
+  return root;
+};
 
-  // Ensure helper fields like hasChildren and hasDescription are computed
-  const computeHelperFields = (node) => {
-    if (!node) return;
-    node.hasChildren = node.children && node.children.length > 0;
-    node.hasDescription = !!node.description;
-    if (node.children && node.children.length > 0) {
-      node.children.forEach(computeHelperFields);
-    }
+/**
+ * Flattens a hierarchical tree structure into an array of database-ready rows
+ */
+export const flattenTreeToNodes = (node, schemaId, parentKey = null, index = 0) => {
+  if (!node) return [];
+
+  // Pack extended Revit Action & Markdown Schema metadata into highlight_color if needed
+  const hasExtendedMeta =
+    node.revitAction ||
+    node.blockType ||
+    node.bgColor ||
+    node.cableOffset ||
+    node.side;
+
+  const packedHighlight = hasExtendedMeta
+    ? JSON.stringify({
+        highlightColor: node.highlightColor || null,
+        bgColor: node.bgColor || null,
+        blockType: node.blockType || null,
+        revitAction: node.revitAction || null,
+        cableOffset: node.cableOffset || null,
+        side: node.side || null
+      })
+    : node.highlightColor || null;
+
+  const currentRow = {
+    esquema_id: schemaId,
+    node_key: String(node.id),
+    parent_key: parentKey ? String(parentKey) : null,
+    name: node.name || 'Sin título',
+    description: node.description || '',
+    node_type: node.type || (node.blockType === 'revit_action' ? 'REVIT_ACTION' : 'DOC'),
+    file_url: node.fileUrl || null,
+    highlight_color: packedHighlight,
+    pos_x: node.x !== undefined ? node.x : null,
+    pos_y: node.y !== undefined ? node.y : null,
+    is_text_expanded: !!node.isTextExpanded,
+    is_branch_expanded: node.isBranchExpanded !== false,
+    is_root: !!node.isRoot || parentKey === null,
+    order_index: index
   };
 
-  computeHelperFields(root);
-  return root;
+  let rows = [currentRow];
+
+  if (node.children && Array.isArray(node.children)) {
+    node.children.forEach((child, idx) => {
+      rows = rows.concat(flattenTreeToNodes(child, schemaId, node.id, idx));
+    });
+  }
+
+  return rows;
 };

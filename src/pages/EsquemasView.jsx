@@ -1,423 +1,534 @@
-import React, { useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Save, Database, FileText, X, Upload, ChevronRight, Activity, Lock } from 'lucide-react';
-import { useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom';
-
-// Layout & Context
-import { useAuth } from '../context/AuthContext';
-
-// Modularized Components
-import SchemaList from './Esquemas/SchemaList';
-import SchemaHUD from './Esquemas/SchemaHUD';
+import React, { useMemo } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, FolderOpen, Network, Wand2, Cpu, FileJson } from 'lucide-react';
+import { useSchemaLogic } from './Esquemas/useSchemaLogic';
 import MindMapNode from './Esquemas/MindMapNode';
 import Connector from './Esquemas/Connector';
-import EsquemaNodeModal from './Esquemas/EsquemaNodeModal';
-import DeleteConfirmationModal from './Esquemas/DeleteConfirmationModal';
+import SchemaHUD from './Esquemas/SchemaHUD';
+import SchemaList from './Esquemas/SchemaList';
+import NewSchemaModal from './Esquemas/NewSchemaModal';
+import NodeEditorModal from './Esquemas/NodeEditorModal';
 import NodeJsonOperationsModal from './Esquemas/NodeJsonOperationsModal';
-import BimFolderExplorer from '../components/BIM/BimFolderExplorer';
-import BimImplementationPlanner from '../components/BIM/BimImplementationPlanner';
-import { PROMPTS } from '../config/aiPrompts';
+import UniversalJsonImportModal from './Esquemas/UniversalJsonImportModal';
+import RevitActionsTabView from './Esquemas/RevitActionsTabView';
+import ContextMenu from './Esquemas/ContextMenu';
+import UniversalPreviewModal from './Esquemas/UniversalPreviewModal';
+import CdeExplorerView from './Esquemas/CdeExplorerView';
+import BimPlannerModal from './Esquemas/BimPlannerModal';
+import { extractRevitActionsFromTree } from './Esquemas/schemaAiPrompt';
 
-// Hooks & Logic
-import { useSchemaLogic } from './Esquemas/useSchemaLogic';
-
-
-
-export default function EsquemasView({ isAdminView }) {
-  const { t } = useTranslation();
-  const { isAdmin: authIsAdmin, isBimManager, setBimManager } = useAuth();
-
-  const [passkey, setPasskey] = React.useState('');
-  const [authError, setAuthError] = React.useState('');
-
-  const isAdmin = (authIsAdmin && isAdminView) || isBimManager;
-  const { schemaId } = useParams();
+const EsquemasView = ({ projectId = null }) => {
+  const { id: urlSchemaId } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
-  const [searchParams] = useSearchParams();
-  const projectId = searchParams.get('projectId');
+  const isAdmin = true;
 
-  const { state, handlers, centerOnRoot } = useSchemaLogic(schemaId, isAdmin, navigate, isAdminView ? null : projectId, isAdminView);
-  const basePath = (isAdminView && (authIsAdmin || isBimManager)) ? '/esquemaEdit' : '/esquemaView';
+  const {
+    schemas,
+    selectedSchema,
+    setSelectedSchema,
+    mapData,
+    loading,
+    isSaving,
+    panOffset,
+    setPanOffset,
+    zoom,
+    setZoom,
+    isDragging,
+    setIsDragging,
+    setDragStart,
+    containerRef,
+    selectedNodeIds,
+    setSelectedNodeIds,
+    selectionBox,
+    setSelectionBox,
+    isolatedNodeId,
+    isLocked,
+    setIsLocked,
+    isCreatorMode,
+    setIsCreatorMode,
+    allBranchesExpanded,
+    allDataExpanded,
+    isHighlighterActive,
+    setIsHighlighterActive,
+    markerColor,
+    setMarkerColor,
+    editingNode,
+    setEditingNode,
+    parentForNewNode,
+    setParentForNewNode,
+    contextMenu,
+    setContextMenu,
+    showJsonView,
+    setShowJsonView,
+    nodeForJsonModal,
+    setNodeForJsonModal,
+    showUniversalJsonModal,
+    setShowUniversalJsonModal,
+    showNewSchemaModal,
+    setShowNewSchemaModal,
+    previewNode,
+    setPreviewNode,
+    showBimPlannerModal,
+    setShowBimPlannerModal,
+    viewMode,
+    setViewMode,
+    connectingData,
+    visibleNodes,
+    handleSelectSchema,
+    handleCreateSchema,
+    handleDeleteSchema,
+    centerOnRoot,
+    handleToggleText,
+    handleToggleBranch,
+    handleGlobalTreeToggle,
+    handleGlobalDataToggle,
+    handleIsolateNode,
+    handleAutoOrganize,
+    handleUpdateCableOffset,
+    handleSaveNodeContent,
+    handleDeleteNode,
+    handleQuickAddChild,
+    handleAddActionNodeToBranch,
+    handleInjectPresetBranch,
+    handleNodeResize,
+    handleSaveNode,
+    handleCutConnection,
+    handleInsertIntermediateNode,
+    handleDuplicateBranch,
+    handleImportJsonToNode,
+    handleUniversalJsonImport,
+    handleStartDragNode,
+    handleStartConnect,
+    handleCompleteConnect,
+    handleMouseMove,
+    handleMouseUp,
+    handleWheel,
+    handleCopyAiPrompt
+  } = useSchemaLogic(projectId ? null : urlSchemaId, navigate, projectId);
 
-  const handleUnlock = (e) => {
-    e.preventDefault();
-    if (passkey === '123123') {
-      setBimManager(true);
-      setAuthError('');
-      if (schemaId) navigate(`/esquemaEdit/${schemaId}`);
-      else navigate(`/esquemaEdit`);
+  const revitActionsCount = useMemo(
+    () => extractRevitActionsFromTree(mapData).length,
+    [mapData]
+  );
+
+  const handleMouseDown = (e) => {
+    if (e.button !== 0) return;
+
+    if (e.shiftKey) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const startX = (e.clientX - rect.left - panOffset.x) / zoom;
+      const startY = (e.clientY - rect.top - panOffset.y) / zoom;
+      setSelectionBox({ startX, startY, endX: startX, endY: startY });
     } else {
-      setAuthError('INVALID_KEY');
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+      setSelectedNodeIds(new Set());
+      setContextMenu(null);
     }
   };
 
-  const {
-    zoom, setZoom, panOffset, setPanOffset, containerRef, esquemas, activeEsquema, isLoading,
-    isImportModalOpen, setIsImportModalOpen, importJsonText, setImportJsonText, isImporting,
-    mapData, inspectedNode, setInspectedNode, draggingNodeId, selectedNodeIds, selectionBox,
-    isLocked, setIsLocked, showJsonView, setShowJsonView, isCreatorMode, setIsCreatorMode,
-    editingNodeId, setEditingNodeId, reconnectingData, reconnectTargetId, duplicatingData,
-    isHighlighterActive, setIsHighlighterActive, markerColor, setMarkerColor, allBranchesExpanded,
-    allDataExpanded, importTargetNode, setImportTargetNode, isSaving, isDirty, confirmDeleteId,
-    setConfirmDeleteId, nodeLinks, treeNodes, dragHappened, isPanning, viewMode, setViewMode, projectsList
-  } = state;
-
-  const {
-    handleCreateEsquema, handleDeleteEsquema, handleImportJson, toggleTextExpand, toggleBranchExpand,
-    handleToggleHighlight, handleDeepToggleBranch, handleGlobalTreeToggle, handleGlobalDataToggle,
-    handleIsolateNode, handleMouseDownMain, handleMouseMove, handleMouseUp, handleStartCut,
-    handleInsertIntermediateNode, handleStartDuplicateBranch, handleSaveNode, handleSaveNodeName,
-    handleAddSubNodeToTree, handleImportBranchToNode, handleDeleteNodeFromTree, executeDeleteNode,
-    handleAutoOrganize, handleDragStart, handleSetNodeType, handleSetNodeCategory, handleSetStorageMode, handleUpdateNodeInPlanner, setCurrentPlan,
-    handleAssignProject
-  } = handlers;
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !activeEsquema) return;
-
-    const handleWheel = (e) => {
-      e.preventDefault();
-      const rect = container.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-      const canvasMouseX = (mouseX - panOffset.x) / zoom;
-      const canvasMouseY = (mouseY - panOffset.y) / zoom;
-      const delta = -e.deltaY;
-      const zoomIntensity = 0.001;
-      let newZoom = Math.min(Math.max(0.1, zoom + delta * zoomIntensity * zoom), 3);
-      const newPanX = mouseX - canvasMouseX * newZoom;
-      const newPanY = mouseY - canvasMouseY * newZoom;
-      setZoom(newZoom);
-      setPanOffset({ x: newPanX, y: newPanY });
-    };
-
-    container.addEventListener('wheel', handleWheel, { passive: false });
-    return () => container.removeEventListener('wheel', handleWheel);
-  }, [activeEsquema, zoom, panOffset, setZoom, setPanOffset, containerRef]);
-
-  const copyAiPrompt = () => {
-    navigator.clipboard.writeText(PROMPTS.esquemasMap);
-    alert("Prompt para SISTEMA COMPLETO copiado.");
-  };
-
-  const copyBranchAiPrompt = (nodeName) => {
-    navigator.clipboard.writeText(PROMPTS.esquemasExpand(nodeName));
-    alert("Prompt para RAMA copiado. Pégalo en Gemini o ChatGPT.");
-  };
-
-  const maxX = treeNodes.length > 0 ? Math.max(...treeNodes.map(n => n.x + n.width), 1500) + 400 : 2000;
-  const maxY = treeNodes.length > 0 ? Math.max(...treeNodes.map(n => n.y + n.height), 800) + 400 : 2000;
+  if (!selectedSchema && (projectId || !urlSchemaId)) {
+    return (
+      <>
+        <SchemaList
+          schemas={schemas}
+          onSelect={(s) => {
+            handleSelectSchema(s);
+            if (!projectId) navigate(`/esquemas/${s.id}`);
+          }}
+          onDelete={handleDeleteSchema}
+          onCreateNew={() => setShowNewSchemaModal(true)}
+          isAdmin={isAdmin}
+        />
+        {showNewSchemaModal && (
+          <NewSchemaModal
+            onSave={handleCreateSchema}
+            onCancel={() => setShowNewSchemaModal(false)}
+          />
+        )}
+      </>
+    );
+  }
 
   return (
-    <>
-      <style>
-        {`
-          @media print {
-            .no-print, header, nav, aside, .fixed.bottom-10, .fixed.top-24 { display: none !important; }
-            body, html { background: white !important; overflow: visible !important; height: auto !important; width: auto !important; }
-            .flex.h-screen { display: block !important; height: auto !important; overflow: visible !important; }
-            main { overflow: visible !important; background: white !important; position: relative !important; width: 100% !important; height: auto !important; padding: 0 !important; margin: 0 !important; }
-            canvas, svg, .absolute { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-            .absolute[style*="transform: translate"] { transform: none !important; position: relative !important; top: 0 !important; left: 0 !important; width: 100% !important; }
-          }
-        `}
-      </style>
+    <div
+      ref={containerRef}
+      onMouseDown={viewMode === 'canvas' ? handleMouseDown : undefined}
+      onMouseMove={viewMode === 'canvas' ? handleMouseMove : undefined}
+      onMouseUp={viewMode === 'canvas' ? handleMouseUp : undefined}
+      onWheel={viewMode === 'canvas' ? handleWheel : undefined}
+      className="relative w-full h-screen bg-[#fcf9f4] overflow-hidden select-none font-sans"
+    >
+      {/* Blueprint Grid Background */}
+      <div
+        className="absolute inset-0 pointer-events-none opacity-[0.04]"
+        style={{
+          backgroundImage: `radial-gradient(#1c1c19 2px, transparent 2px), linear-gradient(to right, #1c1c19 1px, transparent 1px), linear-gradient(to bottom, #1c1c19 1px, transparent 1px)`,
+          backgroundSize: `${20 * zoom}px ${20 * zoom}px, ${100 * zoom}px ${100 * zoom}px, ${100 * zoom}px ${100 * zoom}px`,
+          backgroundPosition: `${panOffset.x}px ${panOffset.y}px`
+        }}
+      />
 
-      {!activeEsquema ? (
-        <SchemaList
-          esquemas={esquemas}
-          isLoading={isLoading}
-          openEsquema={(esq) => navigate(`${basePath}/${esq.id}`)}
-          handleCreateEsquema={handleCreateEsquema}
-          handleDeleteEsquema={handleDeleteEsquema}
-          setIsImportModalOpen={setIsImportModalOpen}
-          isAdmin={isAdmin}
-          isAdminView={isAdminView}
-          isUnlocked={isBimManager || authIsAdmin}
-          isBimManager={isBimManager}
-          projectsList={projectsList}
-          handleAssignProject={handleAssignProject}
-        />
-      ) : (
-        <div className="flex-1 flex flex-col h-full relative">
-          <div className="absolute top-4 left-4 right-4 z-[160] flex justify-between items-start pointer-events-none">
+      {/* TOP NAVIGATION BAR & TABS (MAPA DE ESQUEMA | PESTAÑA ACCIONES REVIT | EXPLORADOR CDE) */}
+      <div className="fixed top-4 left-4 right-4 z-[120] flex flex-wrap items-center justify-between gap-3 pointer-events-none">
+        {/* Left: Back + Title */}
+        <div className="flex items-center gap-2 pointer-events-auto">
+          <button
+            onClick={() => {
+              setSelectedSchema(null);
+              if (!projectId) navigate('/esquemas');
+            }}
+            className="p-2.5 bg-[#fcf9f4] border-2 border-[#1c1c19] shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:bg-[#1c1c19] hover:text-white transition-all flex items-center gap-2 font-black text-xs uppercase"
+          >
+            <ArrowLeft size={16} strokeWidth={3} />
+            <span className="hidden sm:inline">Esquemas</span>
+          </button>
+
+          <div className="bg-[#1c1c19] text-white px-3.5 py-2 border-2 border-[#1c1c19] shadow-[4px_4px_0_0_rgba(15,67,105,1)]">
+            <span className="font-mono text-[7px] uppercase tracking-[0.2em] block opacity-60">
+              ESQUEMA ACTIVO {isSaving ? '• GUARDANDO...' : ''}
+            </span>
+            <h2 className="text-xs font-black uppercase tracking-tight truncate max-w-[240px]">
+              {selectedSchema?.title || mapData.name}
+            </h2>
+          </div>
+        </div>
+
+        {/* Center/Right: View Switcher Tabs + Quick AI/JSON Actions */}
+        <div className="flex flex-wrap items-center gap-2 pointer-events-auto">
+          {/* 3-Tab Switcher */}
+          <div className="flex bg-[#fcf9f4] border-2 border-[#1c1c19] shadow-[4px_4px_0_0_rgba(28,28,25,1)] p-0.5">
             <button
-              onClick={handlers.handleBackToList}
-              className="pointer-events-auto flex items-center gap-2 px-4 py-2 bg-white border-2 border-[#1c1c19] text-[10px] font-black uppercase tracking-widest shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
+              onClick={() => setViewMode('canvas')}
+              className={`px-3 py-1.5 flex items-center gap-1.5 font-black text-[10px] uppercase tracking-wider transition-all ${
+                viewMode === 'canvas'
+                  ? 'bg-[#0f4369] text-white'
+                  : 'text-[#1c1c19] hover:bg-[#e5e2dd]'
+              }`}
             >
-              <ChevronRight size={14} className="rotate-180" /> LISTA_DE_ESQUEMAS
+              <Network size={13} />
+              <span>1. Mapa de Esquema</span>
             </button>
-            <div className="pointer-events-auto flex items-center gap-3">
-              {/* BIM KEY moved to Assistant */}
-            </div>
-          </div>
 
-          {viewMode === 'canvas' ? (
-            <div
-              id="esquemas-canvas"
-              className={`flex-1 h-full w-full overflow-hidden relative ${isPanning || draggingNodeId || selectionBox ? 'cursor-grabbing select-none' : 'cursor-grab'} bg-[#fcf9f4]`}
-              ref={containerRef}
-              onMouseDown={handleMouseDownMain}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-              onAuxClick={(e) => { if (e.button === 1) e.preventDefault(); }}
+            <button
+              onClick={() => setViewMode('revit_actions')}
+              className={`px-3 py-1.5 flex items-center gap-1.5 font-black text-[10px] uppercase tracking-wider transition-all ${
+                viewMode === 'revit_actions'
+                  ? 'bg-[#0f4369] text-white'
+                  : 'text-[#1c1c19] hover:bg-[#e5e2dd]'
+              }`}
             >
-              <div
-                className="absolute inset-0 pointer-events-none opacity-[0.12]"
-                style={{
-                  backgroundImage: `
-                    linear-gradient(to right, #1c1c19 1px, transparent 1px),
-                    linear-gradient(to bottom, #1c1c19 1px, transparent 1px),
-                    linear-gradient(to right, #1c1c19 2px, transparent 2px),
-                    linear-gradient(to bottom, #1c1c19 2px, transparent 2px)
-                  `,
-                  backgroundSize: `${30 * zoom}px ${30 * zoom}px, ${30 * zoom}px ${30 * zoom}px, ${150 * zoom}px ${150 * zoom}px, ${150 * zoom}px ${150 * zoom}px`,
-                  backgroundPosition: `${panOffset.x}px ${panOffset.y}px`
-                }}
-              />
+              <Cpu size={13} className={viewMode === 'revit_actions' ? 'text-yellow-400' : 'text-[#0f4369]'} />
+              <span>2. Pestaña Acciones Revit</span>
+              <span className="px-1.5 py-0.2 bg-yellow-400 text-[#1c1c19] font-mono text-[9px] font-black rounded-sm">
+                {revitActionsCount}
+              </span>
+            </button>
 
-              <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-4 transition-all duration-300 pointer-events-none">
-                {isSaving ? (
-                  <div className="bg-[#1c1c19] text-[#e5e2dd] px-4 py-2 border-2 border-[#1c1c19] shadow-[4px_4px_0_1px_rgba(0,255,249,0.5)] flex items-center gap-3 animate-pulse">
-                    <Save size={14} className="animate-spin-slow" />
-                    <span className="font-mono text-[9px] font-black tracking-[3px] uppercase">Sync h-16/Cloud</span>
-                  </div>
-                ) : isDirty ? (
-                  <div className="bg-[#f6f3ee] text-[#1c1c19] px-4 py-2 border-2 border-[#1c1c19] shadow-[4px_4px_0_0_rgba(28,28,25,0.1)] flex items-center gap-2">
-                    <div className="w-2 h-2 bg-yellow-500 rounded-full animate-ping" />
-                    <span className="font-mono text-[9px] font-black tracking-[3px] uppercase">Pending Edits</span>
-                  </div>
-                ) : activeEsquema && (
-                  <div className="bg-white text-green-700 px-4 py-2 border-2 border-green-600 shadow-[4px_4px_0_0_rgba(22,101,52,0.1)] flex items-center gap-2 opacity-0 hover:opacity-100 transition-opacity">
-                    <Database size={14} strokeWidth={3} />
-                    <span className="font-mono text-[9px] font-black tracking-[3px] uppercase">Sys. Secured</span>
-                  </div>
-                )}
-              </div>
+            <button
+              onClick={() => setViewMode('cde')}
+              className={`px-3 py-1.5 flex items-center gap-1.5 font-black text-[10px] uppercase tracking-wider transition-all ${
+                viewMode === 'cde'
+                  ? 'bg-[#0f4369] text-white'
+                  : 'text-[#1c1c19] hover:bg-[#e5e2dd]'
+              }`}
+            >
+              <FolderOpen size={13} />
+              <span className="hidden md:inline">3. Explorador CDE</span>
+            </button>
+          </div>
 
-              <div
-                className="absolute"
-                style={{
-                  transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
-                  transformOrigin: '0 0',
-                  width: `${maxX}px`,
-                  height: `${maxY}px`,
-                  transition: isPanning ? 'none' : 'transform 0.1s ease-out'
-                }}
-              >
-                <div className="relative w-full h-full">
-                  <div
-                    className="absolute border-[3px] border-[#1c1c19] bg-white shadow-2xl pointer-events-none z-[1]"
-                    style={{ width: `${maxX - 100}px`, height: `${maxY - 100}px`, left: '50px', top: '50px' }}
-                  />
+          {/* Universal JSON + AI Prompt Button */}
+          <button
+            onClick={() => setShowUniversalJsonModal(true)}
+            className="px-3.5 py-2 bg-[#0f4369] text-white border-2 border-[#1c1c19] shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:bg-[#1c1c19] transition-all flex items-center gap-1.5 font-black text-[10px] uppercase tracking-wider"
+            title="Generar Prompt IA o Inyectar JSON de Acciones Revit / Esquema"
+          >
+            <FileJson size={14} className="text-yellow-400" />
+            <span>JSON / Prompt IA Revit</span>
+          </button>
 
-                  <svg className="absolute top-0 left-0 pointer-events-none z-[15] overflow-visible" width={maxX} height={maxY}>
-                    {treeNodes.map((parent) => {
-                      if (!parent.children || !parent.isBranchExpanded) return null;
-                      return parent.children.map((childRef) => {
-                        const child = treeNodes.find(n => n.id === childRef.id);
-                        if (!child) return null;
-                        return (
-                          <Connector
-                            key={`${parent.id}-${child.id}`}
-                            start={{ x: parent.x + parent.width, y: parent.y + parent.height / 2 }}
-                            end={{ x: child.x, y: child.y + child.height / 2 }}
-                            parentId={parent.id}
-                            childId={child.id}
-                            onCut={handleStartCut}
-                            onInsert={handleInsertIntermediateNode}
-                            onDuplicate={handleStartDuplicateBranch}
-                            isAdmin={isAdmin}
-                          />
-                        );
-                      });
-                    })}
+          {/* BIM Planner Button */}
+          <button
+            onClick={() => setShowBimPlannerModal(true)}
+            className="px-3 py-2 bg-[#fcf9f4] text-[#1c1c19] border-2 border-[#1c1c19] shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:bg-[#1c1c19] hover:text-white transition-all flex items-center gap-1.5 font-black text-[10px] uppercase tracking-wider"
+          >
+            <Wand2 size={13} />
+            <span className="hidden lg:inline">BIM Planner</span>
+          </button>
+        </div>
+      </div>
 
-                    {reconnectingData && (
-                      <line
-                        x1={reconnectingData.mouseX} y1={reconnectingData.mouseY}
-                        x2={treeNodes.find(n => n.id === reconnectingData.childId)?.x || reconnectingData.mouseX}
-                        y2={(() => { const n = treeNodes.find(n => n.id === reconnectingData.childId); return n ? n.y + n.height / 2 : reconnectingData.mouseY; })()}
-                        stroke={reconnectTargetId ? "#22c55e" : "#0f4369"} strokeWidth="4" strokeDasharray="5 5"
-                      />
-                    )}
+      {/* VIEW 1: MINDMAP CANVAS (MARKDOWN ENGINE + REVIT LAYER) */}
+      {viewMode === 'canvas' && (
+        <>
+          <div
+            style={{
+              transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
+              transformOrigin: '0 0'
+            }}
+            className="absolute inset-0 pointer-events-none"
+          >
+            {/* SVG Connections Layer */}
+            <svg className="absolute inset-0 w-[10000px] h-[10000px] overflow-visible pointer-events-none">
+              {visibleNodes.map((node) => {
+                if (!node.children || !node.isBranchExpanded) return null;
+                return node.children.map((child) => {
+                  const target = visibleNodes.find((n) => n.id === child.id);
+                  if (!target) return null;
 
-                    {duplicatingData && (
-                      <g>
-                        <circle cx={duplicatingData.mouseX} cy={duplicatingData.mouseY} r="10" fill={reconnectTargetId ? "#22c55e" : "#0f4369"} opacity="0.6" className="animate-pulse" />
-                        <text x={duplicatingData.mouseX + 15} y={duplicatingData.mouseY + 5} className="font-black text-[10px] fill-[#1c1c19] uppercase tracking-widest pointer-events-none">
-                          DUPLICANDO: {duplicatingData.branchRootNode.name}
-                        </text>
-                        {reconnectTargetId && (
-                          <line
-                            x1={duplicatingData.mouseX} y1={duplicatingData.mouseY}
-                            x2={treeNodes.find(n => n.id === reconnectTargetId).x + treeNodes.find(n => n.id === reconnectTargetId).width}
-                            y2={treeNodes.find(n => n.id === reconnectTargetId).y + treeNodes.find(n => n.id === reconnectTargetId).height / 2}
-                            stroke="#22c55e" strokeWidth="2" strokeDasharray="4 4"
-                          />
-                        )}
-                      </g>
-                    )}
-                  </svg>
+                  const isTargetLeftOfParent = target.x + target.width / 2 < node.x + node.width / 2;
+                  const startX = isTargetLeftOfParent ? node.x : node.x + node.width;
+                  const startY = node.y + node.height / 2;
+                  const endX = isTargetLeftOfParent ? target.x + target.width : target.x;
+                  const endY = target.y + target.height / 2;
 
-                  <div className="absolute top-0 left-0 w-full h-full z-10 pointer-events-auto">
-                    {treeNodes.map((node) => (
-                      <MindMapNode
-                        key={node.id}
-                        node={node}
-                        toggleTextExpand={toggleTextExpand}
-                        toggleBranchExpand={toggleBranchExpand}
-                        onInspect={setInspectedNode}
-                        onAddSubNode={handleAddSubNodeToTree}
-                        onImportSubNodes={setImportTargetNode}
-                        onDeepToggleBranch={handleDeepToggleBranch}
-                        onToggleHighlight={handleToggleHighlight}
-                        onDeleteNode={handleDeleteNodeFromTree}
-                        onDragStart={handleDragStart}
-                        isAdmin={isAdmin}
-                        isAdminView={isAdminView}
-                        dragHappened={dragHappened}
-                        links={nodeLinks[node.id]}
-                        navigate={navigate}
-                        isDragging={draggingNodeId?.id === node.id}
-                        isSelected={selectedNodeIds.has(node.id)}
-                        isLocked={isLocked}
-                        isEditing={editingNodeId === node.id}
-                        onNameSave={handleSaveNodeName}
-                        onStartEdit={setEditingNodeId}
-                        isCreatorMode={isCreatorMode}
-                        isHighlighterMode={isHighlighterActive}
-                        onSetType={handleSetNodeType}
-                        onSetCategory={handleSetNodeCategory}
-                        onSetStorageMode={handleSetStorageMode}
-                        projectId={projectId || activeEsquema?.project}
-                      />
-                    ))}
+                  return (
+                    <Connector
+                      key={`${node.id}-${target.id}`}
+                      start={{ x: startX, y: startY }}
+                      end={{ x: endX, y: endY }}
+                      parentId={node.id}
+                      childId={target.id}
+                      cableOffset={target.cableOffset}
+                      onUpdateOffset={handleUpdateCableOffset}
+                      onCut={handleCutConnection}
+                      onInsert={handleInsertIntermediateNode}
+                      onDuplicate={handleDuplicateBranch}
+                      isAdmin={isAdmin}
+                      zoom={zoom}
+                      isRevitAction={target.blockType === 'revit_action' || !!target.revitAction}
+                    />
+                  );
+                });
+              })}
 
-                    {selectionBox && (
-                      <div
-                        className="absolute border-2 border-[#0f4369] bg-[#0f4369]/10 pointer-events-none z-[1000]"
-                        style={{
-                          left: Math.min(selectionBox.startX, selectionBox.endX),
-                          top: Math.min(selectionBox.startY, selectionBox.endY),
-                          width: Math.abs(selectionBox.endX - selectionBox.startX),
-                          height: Math.abs(selectionBox.endY - selectionBox.startY)
-                        }}
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex-1 w-full h-full p-6 pt-24 bg-[#f6f3ee] flex flex-col items-center overflow-y-auto">
-              <div className="w-full max-w-5xl h-full">
-                <BimFolderExplorer
-                  mapData={mapData}
-                  title={activeEsquema?.name}
+              {/* Active Connection Dragging Line */}
+              {connectingData && (
+                <path
+                  d={`M ${connectingData.startX} ${connectingData.startY} C ${
+                    connectingData.startX + (connectingData.currX - connectingData.startX) / 2
+                  } ${connectingData.startY}, ${
+                    connectingData.startX + (connectingData.currX - connectingData.startX) / 2
+                  } ${connectingData.currY}, ${connectingData.currX} ${connectingData.currY}`}
+                  fill="none"
+                  stroke="#e62020"
+                  strokeWidth="4"
+                  strokeDasharray="6 4"
                 />
-                <div className="mt-8">
-                  <BimImplementationPlanner
-                    mapData={mapData}
-                    title={activeEsquema?.name}
-                    onUpdateNode={handleUpdateNodeInPlanner}
-                    onSyncNode={setImportTargetNode}
-                    isAdmin={isAdmin}
-                  />
-                </div>
-              </div>
+              )}
+            </svg>
+
+            {/* Nodes Layer */}
+            <div className="pointer-events-auto">
+              {visibleNodes.map((node) => (
+                <MindMapNode
+                  key={node.id}
+                  node={node}
+                  onSelect={(id, multi) => {
+                    if (multi) {
+                      const next = new Set(selectedNodeIds);
+                      if (next.has(id)) next.delete(id);
+                      else next.add(id);
+                      setSelectedNodeIds(next);
+                    } else {
+                      setSelectedNodeIds(new Set([id]));
+                    }
+                  }}
+                  onToggleText={handleToggleText}
+                  onToggleBranch={handleToggleBranch}
+                  onStartConnect={handleStartConnect}
+                  onCompleteConnect={handleCompleteConnect}
+                  onStartDrag={handleStartDragNode}
+                  onContextMenu={(e, n) => {
+                    e.preventDefault();
+                    setContextMenu({ x: e.clientX, y: e.clientY, node: n });
+                  }}
+                  onQuickAdd={(parent, side) => handleQuickAddChild(parent, side)}
+                  onDeleteNode={handleDeleteNode}
+                  onOpenJsonModal={(n) => setNodeForJsonModal(n)}
+                  onSaveNodeContent={handleSaveNodeContent}
+                  onNodeResize={handleNodeResize}
+                  allSchemas={schemas}
+                  onNavigateSchema={(targetSchemaId) => {
+                    const found = schemas.find((s) => String(s.id) === String(targetSchemaId));
+                    if (found) {
+                      handleSelectSchema(found);
+                      if (!projectId) navigate(`/esquemas/${found.id}`);
+                    }
+                  }}
+                  isSelected={selectedNodeIds.has(node.id)}
+                  isIsolated={isolatedNodeId === node.id}
+                  isCreatorMode={isCreatorMode}
+                  isHighlighterActive={isHighlighterActive}
+                  isConnecting={!!connectingData}
+                  isAdmin={isAdmin}
+                />
+              ))}
             </div>
-          )}
 
-          {viewMode === 'canvas' && (
-            <SchemaHUD
-              zoom={zoom} setZoom={setZoom} panOffset={panOffset} setPanOffset={setPanOffset}
-              containerRef={containerRef} centerOnRoot={centerOnRoot}
-              allBranchesExpanded={allBranchesExpanded} handleGlobalTreeToggle={handleGlobalTreeToggle}
-              allDataExpanded={allDataExpanded} handleGlobalDataToggle={handleGlobalDataToggle}
-              isHighlighterActive={isHighlighterActive} setIsHighlighterActive={setIsHighlighterActive}
-              markerColor={markerColor} setMarkerColor={setMarkerColor}
-              isLocked={isLocked} setIsLocked={setIsLocked}
-              isCreatorMode={isCreatorMode} setIsCreatorMode={setIsCreatorMode}
-              selectedNodeIds={selectedNodeIds} handleIsolateNode={handleIsolateNode}
-              handleAutoOrganize={handleAutoOrganize} isAdmin={isAdmin}
-              showJsonView={showJsonView} setShowJsonView={setShowJsonView}
-            />
-          )}
-        </div>
-      )}
-
-      {/* Modals */}
-      {inspectedNode && (
-        <EsquemaNodeModal
-          node={inspectedNode}
-          activeEsquema={activeEsquema}
-          onClose={() => setInspectedNode(null)}
-          onSave={handleSaveNode}
-          isAdmin={isAdmin}
-        />
-      )}
-
-      {importTargetNode && (
-        <NodeJsonOperationsModal
-          node={importTargetNode}
-          onCancel={() => setImportTargetNode(null)}
-          onImport={(json, replace) => handleImportBranchToNode(importTargetNode.id, json, replace)}
-          onCopyPrompt={() => copyBranchAiPrompt(importTargetNode.name)}
-        />
-      )}
-
-      {isImportModalOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-[#fcf9f4] border-2 border-[#1c1c19] w-full max-w-2xl shadow-[12px_12px_0_0_rgba(28,28,25,1)] flex flex-col">
-            <div className="bg-[#1c1c19] text-white p-4 flex justify-between items-center text-bold">
-              <h2 className="font-display font-black uppercase tracking-widest text-lg flex items-center gap-3">
-                <Upload size={20} className="text-[#e5e2dd]" /> Paste Schema JSON
-              </h2>
-              <button onClick={() => setIsImportModalOpen(false)} className="p-1 hover:bg-white/10 transition-colors"><X size={24} /></button>
-            </div>
-            <div className="p-6">
-              <p className="text-xs font-mono mb-4 text-[#72777f] uppercase tracking-widest leading-loose">
-                Paste the entire JSON structure below.
-              </p>
-              <button onClick={copyAiPrompt} className="w-full flex items-center justify-center gap-2 bg-[#f6f3ee] border-2 border-[#1c1c19] border-dashed py-3 px-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#1c1c19] hover:text-[#e5e2dd] transition-all group mb-4">
-                <FileText size={16} className="text-[#0f4369] group-hover:text-[#e5e2dd]" /> Copy AI Instruction Prompt
-              </button>
-              <textarea
-                autoFocus value={importJsonText} onChange={(e) => setImportJsonText(e.target.value)}
-                placeholder='{ "name": "Project Schema", "children": [...] }'
-                className="w-full h-80 bg-white border-2 border-[#1c1c19] p-4 font-mono text-xs focus:outline-none focus:border-[#0f4369] transition-colors resize-none"
+            {/* Selection Box */}
+            {selectionBox && (
+              <div
+                style={{
+                  left: Math.min(selectionBox.startX, selectionBox.endX),
+                  top: Math.min(selectionBox.startY, selectionBox.endY),
+                  width: Math.abs(selectionBox.endX - selectionBox.startX),
+                  height: Math.abs(selectionBox.endY - selectionBox.startY)
+                }}
+                className="absolute border-2 border-[#0f4369] bg-[#0f4369]/10 pointer-events-none z-50"
               />
-              <div className="mt-6 flex justify-end gap-4">
-                <button onClick={() => { setIsImportModalOpen(false); setImportJsonText(''); }} className="px-6 py-2 font-display font-bold uppercase tracking-widest text-[11px] border-2 border-[#1c1c19] hover:bg-[#1c1c19] hover:text-white transition-all">Cancel</button>
-                <button onClick={handleImportJson} disabled={isImporting || !importJsonText.trim()} className="px-10 py-2 bg-[#e5e2dd] text-[#1c1c19] font-display font-black uppercase tracking-widest text-[11px] border-2 border-[#1c1c19] hover:translate-y-1 hover:shadow-none transition-all shadow-[6px_6px_0_0_rgba(28,28,25,1)] disabled:opacity-50 disabled:grayscale">
-                  {isImporting ? 'Processing...' : 'Analyze & Load'}
-                </button>
-              </div>
-            </div>
+            )}
           </div>
+
+          {/* Floating HUD Controls */}
+          <SchemaHUD
+            zoom={zoom}
+            setZoom={setZoom}
+            panOffset={panOffset}
+            setPanOffset={setPanOffset}
+            containerRef={containerRef}
+            centerOnRoot={centerOnRoot}
+            allBranchesExpanded={allBranchesExpanded}
+            handleGlobalTreeToggle={handleGlobalTreeToggle}
+            allDataExpanded={allDataExpanded}
+            handleGlobalDataToggle={handleGlobalDataToggle}
+            isHighlighterActive={isHighlighterActive}
+            setIsHighlighterActive={setIsHighlighterActive}
+            markerColor={markerColor}
+            setMarkerColor={setMarkerColor}
+            isLocked={isLocked}
+            setIsLocked={setIsLocked}
+            isCreatorMode={isCreatorMode}
+            setIsCreatorMode={setIsCreatorMode}
+            selectedNodeIds={selectedNodeIds}
+            handleIsolateNode={handleIsolateNode}
+            handleAutoOrganize={handleAutoOrganize}
+            isAdmin={isAdmin}
+            showJsonView={showJsonView}
+            setShowJsonView={() => setShowUniversalJsonModal(true)}
+          />
+        </>
+      )}
+
+      {/* VIEW 2: PESTAÑA DE ACCIONES Y PROCESOS REVIT */}
+      {viewMode === 'revit_actions' && (
+        <RevitActionsTabView
+          mapData={mapData}
+          schemaTitle={selectedSchema?.title || mapData.name}
+          onSaveNodeContent={handleSaveNodeContent}
+          onDeleteNode={handleDeleteNode}
+          onAddActionNodeToBranch={handleAddActionNodeToBranch}
+          onInjectPresetBranch={handleInjectPresetBranch}
+          onOpenUniversalJsonModal={() => setShowUniversalJsonModal(true)}
+          onSwitchToCanvas={(nodeId) => {
+            setSelectedNodeIds(new Set([nodeId]));
+            setViewMode('canvas');
+          }}
+        />
+      )}
+
+      {/* VIEW 3: CDE EXPLORER */}
+      {viewMode === 'cde' && (
+        <div className="w-full h-full pt-20 px-8 pb-8 overflow-y-auto">
+          <CdeExplorerView
+            mapData={mapData}
+            onPreviewNode={(n) => setPreviewNode(n)}
+            onEditNode={(n) => setEditingNode(n)}
+            onAddChild={(parent) => setParentForNewNode(parent)}
+          />
         </div>
       )}
 
-      {confirmDeleteId && <DeleteConfirmationModal onConfirm={executeDeleteNode} onCancel={() => setConfirmDeleteId(null)} />}
+      {/* MODALS & OVERLAYS */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          node={contextMenu.node}
+          onClose={() => setContextMenu(null)}
+          onEdit={() => {
+            setEditingNode(contextMenu.node);
+            setContextMenu(null);
+          }}
+          onAddChild={() => {
+            handleQuickAddChild(contextMenu.node, 'right');
+            setContextMenu(null);
+          }}
+          onDelete={() => {
+            handleDeleteNode(contextMenu.node.id);
+            setContextMenu(null);
+          }}
+          onDuplicate={(e) => {
+            handleDuplicateBranch(e, contextMenu.node.id);
+            setContextMenu(null);
+          }}
+          onOpenJson={() => {
+            setNodeForJsonModal(contextMenu.node);
+            setContextMenu(null);
+          }}
+        />
+      )}
 
-      {showJsonView && isAdmin && activeEsquema && (
-        <div className="fixed top-24 right-6 bottom-32 w-full max-w-md z-[150] bg-[#1c1c19] border-2 border-[#1c1c19] shadow-[12px_12px_0_0_rgba(28,28,25,0.3)] flex flex-col animate-in slide-in-from-right-10 duration-500">
-          <div className="bg-[#1c1c19] p-4 flex justify-between items-center border-b border-white/10">
-            <h3 className="text-white font-black uppercase tracking-tighter text-sm">Schema Data Structure</h3>
-            <button onClick={() => setShowJsonView(false)} className="p-2 text-white/60 hover:text-red-400 transition-all"><X size={20} /></button>
-          </div>
-          <div className="flex-1 overflow-hidden p-4 bg-[#141412]">
-            <textarea readOnly value={JSON.stringify(mapData, null, 2)} className="w-full h-full bg-transparent text-green-400/90 font-mono text-xs p-4 focus:outline-none resize-none" spellCheck="false" />
-          </div>
-          <div className="p-4">
-            <button onClick={() => { navigator.clipboard.writeText(JSON.stringify(mapData, null, 2)); alert("Copied!"); }} className="w-full py-3 bg-white text-[#1c1c19] font-black uppercase text-[10px] tracking-widest hover:bg-green-400 transition-all shadow-[4px_4px_0_0_rgba(0,0,0,0.5)]">Copy Structure</button>
-          </div>
+      {(editingNode || parentForNewNode) && (
+        <NodeEditorModal
+          node={editingNode}
+          parent={parentForNewNode}
+          onSave={handleSaveNode}
+          onCancel={() => {
+            setEditingNode(null);
+            setParentForNewNode(null);
+          }}
+        />
+      )}
+
+      {nodeForJsonModal && (
+        <NodeJsonOperationsModal
+          node={nodeForJsonModal}
+          mapData={mapData}
+          onImport={handleImportJsonToNode}
+          onCancel={() => setNodeForJsonModal(null)}
+          onCopyPrompt={() => handleCopyAiPrompt(nodeForJsonModal)}
+        />
+      )}
+
+      <UniversalJsonImportModal
+        isOpen={showUniversalJsonModal}
+        onClose={() => setShowUniversalJsonModal(false)}
+        onImport={handleUniversalJsonImport}
+        currentTitle={selectedSchema?.title || mapData.name}
+        mapData={mapData}
+      />
+
+      {previewNode && (
+        <UniversalPreviewModal
+          node={previewNode}
+          onClose={() => setPreviewNode(null)}
+        />
+      )}
+
+      {showBimPlannerModal && (
+        <BimPlannerModal
+          isOpen={showBimPlannerModal}
+          onClose={() => setShowBimPlannerModal(false)}
+          onGenerateSchema={async (generatedTree) => {
+            await handleUniversalJsonImport(generatedTree, true);
+            setShowBimPlannerModal(false);
+          }}
+        />
+      )}
+
+      {/* Loading Overlay */}
+      {loading && (
+        <div className="fixed inset-0 z-[500] bg-[#fcf9f4]/80 backdrop-blur-md flex flex-col items-center justify-center">
+          <div className="w-16 h-16 border-4 border-[#1c1c19] border-t-[#0f4369] animate-spin mb-4" />
+          <span className="font-mono text-[10px] font-black uppercase tracking-[0.3em]">
+            Sincronizando Esquema & Acciones Revit...
+          </span>
         </div>
       )}
-    </>
+    </div>
   );
-}
+};
+
+export default EsquemasView;
