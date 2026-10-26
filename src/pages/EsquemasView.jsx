@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, FolderOpen, Network, Wand2, Cpu, FileJson } from 'lucide-react';
 import { useSchemaLogic } from './Esquemas/useSchemaLogic';
 import MindMapNode from './Esquemas/MindMapNode';
@@ -17,8 +17,12 @@ import CdeExplorerView from './Esquemas/CdeExplorerView';
 import BimPlannerModal from './Esquemas/BimPlannerModal';
 import { extractRevitActionsFromTree } from './Esquemas/schemaAiPrompt';
 
-const EsquemasView = ({ projectId = null }) => {
-  const { id: urlSchemaId } = useParams();
+const EsquemasView = ({ projectId: propProjectId = null }) => {
+  const { schemaId, id } = useParams();
+  const [searchParams] = useSearchParams();
+  const urlSchemaId = schemaId || id;
+  const projectId = propProjectId || searchParams.get('projectId') || null;
+  const initialTab = searchParams.get('tab');
   const navigate = useNavigate();
   const isAdmin = true;
 
@@ -104,7 +108,7 @@ const EsquemasView = ({ projectId = null }) => {
     handleMouseUp,
     handleWheel,
     handleCopyAiPrompt
-  } = useSchemaLogic(projectId ? null : urlSchemaId, navigate, projectId);
+  } = useSchemaLogic(urlSchemaId, navigate, projectId, initialTab);
 
   const revitActionsCount = useMemo(
     () => extractRevitActionsFromTree(mapData).length,

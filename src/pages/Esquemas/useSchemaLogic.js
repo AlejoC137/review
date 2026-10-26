@@ -5,7 +5,7 @@ import { layoutTree } from './layoutTree';
 import { buildTreeFromFlatNodes, flattenTreeToNodes } from '../../utils/schemaUtils';
 import { generateBranchAiPrompt } from './schemaAiPrompt';
 
-export const useSchemaLogic = (schemaIdFromUrl, navigate, projectId = null) => {
+export const useSchemaLogic = (schemaIdFromUrl, navigate, projectId = null, initialTab = null) => {
   const [schemas, setSchemas] = useState([]);
   const [selectedSchema, setSelectedSchema] = useState(null);
   const [mapData, setMapData] = useState(INITIAL_MIND_MAP_DATA);
@@ -61,7 +61,7 @@ export const useSchemaLogic = (schemaIdFromUrl, navigate, projectId = null) => {
   const [showBimPlannerModal, setShowBimPlannerModal] = useState(false);
 
   // View Mode: 'canvas' | 'revit_actions' | 'cde'
-  const [viewMode, setViewMode] = useState('canvas');
+  const [viewMode, setViewMode] = useState(initialTab === 'revit_actions' ? 'revit_actions' : 'canvas');
 
   // Dynamic Dragging/Connecting State
   const [connectingData, setConnectingData] = useState(null);

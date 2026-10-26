@@ -425,6 +425,7 @@ export default function Sidebar({ isOpen, onClose, className = "" }) {
             </NavGroup>
           )}
 
+          <NavItem item={{ id: 'nav-esquemas-global', label: 'Esquemas & Acciones Revit', path: '/esquemas', icon: Hexagon }} depth={0} />
           <NavItem item={{ id: 'nav-from-plugin', label: 'Plugin Revit (/fromPlugIn)', path: '/fromPlugIn', icon: Database }} depth={0} />
           <NavItem item={{ id: 'nav-about', label: t('nav.about'), path: '/about', icon: Info }} depth={0} />
 
