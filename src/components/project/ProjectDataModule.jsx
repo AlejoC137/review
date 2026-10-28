@@ -1335,6 +1335,13 @@ export default function ProjectDataModule({ project, onTabChange }) {
                   <h3 className="text-xl font-black uppercase tracking-tight italic">Ficha de Información General del Proyecto (PEB)</h3>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => navigate('/fromPlugIn')}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#f6f3ee] text-[#0f4369] border-2 border-[#1c1c19] font-black text-[10px] uppercase shadow-[4px_4px_0_0_rgba(28,28,25,1)] hover:bg-[#e5e2dd] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
+                    title="Ver recepciones desde el plugin Revit y sincronizar datos"
+                  >
+                    <Database size={14} strokeWidth={2.5} /> Plugin Revit (/fromPlugIn)
+                  </button>
                   {canEdit && (
                     <button
                       onClick={startEditPeb}
